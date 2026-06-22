@@ -1872,8 +1872,10 @@ export default function App() {
               )}
 
               {careerError && (
-                <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
-                  <p className="text-xs text-red-700">{careerError}</p>
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
+                  <p className="text-xs text-amber-800 font-bold">Career ladder tables not found.</p>
+                  <p className="text-xs text-amber-700">Run the career ladder SQL in Supabase, then tap Retry.</p>
+                  <button onClick={() => { setCareerError(''); loadCareerData(currentUser); }} className="text-xs font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
                 </div>
               )}
 
@@ -1882,13 +1884,13 @@ export default function App() {
                   <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
                     <CareerIcon />
                   </div>
-                  <p className="text-sm font-black text-gray-900">No Tracks Yet</p>
-                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Admins can add tracks and tasks using the forms below.</p>
+                  <p className="text-sm font-black text-gray-900">No Levels Yet</p>
+                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Use the form below to add your first career level, or run the seed SQL to load all levels at once.</p>
                 </div>
               )}
 
-              {/* Department tab switcher */}
-              {!careerLoading && (
+              {/* Department tab switcher — only show when there are tracks */}
+              {!careerLoading && careerTracks.length > 0 && (
                 <div className="flex bg-gray-100 rounded-2xl p-1 gap-1">
                   {(['Home Performance', 'HVAC'] as const).map(dept => (
                     <button
@@ -1903,7 +1905,7 @@ export default function App() {
               )}
 
               {/* Track list for selected department */}
-              {!careerLoading && careerTracks.filter(t => t.department === careerDeptTab).map(track => {
+              {!careerLoading && !careerError && careerTracks.filter(t => t.department === careerDeptTab).map(track => {
                 const totalTasks = track.tasks.length;
                 const doneTasks = track.tasks.filter(t => careerCompletions.some(c => c.task_id === t.id)).length;
                 const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
