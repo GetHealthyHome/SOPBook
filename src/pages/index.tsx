@@ -21,6 +21,8 @@ const UserIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor
 const HistoryIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>;
 const LogOutIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>;
 const ShieldIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>;
+const HandbookIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>;
+const CareerIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>;
 const CalendarIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
 const CloudUploadIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>;
 
@@ -171,7 +173,7 @@ export default function App() {
   const [mounted, setMounted] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
-  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole'>('login');
+  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder'>('login');
   
   // Account authorization state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -1619,47 +1621,99 @@ export default function App() {
             </div>
           )}
 
+          {/* VIEW: HANDBOOK */}
+          {currentView === 'handbook' && currentUser && (
+            <div className="space-y-5">
+              <div>
+                <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Company Resource</span>
+                <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Handbook</h1>
+                <p className="text-xs text-gray-400 mt-1">Policies, culture guidelines, and team expectations.</p>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
+                <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
+                  <HandbookIcon />
+                </div>
+                <p className="text-sm font-black text-gray-900">Coming Soon</p>
+                <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">The employee handbook section is being built out. Check back soon.</p>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: CAREER LADDER */}
+          {currentView === 'careerLadder' && currentUser && (
+            <div className="space-y-5">
+              <div>
+                <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
+                <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
+                <p className="text-xs text-gray-400 mt-1">Roles, progression paths, and skill benchmarks.</p>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
+                <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
+                  <CareerIcon />
+                </div>
+                <p className="text-sm font-black text-gray-900">Coming Soon</p>
+                <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Career progression tracks and role benchmarks are being defined. Check back soon.</p>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Unified Mobile Bottom Navigation Drawer */}
         {currentUser && currentView !== 'login' && (
-          <div className="absolute bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around px-6 z-50 shadow-lg">
+          <div className="absolute bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around px-2 z-50 shadow-lg">
             <button
               onClick={() => setCurrentView('dashboard')}
-              className={`flex flex-col items-center gap-1 transition-all ${
+              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
                 currentView === 'dashboard' || currentView === 'document' || currentView === 'addRevision' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               <FolderIcon />
-              <span className="text-[9px] font-black tracking-wider uppercase">SOP Library</span>
+              <span className="text-[9px] font-black tracking-wider uppercase">SOPs</span>
             </button>
 
-            {currentUser.userType === 'admin' ? (
+            <button
+              onClick={() => setCurrentView('handbook')}
+              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+                currentView === 'handbook' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <HandbookIcon />
+              <span className="text-[9px] font-black tracking-wider uppercase">Handbook</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentView('careerLadder')}
+              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+                currentView === 'careerLadder' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <CareerIcon />
+              <span className="text-[9px] font-black tracking-wider uppercase">Career</span>
+            </button>
+
+            {currentUser.userType === 'admin' && (
               <>
                 <button
                   onClick={() => setCurrentView('new')}
-                  className={`flex flex-col items-center gap-1 transition-all ${
+                  className={`flex flex-col items-center gap-1 flex-1 transition-all ${
                     currentView === 'new' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
                   <PlusIcon />
-                  <span className="text-[9px] font-black tracking-wider uppercase">Draft New</span>
+                  <span className="text-[9px] font-black tracking-wider uppercase">Draft</span>
                 </button>
 
                 <button
                   onClick={() => setCurrentView('adminConsole')}
-                  className={`flex flex-col items-center gap-1 transition-all ${
+                  className={`flex flex-col items-center gap-1 flex-1 transition-all ${
                     currentView === 'adminConsole' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
                   <ShieldIcon />
-                  <span className="text-[9px] font-black tracking-wider uppercase">Audit Panel</span>
+                  <span className="text-[9px] font-black tracking-wider uppercase">Audit</span>
                 </button>
               </>
-            ) : (
-              <div className="text-[10px] text-gray-300 font-bold uppercase tracking-wider">
-                🔒 Reader Account
-              </div>
             )}
           </div>
         )}
