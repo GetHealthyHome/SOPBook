@@ -69,6 +69,32 @@ interface User {
   userType: 'admin' | 'user'; // Explicit permissions restriction
 }
 
+interface CareerTask {
+  id: number;
+  track_id: number;
+  title: string;
+  description: string;
+  image_urls: string[];
+  sop_title: string;
+  order_index: number;
+}
+
+interface CareerTrack {
+  id: number;
+  name: string;
+  description: string;
+  order_index: number;
+  tasks: CareerTask[];
+}
+
+interface CareerCompletion {
+  id: number;
+  task_id: number;
+  user_name: string;
+  user_role: string;
+  completed_at: string;
+}
+
 const PRESET_ACCOUNTS = [
   { name: "Marcus Thorne", role: "HVAC Supervisor", userType: "admin", password: "marcusPassword" },
   { name: "Sarah Lin", role: "Master Electrician", userType: "admin", password: "sarahPassword" },
@@ -174,7 +200,7 @@ export default function App() {
   const [mounted, setMounted] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
-  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder'>('login');
+  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin'>('login');
   
   // Account authorization state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -199,6 +225,25 @@ export default function App() {
   const [handbookLoading, setHandbookLoading] = useState(false);
   const [handbookError, setHandbookError] = useState('');
   const [expandedSection, setExpandedSection] = useState<number | null>(null);
+
+  // Career Ladder state
+  const [careerTracks, setCareerTracks] = useState<CareerTrack[]>([]);
+  const [careerCompletions, setCareerCompletions] = useState<CareerCompletion[]>([]);
+  const [allCareerCompletions, setAllCareerCompletions] = useState<CareerCompletion[]>([]);
+  const [careerLoading, setCareerLoading] = useState(false);
+  const [careerError, setCareerError] = useState('');
+  const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
+  const [expandedTask, setExpandedTask] = useState<number | null>(null);
+  const [careerTab, setCareerTab] = useState<'mine' | 'team'>('mine');
+  // Admin task/track creation state
+  const [showAddTrack, setShowAddTrack] = useState(false);
+  const [showAddTask, setShowAddTask] = useState<number | null>(null);
+  const [newTrackName, setNewTrackName] = useState('');
+  const [newTrackDesc, setNewTrackDesc] = useState('');
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [newTaskImages, setNewTaskImages] = useState('');
+  const [newTaskSop, setNewTaskSop] = useState('');
 
   // Interactive Checklist completion tracking state
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
@@ -273,6 +318,94 @@ export default function App() {
         });
     }
   }, [currentView]);
+
+  const loadCareerData = async (user: User) => {
+    setCareerLoading(true);
+    setCareerError('');
+    try {
+      const [tracksRes, tasksRes, myCompRes, allCompRes] = await Promise.all([
+        supabase.from('career_tracks').select('*').order('order_index'),
+        supabase.from('career_tasks').select('*').order('order_index'),
+        supabase.from('career_completions').select('*').eq('user_name', user.name),
+        user.userType === 'admin' ? supabase.from('career_completions').select('*') : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (tracksRes.error) throw tracksRes.error;
+      if (tasksRes.error) throw tasksRes.error;
+      const tracks: CareerTrack[] = (tracksRes.data || []).map((t: CareerTrack) => ({
+        ...t,
+        tasks: (tasksRes.data || []).filter((tk: CareerTask) => tk.track_id === t.id),
+      }));
+      setCareerTracks(tracks);
+      setCareerCompletions(myCompRes.data || []);
+      setAllCareerCompletions((allCompRes as any).data || []);
+    } catch {
+      setCareerError('Could not load career ladder. Please try again.');
+    } finally {
+      setCareerLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if ((currentView === 'careerLadder' || currentView === 'careerAdmin') && currentUser && careerTracks.length === 0 && !careerLoading) {
+      loadCareerData(currentUser);
+    }
+  }, [currentView]);
+
+  const toggleTaskCompletion = async (task: CareerTask) => {
+    if (!currentUser) return;
+    const existing = careerCompletions.find(c => c.task_id === task.id);
+    if (existing) {
+      await supabase.from('career_completions').delete().eq('id', existing.id);
+      setCareerCompletions(prev => prev.filter(c => c.id !== existing.id));
+      setAllCareerCompletions(prev => prev.filter(c => c.id !== existing.id));
+    } else {
+      const { data } = await supabase.from('career_completions').insert({
+        task_id: task.id,
+        user_name: currentUser.name,
+        user_role: currentUser.role,
+      }).select().single();
+      if (data) {
+        setCareerCompletions(prev => [...prev, data]);
+        setAllCareerCompletions(prev => [...prev, data]);
+      }
+    }
+  };
+
+  const addCareerTrack = async () => {
+    if (!newTrackName.trim()) return;
+    const { data } = await supabase.from('career_tracks').insert({
+      name: newTrackName.trim(),
+      description: newTrackDesc.trim(),
+      order_index: careerTracks.length,
+    }).select().single();
+    if (data) {
+      setCareerTracks(prev => [...prev, { ...data, tasks: [] }]);
+      setNewTrackName('');
+      setNewTrackDesc('');
+      setShowAddTrack(false);
+    }
+  };
+
+  const addCareerTask = async (trackId: number) => {
+    if (!newTaskTitle.trim()) return;
+    const track = careerTracks.find(t => t.id === trackId);
+    const { data } = await supabase.from('career_tasks').insert({
+      track_id: trackId,
+      title: newTaskTitle.trim(),
+      description: newTaskDesc.trim(),
+      image_urls: newTaskImages.split('\n').map(s => s.trim()).filter(Boolean),
+      sop_title: newTaskSop.trim(),
+      order_index: track ? track.tasks.length : 0,
+    }).select().single();
+    if (data) {
+      setCareerTracks(prev => prev.map(t => t.id === trackId ? { ...t, tasks: [...t.tasks, data] } : t));
+      setNewTaskTitle('');
+      setNewTaskDesc('');
+      setNewTaskImages('');
+      setNewTaskSop('');
+      setShowAddTask(null);
+    }
+  };
 
   const saveToLocal = (newDocs: SOP[]) => {
     setDocuments(newDocs);
@@ -1707,21 +1840,273 @@ export default function App() {
             </div>
           )}
 
-          {/* VIEW: CAREER LADDER */}
+          {/* VIEW: CAREER LADDER — Employee */}
           {currentView === 'careerLadder' && currentUser && (
             <div className="space-y-5">
-              <div>
-                <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
-                <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
-                <p className="text-xs text-gray-400 mt-1">Roles, progression paths, and skill benchmarks.</p>
-              </div>
-              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
-                <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
-                  <CareerIcon />
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
+                  <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
+                  <p className="text-xs text-gray-400 mt-1">Check off skills as you master them.</p>
                 </div>
-                <p className="text-sm font-black text-gray-900">Coming Soon</p>
-                <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Career progression tracks and role benchmarks are being defined. Check back soon.</p>
+                {currentUser.userType === 'admin' && (
+                  <button
+                    onClick={() => { setCurrentView('careerAdmin'); if (careerTracks.length === 0) loadCareerData(currentUser); }}
+                    className="flex items-center gap-1.5 bg-emerald-800 text-white text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl"
+                  >
+                    <ShieldIcon />
+                    Team
+                  </button>
+                )}
               </div>
+
+              {careerLoading && (
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {careerError && (
+                <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
+                  <p className="text-xs text-red-700">{careerError}</p>
+                </div>
+              )}
+
+              {!careerLoading && !careerError && careerTracks.length === 0 && (
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
+                  <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
+                    <CareerIcon />
+                  </div>
+                  <p className="text-sm font-black text-gray-900">No Tracks Yet</p>
+                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">An admin needs to create career tracks and tasks first.</p>
+                </div>
+              )}
+
+              {!careerLoading && careerTracks.map(track => {
+                const totalTasks = track.tasks.length;
+                const doneTasks = track.tasks.filter(t => careerCompletions.some(c => c.task_id === t.id)).length;
+                const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+                const isTrackOpen = expandedTrack === track.id;
+                return (
+                  <div key={track.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                    <button
+                      onClick={() => setExpandedTrack(isTrackOpen ? null : track.id)}
+                      className="w-full flex items-center justify-between px-4 py-4 text-left"
+                    >
+                      <div className="flex-1 min-w-0 pr-3">
+                        <p className="text-sm font-bold text-gray-900">{track.name}</p>
+                        {track.description ? <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">{track.description}</p> : null}
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-[10px] font-black text-emerald-800 whitespace-nowrap">{doneTasks}/{totalTasks}</span>
+                        </div>
+                      </div>
+                      <span className={`flex-shrink-0 text-emerald-800 transition-transform duration-200 ${isTrackOpen ? 'rotate-90' : ''}`}>
+                        <ChevronRightIcon />
+                      </span>
+                    </button>
+
+                    {isTrackOpen && (
+                      <div className="border-t border-gray-50 divide-y divide-gray-50">
+                        {track.tasks.length === 0 && (
+                          <p className="text-xs text-gray-400 px-4 py-4 text-center">No tasks in this track yet.</p>
+                        )}
+                        {track.tasks.map(task => {
+                          const completion = careerCompletions.find(c => c.task_id === task.id);
+                          const isDone = !!completion;
+                          const isTaskOpen = expandedTask === task.id;
+                          const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
+                          return (
+                            <div key={task.id} className="px-4 py-3">
+                              <div className="flex items-start gap-3">
+                                <button
+                                  onClick={() => toggleTaskCompletion(task)}
+                                  className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 ${isDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-300'}`}
+                                >
+                                  {isDone && <CheckIcon />}
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                  <button
+                                    onClick={() => setExpandedTask(isTaskOpen ? null : task.id)}
+                                    className="text-left w-full"
+                                  >
+                                    <p className={`text-sm font-semibold leading-snug ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
+                                    {isDone && completion && (
+                                      <p className="text-[10px] text-emerald-600 mt-0.5 font-medium">
+                                        Completed {new Date(completion.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </p>
+                                    )}
+                                  </button>
+
+                                  {isTaskOpen && (
+                                    <div className="mt-3 space-y-3">
+                                      {task.description ? (
+                                        <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p>
+                                      ) : null}
+                                      {task.image_urls && task.image_urls.length > 0 && (
+                                        <div className="flex gap-2 overflow-x-auto pb-1">
+                                          {task.image_urls.map((url, i) => (
+                                            <img key={i} src={url} alt={`Example ${i + 1}`} className="h-32 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
+                                          ))}
+                                        </div>
+                                      )}
+                                      {linkedSop && (
+                                        <button
+                                          onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }}
+                                          className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left"
+                                        >
+                                          <BookOpenIcon />
+                                          <span className="text-xs font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
+                                          <ChevronRightIcon />
+                                        </button>
+                                      )}
+                                      {task.sop_title && !linkedSop && (
+                                        <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                                          <BookOpenIcon />
+                                          <span className="text-xs text-gray-400 truncate">SOP: {task.sop_title}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                {(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title) && (
+                                  <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
+                                    <ChevronRightIcon />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Admin: add task */}
+                        {currentUser.userType === 'admin' && (
+                          <div className="px-4 py-3">
+                            {showAddTask === track.id ? (
+                              <div className="space-y-2">
+                                <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                                <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
+                                <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs (one per line)" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
+                                <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                                <div className="flex gap-2">
+                                  <button onClick={() => addCareerTask(track.id)} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Add Task</button>
+                                  <button onClick={() => setShowAddTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button onClick={() => setShowAddTask(track.id)} className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold">
+                                <PlusIcon /> Add Task
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Admin: add track */}
+              {currentUser.userType === 'admin' && !careerLoading && (
+                <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-4">
+                  {showAddTrack ? (
+                    <div className="space-y-2">
+                      <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Track name*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                      <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                      <div className="flex gap-2">
+                        <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Create Track</button>
+                        <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-xs font-bold">
+                      <PlusIcon /> New Track
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW: CAREER LADDER — Admin Team Dashboard */}
+          {currentView === 'careerAdmin' && currentUser && currentUser.userType === 'admin' && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setCurrentView('careerLadder')} className="text-gray-400">
+                  <ArrowLeftIcon />
+                </button>
+                <div>
+                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Admin View</span>
+                  <h1 className="text-2xl font-black text-gray-950 tracking-tight">Team Progress</h1>
+                </div>
+              </div>
+
+              {careerLoading && (
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {!careerLoading && (() => {
+                const allTaskIds = careerTracks.flatMap(t => t.tasks.map(tk => tk.id));
+                const totalTasks = allTaskIds.length;
+                // Group completions by user
+                const userMap: Record<string, { name: string; role: string; completions: CareerCompletion[] }> = {};
+                allCareerCompletions.forEach(c => {
+                  if (!userMap[c.user_name]) userMap[c.user_name] = { name: c.user_name, role: c.user_role, completions: [] };
+                  userMap[c.user_name].completions.push(c);
+                });
+                const users = Object.values(userMap);
+                if (users.length === 0) return (
+                  <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 text-center">
+                    <p className="text-sm font-black text-gray-900">No completions yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Team members haven't started checking off tasks.</p>
+                  </div>
+                );
+                return (
+                  <div className="space-y-3">
+                    {users.sort((a, b) => b.completions.length - a.completions.length).map(u => {
+                      const pct = totalTasks > 0 ? Math.round((u.completions.length / totalTasks) * 100) : 0;
+                      const lastActivity = u.completions.sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime())[0];
+                      return (
+                        <div key={u.name} className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-sm font-bold text-gray-900">{u.name}</p>
+                              <p className="text-[11px] text-gray-400">{u.role}</p>
+                            </div>
+                            <span className="text-lg font-black text-emerald-800">{pct}%</span>
+                          </div>
+                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-gray-400">
+                            <span>{u.completions.length} of {totalTasks} tasks complete</span>
+                            {lastActivity && <span>Last: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                          </div>
+                          {/* Per-track breakdown */}
+                          <div className="space-y-1.5 pt-1 border-t border-gray-50">
+                            {careerTracks.map(track => {
+                              const trackDone = track.tasks.filter(t => u.completions.some(c => c.task_id === t.id)).length;
+                              return (
+                                <div key={track.id} className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-500 w-28 truncate">{track.name}</span>
+                                  <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-400 rounded-full" style={{ width: track.tasks.length > 0 ? `${Math.round((trackDone / track.tasks.length) * 100)}%` : '0%' }} />
+                                  </div>
+                                  <span className="text-[10px] text-gray-400 w-10 text-right">{trackDone}/{track.tasks.length}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1753,7 +2138,7 @@ export default function App() {
             <button
               onClick={() => setCurrentView('careerLadder')}
               className={`flex flex-col items-center gap-1 flex-1 transition-all ${
-                currentView === 'careerLadder' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+                currentView === 'careerLadder' || currentView === 'careerAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               <CareerIcon />
