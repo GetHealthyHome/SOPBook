@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 // Unified Custom SVG Icons - Optimized for instant compile rendering and zero bundle conflicts
 const PlusIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6v12m6-6H6"/></svg>;
@@ -193,6 +194,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [docTab, setDocTab] = useState<'checklist' | 'history'>('checklist');
 
+  // Handbook state
+  const [handbookSections, setHandbookSections] = useState<{id: number; title: string; content: string; order_index: number}[]>([]);
+  const [handbookLoading, setHandbookLoading] = useState(false);
+  const [handbookError, setHandbookError] = useState('');
+  const [expandedSection, setExpandedSection] = useState<number | null>(null);
+
   // Interactive Checklist completion tracking state
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
 
@@ -247,6 +254,25 @@ export default function App() {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (currentView === 'handbook' && handbookSections.length === 0 && !handbookLoading) {
+      setHandbookLoading(true);
+      setHandbookError('');
+      supabase
+        .from('handbook_sections')
+        .select('id, title, content, order_index')
+        .order('order_index', { ascending: true })
+        .then(({ data, error }) => {
+          if (error) {
+            setHandbookError('Could not load handbook. Please try again.');
+          } else {
+            setHandbookSections(data || []);
+          }
+          setHandbookLoading(false);
+        });
+    }
+  }, [currentView]);
 
   const saveToLocal = (newDocs: SOP[]) => {
     setDocuments(newDocs);
@@ -1629,13 +1655,55 @@ export default function App() {
                 <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Handbook</h1>
                 <p className="text-xs text-gray-400 mt-1">Policies, culture guidelines, and team expectations.</p>
               </div>
-              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
-                <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
-                  <HandbookIcon />
+
+              {handbookLoading && (
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
                 </div>
-                <p className="text-sm font-black text-gray-900">Coming Soon</p>
-                <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">The employee handbook section is being built out. Check back soon.</p>
-              </div>
+              )}
+
+              {handbookError && (
+                <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-start gap-3">
+                  <AlertCircleIcon />
+                  <p className="text-xs text-red-700">{handbookError}</p>
+                </div>
+              )}
+
+              {!handbookLoading && !handbookError && handbookSections.length === 0 && (
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
+                  <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
+                    <HandbookIcon />
+                  </div>
+                  <p className="text-sm font-black text-gray-900">No Content Yet</p>
+                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Handbook sections have not been loaded. Contact your administrator.</p>
+                </div>
+              )}
+
+              {!handbookLoading && handbookSections.length > 0 && (
+                <div className="space-y-2">
+                  {handbookSections.map((section) => {
+                    const isOpen = expandedSection === section.id;
+                    return (
+                      <div key={section.id} className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+                        <button
+                          onClick={() => setExpandedSection(isOpen ? null : section.id)}
+                          className="w-full flex items-center justify-between px-4 py-3.5 text-left"
+                        >
+                          <span className="text-sm font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
+                          <span className={`flex-shrink-0 w-5 h-5 text-emerald-800 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
+                            <ChevronRightIcon />
+                          </span>
+                        </button>
+                        {isOpen && (
+                          <div className="px-4 pb-4 border-t border-gray-50">
+                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line pt-3">{section.content}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
