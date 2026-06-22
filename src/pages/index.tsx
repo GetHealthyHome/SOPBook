@@ -83,6 +83,7 @@ interface CareerTrack {
   id: number;
   name: string;
   description: string;
+  department: string;
   order_index: number;
   tasks: CareerTask[];
 }
@@ -235,11 +236,13 @@ export default function App() {
   const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
   const [careerTab, setCareerTab] = useState<'mine' | 'team'>('mine');
+  const [careerDeptTab, setCareerDeptTab] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   // Admin task/track creation state
   const [showAddTrack, setShowAddTrack] = useState(false);
   const [showAddTask, setShowAddTask] = useState<number | null>(null);
   const [newTrackName, setNewTrackName] = useState('');
   const [newTrackDesc, setNewTrackDesc] = useState('');
+  const [newTrackDept, setNewTrackDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskImages, setNewTaskImages] = useState('');
@@ -373,10 +376,12 @@ export default function App() {
 
   const addCareerTrack = async () => {
     if (!newTrackName.trim()) return;
+    const deptTracks = careerTracks.filter(t => t.department === newTrackDept);
     const { data } = await supabase.from('career_tracks').insert({
       name: newTrackName.trim(),
       description: newTrackDesc.trim(),
-      order_index: careerTracks.length,
+      department: newTrackDept,
+      order_index: deptTracks.length,
     }).select().single();
     if (data) {
       setCareerTracks(prev => [...prev, { ...data, tasks: [] }]);
@@ -1878,11 +1883,27 @@ export default function App() {
                     <CareerIcon />
                   </div>
                   <p className="text-sm font-black text-gray-900">No Tracks Yet</p>
-                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">An admin needs to create career tracks and tasks first.</p>
+                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Admins can add tracks and tasks using the forms below.</p>
                 </div>
               )}
 
-              {!careerLoading && careerTracks.map(track => {
+              {/* Department tab switcher */}
+              {!careerLoading && (
+                <div className="flex bg-gray-100 rounded-2xl p-1 gap-1">
+                  {(['Home Performance', 'HVAC'] as const).map(dept => (
+                    <button
+                      key={dept}
+                      onClick={() => setCareerDeptTab(dept)}
+                      className={`flex-1 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${careerDeptTab === dept ? 'bg-white text-emerald-800 shadow-sm' : 'text-gray-400'}`}
+                    >
+                      {dept}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Track list for selected department */}
+              {!careerLoading && careerTracks.filter(t => t.department === careerDeptTab).map(track => {
                 const totalTasks = track.tasks.length;
                 const doneTasks = track.tasks.filter(t => careerCompletions.some(c => c.task_id === t.id)).length;
                 const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
@@ -1911,13 +1932,14 @@ export default function App() {
                     {isTrackOpen && (
                       <div className="border-t border-gray-50 divide-y divide-gray-50">
                         {track.tasks.length === 0 && (
-                          <p className="text-xs text-gray-400 px-4 py-4 text-center">No tasks in this track yet.</p>
+                          <p className="text-xs text-gray-400 px-4 py-4 text-center">No tasks yet — admins can add tasks below.</p>
                         )}
                         {track.tasks.map(task => {
                           const completion = careerCompletions.find(c => c.task_id === task.id);
                           const isDone = !!completion;
                           const isTaskOpen = expandedTask === task.id;
                           const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
+                          const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title);
                           return (
                             <div key={task.id} className="px-4 py-3">
                               <div className="flex items-start gap-3">
@@ -1928,10 +1950,7 @@ export default function App() {
                                   {isDone && <CheckIcon />}
                                 </button>
                                 <div className="flex-1 min-w-0">
-                                  <button
-                                    onClick={() => setExpandedTask(isTaskOpen ? null : task.id)}
-                                    className="text-left w-full"
-                                  >
+                                  <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
                                     <p className={`text-sm font-semibold leading-snug ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
                                     {isDone && completion && (
                                       <p className="text-[10px] text-emerald-600 mt-0.5 font-medium">
@@ -1939,12 +1958,9 @@ export default function App() {
                                       </p>
                                     )}
                                   </button>
-
                                   {isTaskOpen && (
                                     <div className="mt-3 space-y-3">
-                                      {task.description ? (
-                                        <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p>
-                                      ) : null}
+                                      {task.description ? <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
                                       {task.image_urls && task.image_urls.length > 0 && (
                                         <div className="flex gap-2 overflow-x-auto pb-1">
                                           {task.image_urls.map((url, i) => (
@@ -1953,10 +1969,7 @@ export default function App() {
                                         </div>
                                       )}
                                       {linkedSop && (
-                                        <button
-                                          onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }}
-                                          className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left"
-                                        >
+                                        <button onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left">
                                           <BookOpenIcon />
                                           <span className="text-xs font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
                                           <ChevronRightIcon />
@@ -1965,13 +1978,13 @@ export default function App() {
                                       {task.sop_title && !linkedSop && (
                                         <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
                                           <BookOpenIcon />
-                                          <span className="text-xs text-gray-400 truncate">SOP: {task.sop_title}</span>
+                                          <span className="text-xs text-gray-400 truncate">SOP ref: {task.sop_title}</span>
                                         </div>
                                       )}
                                     </div>
                                   )}
                                 </div>
-                                {(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title) && (
+                                {hasDetail && (
                                   <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
                                     <ChevronRightIcon />
                                   </button>
@@ -1981,14 +1994,14 @@ export default function App() {
                           );
                         })}
 
-                        {/* Admin: add task */}
+                        {/* Admin: add task inline */}
                         {currentUser.userType === 'admin' && (
                           <div className="px-4 py-3">
                             {showAddTask === track.id ? (
                               <div className="space-y-2">
                                 <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
                                 <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
-                                <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs (one per line)" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
+                                <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
                                 <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
                                 <div className="flex gap-2">
                                   <button onClick={() => addCareerTask(track.id)} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Add Task</button>
@@ -2008,21 +2021,27 @@ export default function App() {
                 );
               })}
 
-              {/* Admin: add track */}
+              {/* Admin: add level to current department */}
               {currentUser.userType === 'admin' && !careerLoading && (
                 <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-4">
                   {showAddTrack ? (
                     <div className="space-y-2">
-                      <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Track name*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-                      <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                      <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">New Level — {newTrackDept}</p>
                       <div className="flex gap-2">
-                        <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Create Track</button>
+                        {(['Home Performance', 'HVAC'] as const).map(d => (
+                          <button key={d} onClick={() => setNewTrackDept(d)} className={`flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase border transition-all ${newTrackDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
+                        ))}
+                      </div>
+                      <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                      <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                      <div className="flex gap-2">
+                        <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Create Level</button>
                         <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-xs font-bold">
-                      <PlusIcon /> New Track
+                    <button onClick={() => { setShowAddTrack(true); setNewTrackDept(careerDeptTab); }} className="flex items-center justify-center gap-2 w-full text-gray-400 text-xs font-bold">
+                      <PlusIcon /> Add Level to {careerDeptTab}
                     </button>
                   )}
                 </div>
@@ -2050,9 +2069,7 @@ export default function App() {
               )}
 
               {!careerLoading && (() => {
-                const allTaskIds = careerTracks.flatMap(t => t.tasks.map(tk => tk.id));
-                const totalTasks = allTaskIds.length;
-                // Group completions by user
+                const totalTasks = careerTracks.flatMap(t => t.tasks).length;
                 const userMap: Record<string, { name: string; role: string; completions: CareerCompletion[] }> = {};
                 allCareerCompletions.forEach(c => {
                   if (!userMap[c.user_name]) userMap[c.user_name] = { name: c.user_name, role: c.user_role, completions: [] };
@@ -2069,7 +2086,8 @@ export default function App() {
                   <div className="space-y-3">
                     {users.sort((a, b) => b.completions.length - a.completions.length).map(u => {
                       const pct = totalTasks > 0 ? Math.round((u.completions.length / totalTasks) * 100) : 0;
-                      const lastActivity = u.completions.sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime())[0];
+                      const sorted = [...u.completions].sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
+                      const lastActivity = sorted[0];
                       return (
                         <div key={u.name} className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
                           <div className="flex items-start justify-between">
@@ -2077,30 +2095,37 @@ export default function App() {
                               <p className="text-sm font-bold text-gray-900">{u.name}</p>
                               <p className="text-[11px] text-gray-400">{u.role}</p>
                             </div>
-                            <span className="text-lg font-black text-emerald-800">{pct}%</span>
+                            <div className="text-right">
+                              <span className="text-lg font-black text-emerald-800">{pct}%</span>
+                              <p className="text-[10px] text-gray-400">{u.completions.length}/{totalTasks} tasks</p>
+                            </div>
                           </div>
                           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                           </div>
-                          <div className="flex items-center justify-between text-[10px] text-gray-400">
-                            <span>{u.completions.length} of {totalTasks} tasks complete</span>
-                            {lastActivity && <span>Last: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                          </div>
-                          {/* Per-track breakdown */}
-                          <div className="space-y-1.5 pt-1 border-t border-gray-50">
-                            {careerTracks.map(track => {
-                              const trackDone = track.tasks.filter(t => u.completions.some(c => c.task_id === t.id)).length;
-                              return (
-                                <div key={track.id} className="flex items-center gap-2">
-                                  <span className="text-[10px] text-gray-500 w-28 truncate">{track.name}</span>
-                                  <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-400 rounded-full" style={{ width: track.tasks.length > 0 ? `${Math.round((trackDone / track.tasks.length) * 100)}%` : '0%' }} />
-                                  </div>
-                                  <span className="text-[10px] text-gray-400 w-10 text-right">{trackDone}/{track.tasks.length}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
+                          {lastActivity && <p className="text-[10px] text-gray-400">Last activity: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
+                          {/* Per-department then per-level breakdown */}
+                          {(['Home Performance', 'HVAC'] as const).map(dept => {
+                            const deptTracks = careerTracks.filter(t => t.department === dept);
+                            if (deptTracks.length === 0) return null;
+                            return (
+                              <div key={dept} className="pt-2 border-t border-gray-50 space-y-1.5">
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{dept}</p>
+                                {deptTracks.map(track => {
+                                  const trackDone = track.tasks.filter(t => u.completions.some(c => c.task_id === t.id)).length;
+                                  return (
+                                    <div key={track.id} className="flex items-center gap-2">
+                                      <span className="text-[10px] text-gray-500 w-24 truncate">{track.name}</span>
+                                      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-emerald-400 rounded-full" style={{ width: track.tasks.length > 0 ? `${Math.round((trackDone / track.tasks.length) * 100)}%` : '0%' }} />
+                                      </div>
+                                      <span className="text-[10px] text-gray-400 w-10 text-right">{trackDone}/{track.tasks.length}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })}
