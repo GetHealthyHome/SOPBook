@@ -75,7 +75,7 @@ interface SOP {
 
 interface User {
   name: string;
-  role: string;      // Operational job title (e.g., HVAC Lead, Field Apprentice)
+  role: string;      // Division (HVAC, Home Performance, Sales)
   userType: 'admin' | 'user'; // Explicit permissions restriction
 }
 
@@ -940,7 +940,7 @@ export default function App() {
     setCurrentView('document');
   };
 
-  const categoriesList = ["All", "HVAC", "Electrical", "Plumbing", "Safety"];
+  const categoriesList = ["All", "HVAC", "Home Performance", "Sales", "Testing", "Safety"];
 
   // Falls back to PRESET_ACCOUNTS while DB users haven't loaded yet
   const effectiveUsers: User[] = teamUsers.length > 0
@@ -1387,8 +1387,9 @@ export default function App() {
                         className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs font-semibold focus:border-emerald-600 focus:outline-none transition-all text-gray-900 shadow-xs"
                       >
                         <option value="HVAC">HVAC</option>
-                        <option value="Electrical">Electrical</option>
-                        <option value="Plumbing">Plumbing</option>
+                        <option value="Home Performance">Home Performance</option>
+                        <option value="Sales">Sales</option>
+                        <option value="Testing">Testing</option>
                         <option value="Safety">Safety</option>
                       </select>
                     </div>
@@ -2177,8 +2178,13 @@ export default function App() {
                         <input value={newUserName} onChange={e => setNewUserName(e.target.value)} placeholder="e.g., Jordan Blake" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
                       </div>
                       <div>
-                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Job Title</label>
-                        <input value={newUserRole} onChange={e => setNewUserRole(e.target.value)} placeholder="e.g., HVAC Technician" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Division</label>
+                        <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none text-gray-900">
+                          <option value="">Select division…</option>
+                          <option value="HVAC">HVAC</option>
+                          <option value="Home Performance">Home Performance</option>
+                          <option value="Sales">Sales</option>
+                        </select>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
