@@ -229,6 +229,40 @@ const DEFAULT_SOPS: SOP[] = [
 // Session inactivity timeout: 30 minutes of no interaction auto-logs out
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
+interface UserBadge {
+  id: number;
+  user_name: string;
+  badge: string;
+  assigned_by: string;
+  assigned_at: string;
+}
+
+const ALL_BADGES = ['EPA 608', 'Spray Foam', 'BPI', 'Radon', 'Lead', 'Mold Testing', 'Forklift'] as const;
+type BadgeType = typeof ALL_BADGES[number];
+
+const BADGE_STYLES: Record<BadgeType, { bg: string; text: string; border: string; emoji: string }> = {
+  'EPA 608':      { bg: 'bg-blue-50',    text: 'text-blue-800',    border: 'border-blue-200',    emoji: '❄️' },
+  'Spray Foam':   { bg: 'bg-purple-50',  text: 'text-purple-800',  border: 'border-purple-200',  emoji: '🔫' },
+  'BPI':          { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', emoji: '🏠' },
+  'Radon':        { bg: 'bg-amber-50',   text: 'text-amber-800',   border: 'border-amber-200',   emoji: '☢️' },
+  'Lead':         { bg: 'bg-orange-50',  text: 'text-orange-800',  border: 'border-orange-200',  emoji: '⚠️' },
+  'Mold Testing': { bg: 'bg-teal-50',    text: 'text-teal-800',    border: 'border-teal-200',    emoji: '🔬' },
+  'Forklift':     { bg: 'bg-yellow-50',  text: 'text-yellow-800',  border: 'border-yellow-200',  emoji: '🏗️' },
+};
+
+const BadgeChip = ({ badge, onRemove }: { badge: string; onRemove?: () => void }) => {
+  const style = BADGE_STYLES[badge as BadgeType] ?? { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', emoji: '🏅' };
+  return (
+    <span className={`inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md border ${style.bg} ${style.text} ${style.border} leading-none`}>
+      <span>{style.emoji}</span>
+      <span>{badge}</span>
+      {onRemove && (
+        <button onClick={onRemove} className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none">✕</button>
+      )}
+    </span>
+  );
+};
+
 export default function App() {
   // Mounting check to eliminate Next.js server/client hydration mismatch errors
   const [mounted, setMounted] = useState(false);
@@ -291,6 +325,9 @@ export default function App() {
   const [assigningUser, setAssigningUser] = useState<string | null>(null);
   const [assignDept, setAssignDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   const [assignTrackId, setAssignTrackId] = useState<number | null>(null);
+
+  const [allBadges, setAllBadges] = useState<UserBadge[]>([]);
+  const [badgesLoaded, setBadgesLoaded] = useState(false);
 
   // Interactive Checklist completion tracking state
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
@@ -373,6 +410,15 @@ export default function App() {
       if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     };
   }, [currentUser, resetInactivityTimer]);
+
+  // Load badges whenever a user logs in
+  useEffect(() => {
+    if (!currentUser || badgesLoaded) return;
+    fetch('/api/badges')
+      .then(r => r.ok ? r.json() : { badges: [] })
+      .then(data => { setAllBadges(data.badges ?? []); setBadgesLoaded(true); })
+      .catch(() => setBadgesLoaded(true));
+  }, [currentUser, badgesLoaded]);
 
   // Lockout countdown ticker
   useEffect(() => {
@@ -644,6 +690,8 @@ export default function App() {
     fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     setCurrentUser(null);
+    setAllBadges([]);
+    setBadgesLoaded(false);
     setLoginPassword('');
     setLoginError('');
     setLockoutSeconds(0);
@@ -1071,6 +1119,13 @@ export default function App() {
                       {currentUser.userType === 'admin' && <ShieldIcon />}
                       <span className="capitalize">{currentUser.userType}</span> — {currentUser.role}
                     </span>
+                    {allBadges.filter(b => b.user_name === currentUser.name).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {allBadges.filter(b => b.user_name === currentUser.name).map(b => (
+                          <BadgeChip key={b.id} badge={b.badge} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button
@@ -1893,6 +1948,59 @@ export default function App() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Badge Management Panel */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                  🏅 Badge Management
+                </h3>
+                <div className="space-y-3">
+                  {PRESET_ACCOUNTS.map(account => {
+                    const userBadges = allBadges.filter(b => b.user_name === account.name);
+                    const unassigned = ALL_BADGES.filter(b => !userBadges.some(ub => ub.badge === b));
+                    return (
+                      <div key={account.name} className="bg-white border border-gray-100 p-3.5 rounded-2xl shadow-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-black text-gray-900">{account.name}</p>
+                            <p className="text-[9px] text-gray-400 font-bold">{account.role}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {userBadges.map(ub => (
+                            <BadgeChip key={ub.id} badge={ub.badge} onRemove={() => {
+                              fetch('/api/badges', {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userName: account.name, badge: ub.badge }),
+                              }).then(r => {
+                                if (r.ok) setAllBadges(prev => prev.filter(b => b.id !== ub.id));
+                              });
+                            }} />
+                          ))}
+                          {unassigned.map(badge => (
+                            <button
+                              key={badge}
+                              onClick={() => {
+                                fetch('/api/badges', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ userName: account.name, badge }),
+                                }).then(r => r.ok ? r.json() : null).then(data => {
+                                  if (data?.badge) setAllBadges(prev => [...prev, data.badge]);
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-dashed border-gray-300 text-gray-400 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
+                            >
+                              + {badge}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Matrix List of SOP Read Statuses */}
