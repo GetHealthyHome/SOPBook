@@ -1,19 +1,12 @@
 
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
 import {
-  hashPassword,
   getAttemptRecord,
   recordFailedAttempt,
   clearAttempts,
   isLockedOut,
   lockoutRemainingMs,
   attemptsUntilNextLock,
-  createSession,
-  loadSession,
-  touchSession,
-  destroySession,
-  isSessionValid,
   sanitize,
 } from '@/lib/security';
 
@@ -137,14 +130,8 @@ const PRESET_ACCOUNTS = [
   { name: "Derrick Vance", role: "Plumbing Specialist", userType: "user" },
 ];
 
-// Passwords are only used client-side to compute SHA-256 hashes on boot.
-// The plaintext values are never stored or transmitted after hashing.
-const PRESET_CREDENTIALS: Record<string, string> = {
-  "marcus thorne": "marcusPassword",
-  "sarah lin":     "sarahPassword",
-  "alex rivers":   "alexPassword",
-  "derrick vance": "derrickPassword",
-};
+// Credential validation is server-side only (/api/auth/login).
+// No passwords or Supabase keys exist in this client bundle.
 
 const PHOTO_PRESETS = [
   { name: "Coil Gauges", url: "https://images.unsplash.com/photo-1581094288338-2314dddb7eed?w=600&auto=format&fit=crop&q=80" },
@@ -259,9 +246,6 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [showDemoDirectory, setShowDemoDirectory] = useState(false);
 
-  // Security: pre-computed password hashes (populated on mount via Web Crypto)
-  const passwordHashesRef = useRef<Record<string, string>>({});
-
   // Security: rate-limiting / lockout display state
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
@@ -342,51 +326,39 @@ export default function App() {
     touchSession();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-sync databases on boot + security initialisation
+  // Auto-sync databases on boot + session validation via server cookie
   useEffect(() => {
     setMounted(true);
 
-    // Pre-compute SHA-256 hashes for all preset account passwords
-    Promise.all(
-      Object.entries(PRESET_CREDENTIALS).map(async ([name, pw]) => {
-        const hash = await hashPassword(pw);
-        return [name, hash] as const;
+    // Validate the httpOnly session cookie with the server.
+    // If valid, the server returns the user object (no sensitive data client-side).
+    fetch('/api/auth/me')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data?.user) {
+          setCurrentUser(data.user);
+          setCurrentView('dashboard');
+        }
       })
-    ).then(entries => {
-      passwordHashesRef.current = Object.fromEntries(entries);
-    });
-
-    try {
-      // Validate existing session before restoring user
-      const session = loadSession();
-      const savedUser = localStorage.getItem('sop_user');
-      if (savedUser && session && isSessionValid(session)) {
-        setCurrentUser(JSON.parse(savedUser));
-        setCurrentView('dashboard');
-        touchSession();
-      } else if (savedUser) {
-        // Session expired — clear stale data and force re-login
-        localStorage.removeItem('sop_user');
-        destroySession();
-      }
-
-      const savedSOPs = localStorage.getItem('sop_database_v3');
-      if (savedSOPs) {
-        setDocuments(JSON.parse(savedSOPs));
-      } else {
-        localStorage.setItem('sop_database_v3', JSON.stringify(DEFAULT_SOPS));
-        setDocuments(DEFAULT_SOPS);
-      }
-
-      const savedNotifs = localStorage.getItem('admin_notifications');
-      if (savedNotifs) {
-        setNotifications(JSON.parse(savedNotifs));
-      }
-    } catch (e) {
-      setDocuments(DEFAULT_SOPS);
-    } finally {
-      setLoading(false);
-    }
+      .catch(() => {}) // network error — remain on login screen
+      .finally(() => {
+        // Load SOP and notification data from localStorage
+        try {
+          const savedSOPs = localStorage.getItem('sop_database_v3');
+          if (savedSOPs) {
+            setDocuments(JSON.parse(savedSOPs));
+          } else {
+            localStorage.setItem('sop_database_v3', JSON.stringify(DEFAULT_SOPS));
+            setDocuments(DEFAULT_SOPS);
+          }
+          const savedNotifs = localStorage.getItem('admin_notifications');
+          if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
+        } catch {
+          setDocuments(DEFAULT_SOPS);
+        } finally {
+          setLoading(false);
+        }
+      });
   }, []);
 
   // Attach inactivity listeners when a user is logged in
@@ -424,46 +396,31 @@ export default function App() {
     if (currentView === 'handbook' && handbookSections.length === 0 && !handbookLoading) {
       setHandbookLoading(true);
       setHandbookError('');
-      supabase
-        .from('handbook_sections')
-        .select('id, title, content, order_index')
-        .order('order_index', { ascending: true })
-        .then(({ data, error }) => {
-          if (error) {
-            setHandbookError('Could not load handbook. Please try again.');
-          } else {
-            setHandbookSections(data || []);
-          }
-          setHandbookLoading(false);
-        });
+      fetch('/api/handbook')
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => setHandbookSections(data.sections || []))
+        .catch(() => setHandbookError('Could not load handbook. Please try again.'))
+        .finally(() => setHandbookLoading(false));
     }
   }, [currentView]);
 
-  const loadCareerData = async (user: User) => {
+  const loadCareerData = async (_user?: User) => {
     setCareerLoading(true);
     setCareerError('');
     try {
-      const isAdmin = user.userType === 'admin';
-      const [tracksRes, tasksRes, myCompRes, allCompRes, myAssignRes, allAssignRes] = await Promise.all([
-        supabase.from('career_tracks').select('*').order('order_index'),
-        supabase.from('career_tasks').select('*').order('order_index'),
-        supabase.from('career_completions').select('*').eq('user_name', user.name),
-        isAdmin ? supabase.from('career_completions').select('*') : Promise.resolve({ data: [], error: null }),
-        supabase.from('career_assignments').select('*').eq('user_name', user.name).maybeSingle(),
-        isAdmin ? supabase.from('career_assignments').select('*') : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (tracksRes.error) throw tracksRes.error;
-      if (tasksRes.error) throw tasksRes.error;
-      const taskRows: CareerTask[] = (tasksRes.data as CareerTask[]) || [];
-      const tracks: CareerTrack[] = ((tracksRes.data as Omit<CareerTrack, 'tasks'>[]) || []).map(t => ({
+      const res = await fetch('/api/career');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const taskRows: CareerTask[] = data.tasks || [];
+      const tracks: CareerTrack[] = (data.tracks || []).map((t: Omit<CareerTrack, 'tasks'>) => ({
         ...t,
         tasks: taskRows.filter(tk => tk.track_id === t.id),
       }));
       setCareerTracks(tracks);
-      setCareerCompletions((myCompRes.data as CareerCompletion[]) || []);
-      setAllCareerCompletions((allCompRes.data as CareerCompletion[]) || []);
-      setMyAssignment((myAssignRes.data as CareerAssignment) || null);
-      setAllAssignments((allAssignRes.data as CareerAssignment[]) || []);
+      setCareerCompletions(data.myCompletions || []);
+      setAllCareerCompletions(data.allCompletions || []);
+      setMyAssignment(data.myAssignment || null);
+      setAllAssignments(data.allAssignments || []);
     } catch (err) {
       console.warn('Career data load failed:', err);
       setCareerError('Could not load career ladder. Please try again.');
@@ -473,17 +430,19 @@ export default function App() {
   };
 
   const saveAssignment = async (userName: string, userRole: string, trackId: number) => {
-    if (!currentUser) return;
     const existing = allAssignments.find(a => a.user_name === userName);
     try {
+      const res = await fetch('/api/career/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName, userRole, trackId, existingId: existing?.id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { assignment } = await res.json();
       if (existing) {
-        const { data, error } = await supabase.from('career_assignments').update({ track_id: trackId, assigned_by: currentUser.name, assigned_at: new Date().toISOString() }).eq('id', existing.id).select().single();
-        if (error) throw error;
-        if (data) setAllAssignments(prev => prev.map(a => a.id === existing.id ? (data as CareerAssignment) : a));
+        setAllAssignments(prev => prev.map(a => a.id === existing.id ? assignment : a));
       } else {
-        const { data, error } = await supabase.from('career_assignments').insert({ user_name: userName, user_role: userRole, track_id: trackId, assigned_by: currentUser.name }).select().single();
-        if (error) throw error;
-        if (data) setAllAssignments(prev => [...prev, data as CareerAssignment]);
+        setAllAssignments(prev => [...prev, assignment]);
       }
     } catch (err) {
       console.error('Failed to save assignment:', err);
@@ -493,7 +452,7 @@ export default function App() {
 
   useEffect(() => {
     if ((currentView === 'careerLadder' || currentView === 'careerAdmin') && currentUser && careerTracks.length === 0 && !careerLoading) {
-      loadCareerData(currentUser);
+      loadCareerData();
     }
   }, [currentView]);
 
@@ -504,22 +463,29 @@ export default function App() {
       // Optimistic remove
       setCareerCompletions(prev => prev.filter(c => c.id !== existing.id));
       setAllCareerCompletions(prev => prev.filter(c => c.id !== existing.id));
-      const { error } = await supabase.from('career_completions').delete().eq('id', existing.id);
-      if (error) {
+      const res = await fetch('/api/career/complete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completionId: existing.id }),
+      });
+      if (!res.ok) {
         // Rollback on failure
         setCareerCompletions(prev => [...prev, existing]);
         setAllCareerCompletions(prev => [...prev, existing]);
-        console.error('Failed to delete completion:', error);
+        console.error('Failed to delete completion:', res.status);
       }
     } else {
-      const { data } = await supabase.from('career_completions').insert({
-        task_id: task.id,
-        user_name: currentUser.name,
-        user_role: currentUser.role,
-      }).select().single();
-      if (data) {
-        setCareerCompletions(prev => [...prev, data]);
-        setAllCareerCompletions(prev => [...prev, data]);
+      const res = await fetch('/api/career/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id }),
+      });
+      if (res.ok) {
+        const { completion } = await res.json();
+        if (completion) {
+          setCareerCompletions(prev => [...prev, completion]);
+          setAllCareerCompletions(prev => [...prev, completion]);
+        }
       }
     }
   };
@@ -527,39 +493,46 @@ export default function App() {
   const addCareerTrack = async () => {
     if (!newTrackName.trim()) return;
     const deptTracks = careerTracks.filter(t => t.department === newTrackDept);
-    const { data } = await supabase.from('career_tracks').insert({
-      name: newTrackName.trim(),
-      description: newTrackDesc.trim(),
-      department: newTrackDept,
-      order_index: deptTracks.length,
-    }).select().single();
-    if (data) {
-      setCareerTracks(prev => [...prev, { ...data, tasks: [] }]);
-      setNewTrackName('');
-      setNewTrackDesc('');
-      setShowAddTrack(false);
-    }
+    try {
+      const res = await fetch('/api/career/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newTrackName.trim(), description: newTrackDesc.trim(), department: newTrackDept, orderIndex: deptTracks.length }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { track } = await res.json();
+      if (track) setCareerTracks(prev => [...prev, { ...track, tasks: [] }]);
+    } catch (err) { console.error('addCareerTrack failed:', err); }
+    setNewTrackName('');
+    setNewTrackDesc('');
+    setShowAddTrack(false);
   };
 
   const addCareerTask = async (trackId: number) => {
     if (!newTaskTitle.trim()) return;
     const track = careerTracks.find(t => t.id === trackId);
-    const { data } = await supabase.from('career_tasks').insert({
-      track_id: trackId,
-      title: newTaskTitle.trim(),
-      description: newTaskDesc.trim(),
-      image_urls: newTaskImages.split('\n').map(s => s.trim()).filter(Boolean),
-      sop_title: newTaskSop.trim(),
-      order_index: track ? track.tasks.length : 0,
-    }).select().single();
-    if (data) {
-      setCareerTracks(prev => prev.map(t => t.id === trackId ? { ...t, tasks: [...t.tasks, data] } : t));
-      setNewTaskTitle('');
-      setNewTaskDesc('');
-      setNewTaskImages('');
-      setNewTaskSop('');
-      setShowAddTask(null);
-    }
+    try {
+      const res = await fetch('/api/career/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trackId,
+          title: newTaskTitle.trim(),
+          description: newTaskDesc.trim(),
+          imageUrls: newTaskImages.split('\n').map(s => s.trim()).filter(Boolean),
+          sopTitle: newTaskSop.trim(),
+          orderIndex: track ? track.tasks.length : 0,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { task } = await res.json();
+      if (task) setCareerTracks(prev => prev.map(t => t.id === trackId ? { ...t, tasks: [...t.tasks, task] } : t));
+    } catch (err) { console.error('addCareerTask failed:', err); }
+    setNewTaskTitle('');
+    setNewTaskDesc('');
+    setNewTaskImages('');
+    setNewTaskSop('');
+    setShowAddTask(null);
   };
 
   const saveToLocal = (newDocs: SOP[]) => {
@@ -620,7 +593,8 @@ export default function App() {
 
     const nameKey = rawName.toLowerCase();
 
-    // --- Rate limit check ---
+    // Client-side rate limit check — first line of defense (UX feedback).
+    // The server independently enforces IP-based rate limiting.
     const rec = getAttemptRecord(nameKey);
     if (isLockedOut(rec)) {
       const secs = Math.ceil(lockoutRemainingMs(rec) / 1000);
@@ -630,14 +604,23 @@ export default function App() {
       return;
     }
 
-    const matchedAccount = PRESET_ACCOUNTS.find(a => a.name.toLowerCase() === nameKey);
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: rawName, password: rawPassword }),
+      });
 
-    if (matchedAccount) {
-      // Hash the entered password and compare to pre-computed hash
-      const enteredHash = await hashPassword(rawPassword);
-      const storedHash = passwordHashesRef.current[nameKey];
-
-      if (!storedHash || enteredHash !== storedHash) {
+      if (response.ok) {
+        const { user } = await response.json();
+        clearAttempts(nameKey);
+        setAttemptsLeft(null);
+        setCurrentUser(user);
+        setCurrentView('dashboard');
+      } else if (response.status === 429) {
+        setLoginError('Too many requests from your network. Please wait a moment.');
+      } else {
+        // Record client-side attempt for UX lockout feedback
         const updated = recordFailedAttempt(nameKey);
         if (isLockedOut(updated)) {
           const secs = Math.ceil(lockoutRemainingMs(updated) / 1000);
@@ -646,44 +629,19 @@ export default function App() {
         } else {
           const left = attemptsUntilNextLock(updated);
           setAttemptsLeft(left);
-          setLoginError(`Incorrect password. ${left} attempt${left !== 1 ? 's' : ''} remaining before lockout.`);
+          setLoginError(`Invalid credentials. ${left} attempt${left !== 1 ? 's' : ''} remaining before lockout.`);
         }
-        setLoginPassword('');
-        return;
       }
-
-      // Success — clear rate limit, create session
-      clearAttempts(nameKey);
-      setAttemptsLeft(null);
-      const userObj: User = {
-        name: matchedAccount.name,
-        role: matchedAccount.role,
-        userType: matchedAccount.userType as 'admin' | 'user',
-      };
-      createSession();
-      setCurrentUser(userObj);
-      localStorage.setItem('sop_user', JSON.stringify(userObj));
-      setCurrentView('dashboard');
-    } else {
-      // Non-preset account: apply the same rate-limit / lockout to prevent enumeration
-      const updated = recordFailedAttempt(nameKey);
-      if (isLockedOut(updated)) {
-        const secs = Math.ceil(lockoutRemainingMs(updated) / 1000);
-        setLockoutSeconds(secs);
-        setLoginError(`Too many attempts. Locked for ${secs}s.`);
-      } else {
-        setLoginError('Account not found. Check your name and try again.');
-      }
-      setLoginPassword('');
-      return;
+    } catch {
+      setLoginError('Network error. Please check your connection.');
     }
 
     setLoginPassword('');
   };
 
   const handleLogout = useCallback(() => {
-    destroySession();
-    localStorage.removeItem('sop_user');
+    // Tell the server to clear the httpOnly session cookie
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     setCurrentUser(null);
     setLoginPassword('');
@@ -2080,7 +2038,7 @@ export default function App() {
                   </div>
                   {currentUser.userType === 'admin' && (
                     <button
-                      onClick={() => { setCurrentView('careerAdmin'); if (careerTracks.length === 0) loadCareerData(currentUser); }}
+                      onClick={() => { setCurrentView('careerAdmin'); if (careerTracks.length === 0) loadCareerData(); }}
                       className="flex items-center gap-1.5 bg-emerald-800 text-white text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl"
                     >
                       <ShieldIcon />
@@ -2099,7 +2057,7 @@ export default function App() {
                   <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
                     <p className="text-xs text-amber-800 font-bold">Career ladder tables not found.</p>
                     <p className="text-xs text-amber-700">Run the career ladder SQL in Supabase, then tap Retry.</p>
-                    <button onClick={() => { setCareerError(''); loadCareerData(currentUser); }} className="text-xs font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
+                    <button onClick={() => { setCareerError(''); loadCareerData(); }} className="text-xs font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
                   </div>
                 )}
 

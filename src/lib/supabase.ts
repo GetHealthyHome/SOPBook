@@ -1,6 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://omxxjasmsjjuydaishcn.supabase.co';
-const supabaseKey = 'sb_publishable_HzpD0csDtECm2wEGvKGYBA_8mMLGcQW';
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+/**
+ * DEPRECATED — do not import this file in client-side or server-side code.
+ *
+ * All Supabase access now goes through Next.js API routes.
+ * Server-side code: import { getSupabase } from '@/lib/supabaseServer'
+ * Client-side code: use fetch('/api/...') endpoints
+ *
+ * This file is intentionally empty to catch stale imports at build time.
+ */
+export {};
