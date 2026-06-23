@@ -260,7 +260,7 @@ const BADGE_STYLES: Record<BadgeType, { bg: string; text: string; border: string
 const BadgeChip = ({ badge, onRemove }: { badge: string; onRemove?: () => void }) => {
   const style = BADGE_STYLES[badge as BadgeType] ?? { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', emoji: '🏅' };
   return (
-    <span className={`inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md border ${style.bg} ${style.text} ${style.border} leading-none`}>
+    <span className={`inline-flex items-center gap-1 text-base font-black px-1.5 py-0.5 rounded-md border ${style.bg} ${style.text} ${style.border} leading-none`}>
       <span>{style.emoji}</span>
       <span>{badge}</span>
       {onRemove && (
@@ -1011,7 +1011,7 @@ export default function App() {
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
           </div>
-          <span className="text-xs font-bold tracking-wide uppercase mt-4 animate-pulse text-gray-500">Loading Operational Workspace...</span>
+          <span className="text-sm font-bold tracking-wide uppercase mt-4 animate-pulse text-gray-500">Loading Operational Workspace...</span>
         </div>
       </div>
     );
@@ -1030,8 +1030,8 @@ export default function App() {
                 <ShieldIcon />
               </div>
               <div>
-                <p className="text-xs font-black text-gray-900 leading-none">Field Guide</p>
-                <p className="text-[9px] text-gray-400 font-bold mt-0.5">Healthy Home</p>
+                <p className="text-sm font-black text-gray-900 leading-none">Field Guide</p>
+                <p className="text-base text-gray-400 font-bold mt-0.5">Healthy Home</p>
               </div>
             </div>
           </div>
@@ -1049,7 +1049,7 @@ export default function App() {
               <button
                 key={view}
                 onClick={() => setCurrentView(view as typeof currentView)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   match.includes(currentView)
                     ? 'bg-emerald-50 text-emerald-800'
                     : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
@@ -1058,7 +1058,7 @@ export default function App() {
                 {icon}
                 <span className="flex-1 text-left">{label}</span>
                 {view === 'userNotifications' && userNotifications.filter(n => !n.read_at).length > 0 && (
-                  <span className="bg-red-500 text-white text-[9px] font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                  <span className="bg-red-500 text-white text-base font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
                     {userNotifications.filter(n => !n.read_at).length}
                   </span>
                 )}
@@ -1067,12 +1067,12 @@ export default function App() {
           </nav>
           <div className="px-3 py-4 border-t border-gray-100">
             <div className="px-3 py-2 mb-2">
-              <p className="text-[10px] font-black text-gray-900 leading-none">{currentUser.name}</p>
-              <p className="text-[9px] text-gray-400 font-medium mt-0.5">{currentUser.role}</p>
+              <p className="text-sm font-black text-gray-900 leading-none">{currentUser.name}</p>
+              <p className="text-base text-gray-400 font-medium mt-0.5">{currentUser.role}</p>
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:bg-red-50 hover:text-red-600 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-red-400 hover:bg-red-50 hover:text-red-600 transition-all"
             >
               <LogOutIcon />
               Sign Out
@@ -1087,7 +1087,7 @@ export default function App() {
       } max-w-md bg-white min-h-screen sm:max-lg:min-h-[840px] sm:max-lg:rounded-[40px] sm:max-lg:shadow-2xl sm:max-lg:border-[8px] sm:max-lg:border-gray-900 relative overflow-hidden flex flex-col`}>
 
         {/* Status Bar emulation — hidden on desktop */}
-        <div className="lg:hidden bg-white px-6 pt-3 pb-2 flex justify-between items-center text-[11px] font-bold text-gray-400 select-none border-b border-gray-50">
+        <div className="lg:hidden bg-white px-6 pt-3 pb-2 flex justify-between items-center text-base font-bold text-gray-400 select-none border-b border-gray-50">
           <span>9:41</span>
           <div className="flex items-center gap-1.5">
             <span className="w-3.5 h-2 bg-gray-400 rounded-xs inline-block"></span>
@@ -1108,11 +1108,11 @@ export default function App() {
                 <p className="text-lg font-bold tracking-widest text-gray-400 uppercase block">
                   Field Guide
                 </p>
-                <p className="text-xs text-gray-400 max-w-[250px] mx-auto pt-2">Access organized operational guides and sign off compliance checklists.</p>
+                <p className="text-sm text-gray-400 max-w-[250px] mx-auto pt-2">Access organized operational guides and sign off compliance checklists.</p>
               </div>
 
               {loginError && (
-                <div className="bg-red-50 border border-red-100 text-red-800 rounded-xl p-3 text-xs font-semibold flex items-center gap-2">
+                <div className="bg-red-50 border border-red-100 text-red-800 rounded-xl p-3 text-sm font-semibold flex items-center gap-2">
                   <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                   </svg>
@@ -1122,34 +1122,34 @@ export default function App() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teammate Name</label>
+                  <label className="block text-sm font-bold text-gray-400 uppercase tracking-wider">Teammate Name</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g., Marcus Thorne"
                     value={loginName}
                     onChange={(e) => setLoginName(e.target.value)}
-                    className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-xl text-xs font-semibold focus:bg-white focus:border-emerald-600 focus:outline-none transition-all text-gray-900 shadow-xs"
+                    className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-xl text-sm font-semibold focus:bg-white focus:border-emerald-600 focus:outline-none transition-all text-gray-900 shadow-xs"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Account Password</label>
+                  <label className="block text-sm font-bold text-gray-400 uppercase tracking-wider">Account Password</label>
                   <input
                     type="password"
                     required
                     placeholder="••••••••"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-xl text-xs font-semibold focus:bg-white focus:border-emerald-600 focus:outline-none transition-all text-gray-900 shadow-xs"
+                    className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-xl text-sm font-semibold focus:bg-white focus:border-emerald-600 focus:outline-none transition-all text-gray-900 shadow-xs"
                   />
                 </div>
 
                 {/* Lockout countdown banner */}
                 {lockoutSeconds > 0 && (
                   <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center space-y-1">
-                    <p className="text-xs font-black text-red-700">🔒 Account Locked</p>
-                    <p className="text-[10px] text-red-600 font-semibold">
+                    <p className="text-sm font-black text-red-700">🔒 Account Locked</p>
+                    <p className="text-sm text-red-600 font-semibold">
                       Try again in <span className="font-black">{lockoutSeconds}s</span>
                     </p>
                   </div>
@@ -1158,7 +1158,7 @@ export default function App() {
                 {/* Attempts-remaining warning */}
                 {attemptsLeft !== null && attemptsLeft > 0 && lockoutSeconds === 0 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-center">
-                    <p className="text-[10px] font-bold text-amber-700">
+                    <p className="text-sm font-bold text-amber-700">
                       ⚠️ {attemptsLeft} attempt{attemptsLeft !== 1 ? 's' : ''} remaining before temporary lockout
                     </p>
                   </div>
@@ -1167,7 +1167,7 @@ export default function App() {
                 <button
                   type="submit"
                   disabled={lockoutSeconds > 0}
-                  className={`w-full h-12 rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 duration-100 mt-2 ${
+                  className={`w-full h-12 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95 duration-100 mt-2 ${
                     lockoutSeconds > 0
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
                       : 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-emerald-100'
@@ -1187,12 +1187,12 @@ export default function App() {
               {/* Top Profile Header */}
               <div className="flex justify-between items-center pb-2.5 border-b border-gray-100">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-emerald-50 text-emerald-800 rounded-lg flex items-center justify-center font-bold text-xs">
+                  <div className="w-8 h-8 bg-emerald-50 text-emerald-800 rounded-lg flex items-center justify-center font-bold text-sm">
                     {currentUser.name.charAt(0)}
                   </div>
                   <div>
-                    <h4 className="text-xs font-black text-gray-950 leading-none">{currentUser.name}</h4>
-                    <span className="text-[9px] text-gray-400 font-bold mt-0.5 flex items-center gap-1 tracking-wide">
+                    <h4 className="text-sm font-black text-gray-950 leading-none">{currentUser.name}</h4>
+                    <span className="text-base text-gray-400 font-bold mt-0.5 flex items-center gap-1 tracking-wide">
                       {currentUser.userType === 'admin' && <ShieldIcon />}
                       <span className="capitalize">{currentUser.userType}</span> — {currentUser.role}
                     </span>
@@ -1218,13 +1218,13 @@ export default function App() {
               {currentUser.userType === 'admin' && (
                 <div className="bg-gradient-to-r from-emerald-800 to-emerald-950 rounded-2xl p-4 text-white flex justify-between items-center shadow-md">
                   <div className="space-y-0.5">
-                    <p className="text-[10px] font-extrabold tracking-widest text-emerald-100 uppercase">Compliance Admin Console</p>
-                    <p className="text-sm font-black">Oversight & Team Logs</p>
-                    <p className="text-[9px] text-emerald-100 font-medium">Verify completion rates and audit timelines.</p>
+                    <p className="text-sm font-extrabold tracking-widest text-emerald-100 uppercase">Compliance Admin Console</p>
+                    <p className="text-base font-black">Oversight & Team Logs</p>
+                    <p className="text-base text-emerald-100 font-medium">Verify completion rates and audit timelines.</p>
                   </div>
                   <button
                     onClick={() => setCurrentView('adminConsole')}
-                    className="h-9 px-3.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-[10px] font-black shadow-xs transition-colors"
+                    className="h-9 px-3.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-sm font-black shadow-xs transition-colors"
                   >
                     Manage Team
                   </button>
@@ -1234,7 +1234,7 @@ export default function App() {
               {/* Title Section */}
               <div className="flex justify-between items-center">
                 <div>
-                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Field Guide SOP</span>
+                  <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Field Guide SOP</span>
                   <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Active Procedures</h1>
                 </div>
                 
@@ -1259,19 +1259,19 @@ export default function App() {
                   placeholder="Search categories or procedures..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full h-11 pl-10 pr-4 bg-gray-50 border border-gray-100 rounded-xl text-xs font-semibold focus:border-emerald-600 focus:bg-white focus:outline-none transition-all text-gray-800 placeholder:text-gray-400 shadow-xs"
+                  className="w-full h-11 pl-10 pr-4 bg-gray-50 border border-gray-100 rounded-xl text-sm font-semibold focus:border-emerald-600 focus:bg-white focus:outline-none transition-all text-gray-800 placeholder:text-gray-400 shadow-xs"
                 />
               </div>
 
               {/* Dynamic scrollable Category Tab selectors */}
               <div className="space-y-2">
-                <span className="text-[10px] font-black text-gray-400 tracking-wider uppercase block">Scope Divisions</span>
+                <span className="text-sm font-black text-gray-400 tracking-wider uppercase block">Scope Divisions</span>
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
                   {categoriesList.map(cat => (
                     <button
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
-                      className={`h-8 px-4 rounded-lg text-[10px] font-extrabold whitespace-nowrap transition-all ${
+                      className={`h-8 px-4 rounded-lg text-sm font-extrabold whitespace-nowrap transition-all ${
                         selectedCategory === cat
                           ? 'bg-emerald-800 text-white shadow-xs'
                           : 'bg-gray-100 text-gray-500 hover:text-gray-700'
@@ -1285,20 +1285,20 @@ export default function App() {
 
               {/* Listing grid */}
               <div className="space-y-3 pt-1">
-                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">
                   {selectedCategory} Protocols ({filteredDocs.length})
                 </h3>
 
                 {filteredDocs.length === 0 ? (
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 text-center">
                     <div className="text-amber-500 mb-2 flex justify-center"><AlertCircleIcon /></div>
-                    <h3 className="text-sm font-bold text-gray-900">No guidelines found</h3>
-                    <p className="text-xs text-gray-400 mt-1 max-w-[260px] mx-auto leading-relaxed">
+                    <h3 className="text-base font-bold text-gray-900">No guidelines found</h3>
+                    <p className="text-sm text-gray-400 mt-1 max-w-[260px] mx-auto leading-relaxed">
                       There are no protocols registered under this category tab. Click below to reload sample data.
                     </p>
                     <button
                       onClick={handleLoadSamples}
-                      className="mt-4 px-4 py-2 bg-emerald-50 text-emerald-800 font-extrabold text-[10px] rounded-lg hover:bg-emerald-100 transition-all inline-flex items-center gap-1.5"
+                      className="mt-4 px-4 py-2 bg-emerald-50 text-emerald-800 font-extrabold text-sm rounded-lg hover:bg-emerald-100 transition-all inline-flex items-center gap-1.5"
                     >
                       <SparklesIcon /> Load SOP Samples
                     </button>
@@ -1322,20 +1322,20 @@ export default function App() {
                           </div>
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black tracking-widest uppercase text-emerald-800 bg-emerald-50/70 px-1.5 py-0.5 rounded-xs">
+                              <span className="inline-flex items-center gap-1 text-base font-black tracking-widest uppercase text-emerald-800 bg-emerald-50/70 px-1.5 py-0.5 rounded-xs">
                                 <TagIcon /> {doc.category}
                               </span>
-                              <span className="text-[9px] font-bold text-gray-400">
+                              <span className="text-base font-bold text-gray-400">
                                 {doc.revisionHistory[0]?.version || 'v1.0'}
                               </span>
                             </div>
-                            <h4 className="text-xs font-black text-gray-900 leading-snug line-clamp-1 group-hover:text-emerald-800 transition-colors">
+                            <h4 className="text-sm font-black text-gray-900 leading-snug line-clamp-1 group-hover:text-emerald-800 transition-colors">
                               {doc.title}
                             </h4>
-                            <p className="text-[11px] text-gray-400 font-semibold leading-relaxed line-clamp-2">
+                            <p className="text-base text-gray-400 font-semibold leading-relaxed line-clamp-2">
                               {doc.summary}
                             </p>
-                            <div className="flex items-center gap-2 text-[9px] text-gray-400 font-bold">
+                            <div className="flex items-center gap-2 text-base text-gray-400 font-bold">
                               <span>By {doc.lastUpdatedBy}</span>
                               <span>•</span>
                               <span>{doc.lastUpdated}</span>
@@ -1369,7 +1369,7 @@ export default function App() {
               </div>
 
               {formError && (
-                <div className="bg-red-50 border border-red-100 text-red-800 rounded-2xl p-3 text-xs font-semibold">
+                <div className="bg-red-50 border border-red-100 text-red-800 rounded-2xl p-3 text-sm font-semibold">
                   ⚠️ {formError}
                 </div>
               )}
@@ -1378,11 +1378,11 @@ export default function App() {
                 <div className="space-y-3.5">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Scope Category</label>
+                      <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Scope Category</label>
                       <select
                         value={newCategory}
                         onChange={(e) => setNewCategory(e.target.value)}
-                        className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs font-semibold focus:border-emerald-600 focus:outline-none transition-all text-gray-900 shadow-xs"
+                        className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold focus:border-emerald-600 focus:outline-none transition-all text-gray-900 shadow-xs"
                       >
                         <option value="HVAC">HVAC</option>
                         <option value="Home Performance">Home Performance</option>
@@ -1393,35 +1393,35 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Author Identity</label>
+                      <label className="block text-sm font-black text-gray-400 uppercase tracking-wider mb-1">Author Identity</label>
                       <input
                         type="text"
                         disabled
                         value={`${currentUser.name} (Admin)`}
-                        className="w-full h-11 px-3.5 bg-gray-50 border border-gray-200 text-gray-400 rounded-xl text-[10px] font-extrabold focus:outline-none shadow-xs"
+                        className="w-full h-11 px-3.5 bg-gray-50 border border-gray-200 text-gray-400 rounded-xl text-sm font-extrabold focus:outline-none shadow-xs"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">SOP Title</label>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">SOP Title</label>
                     <input
                       type="text"
                       placeholder="e.g., Boiler Backflow Valve Purging"
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
-                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Overview Tagline Summary</label>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Overview Tagline Summary</label>
                     <input
                       type="text"
                       placeholder="e.g., Standard protocols for safety water checks..."
                       value={newSummary}
                       onChange={(e) => setNewSummary(e.target.value)}
-                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
                     />
                   </div>
                 </div>
@@ -1429,23 +1429,23 @@ export default function App() {
                 {/* Tools & Materials */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Tools Required</label>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Tools Required</label>
                     <input
                       type="text"
                       placeholder="e.g., Manifold gauge, vacuum pump..."
                       value={newTools}
                       onChange={(e) => setNewTools(e.target.value)}
-                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Materials Needed</label>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Materials Needed</label>
                     <input
                       type="text"
                       placeholder="e.g., Refrigerant, gasket seals..."
                       value={newMaterials}
                       onChange={(e) => setNewMaterials(e.target.value)}
-                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
                     />
                   </div>
                 </div>
@@ -1453,13 +1453,13 @@ export default function App() {
                 {/* Steps constructor list */}
                 <div className="border-t border-gray-100 pt-4 space-y-3">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-xs font-black text-gray-900 flex items-center gap-1">
+                    <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
                       <BookOpenIcon /> Checklist Action Steps ({newSteps.length})
                     </h3>
                     <button
                       type="button"
                       onClick={handleAddCreatorStep}
-                      className="h-7 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1 transition-colors"
+                      className="h-7 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-sm flex items-center gap-1 transition-colors"
                     >
                       <PlusIcon /> Add Step
                     </button>
@@ -1469,7 +1469,7 @@ export default function App() {
                     {newSteps.map((step, index) => (
                       <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3 relative">
                         <div className="flex justify-between items-center">
-                          <span className="text-[9px] font-black text-gray-400 tracking-wider">STEP CHECKLIST {index + 1}</span>
+                          <span className="text-base font-black text-gray-400 tracking-wider">STEP CHECKLIST {index + 1}</span>
                           {newSteps.length > 1 && (
                             <button
                               type="button"
@@ -1487,7 +1487,7 @@ export default function App() {
                             placeholder="Action Step Title (e.g., Turn power panel off)"
                             value={step.title}
                             onChange={(e) => handleCreatorStepFieldChange(index, 'title', e.target.value)}
-                            className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-xs focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs"
+                            className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs"
                           />
 
                           <input
@@ -1495,12 +1495,12 @@ export default function App() {
                             placeholder="Tagline (e.g., Use non-contact tester)"
                             value={step.summary}
                             onChange={(e) => handleCreatorStepFieldChange(index, 'summary', e.target.value)}
-                            className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-xs focus:border-emerald-600 focus:outline-none text-gray-600 shadow-xs"
+                            className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 shadow-xs"
                           />
 
                           {/* Image Insertion Options */}
                           <div className="bg-white border border-gray-100 p-2.5 rounded-xl space-y-2 shadow-xs">
-                            <div className="flex justify-between items-center text-[9px] font-bold text-gray-400 uppercase tracking-wide">
+                            <div className="flex justify-between items-center text-base font-bold text-gray-400 uppercase tracking-wide">
                               <span>Step Photography</span>
                               {step.imageUrl && <span className="text-green-600">✓ Assigned</span>}
                             </div>
@@ -1509,12 +1509,12 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => setUploadTargetIdx(uploadTargetIdx === index ? null : index)}
-                                className="flex-1 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg text-[9px] font-bold text-gray-600 transition-colors flex items-center justify-center gap-1"
+                                className="flex-1 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg text-base font-bold text-gray-600 transition-colors flex items-center justify-center gap-1"
                               >
                                 <ImageIcon /> Preset Library
                               </button>
 
-                              <label className={`flex-1 h-8 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-[9px] font-extrabold text-emerald-800 transition-colors flex items-center justify-center gap-1 cursor-pointer ${isUploading[index] ? 'opacity-50 pointer-events-none' : ''}`}>
+                              <label className={`flex-1 h-8 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-base font-extrabold text-emerald-800 transition-colors flex items-center justify-center gap-1 cursor-pointer ${isUploading[index] ? 'opacity-50 pointer-events-none' : ''}`}>
                                 {isUploading[index] ? 'Uploading...' : <><CloudUploadIcon /> Upload Photo</>}
                                 <input
                                   type="file"
@@ -1524,7 +1524,7 @@ export default function App() {
                                   onChange={e => { const f = e.target.files?.[0]; if (f) uploadImageFile(index, f); e.target.value = ''; }}
                                 />
                               </label>
-                              <label className={`flex-1 h-8 bg-blue-50 hover:bg-blue-100 rounded-lg text-[9px] font-extrabold text-blue-700 transition-colors flex items-center justify-center gap-1 cursor-pointer ${isUploading[index] ? 'opacity-50 pointer-events-none' : ''}`}>
+                              <label className={`flex-1 h-8 bg-blue-50 hover:bg-blue-100 rounded-lg text-base font-extrabold text-blue-700 transition-colors flex items-center justify-center gap-1 cursor-pointer ${isUploading[index] ? 'opacity-50 pointer-events-none' : ''}`}>
                                 📷 Camera
                                 <input
                                   type="file"
@@ -1543,7 +1543,7 @@ export default function App() {
                               placeholder="Or paste direct image web URL..."
                               value={step.imageUrl || ''}
                               onChange={(e) => handleCreatorStepFieldChange(index, 'imageUrl', e.target.value)}
-                              className="w-full h-8 px-2.5 border border-gray-100 bg-gray-50 text-[10px] focus:outline-none rounded-lg text-gray-500 font-mono"
+                              className="w-full h-8 px-2.5 border border-gray-100 bg-gray-50 text-sm focus:outline-none rounded-lg text-gray-500 font-mono"
                             />
                           </div>
 
@@ -1552,7 +1552,7 @@ export default function App() {
                             rows={3}
                             value={step.body}
                             onChange={(e) => handleCreatorStepFieldChange(index, 'body', e.target.value)}
-                            className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed font-normal shadow-xs"
+                            className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed font-normal shadow-xs"
                           />
                         </div>
                       </div>
@@ -1565,13 +1565,13 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setCurrentView('dashboard')}
-                    className="flex-1 h-11 border border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-50 shadow-xs"
+                    className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-50 shadow-xs"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 h-11 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-100"
+                    className="flex-1 h-11 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-emerald-100"
                   >
                     Publish SOP Manual
                   </button>
@@ -1594,10 +1594,10 @@ export default function App() {
                     <ArrowLeftIcon />
                   </button>
                   <div>
-                    <span className="text-[9px] uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
+                    <span className="text-base uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
                       <TagIcon /> {selectedDoc.category} SOP
                     </span>
-                    <h1 className="text-sm font-black text-gray-950 leading-tight line-clamp-1">{selectedDoc.title}</h1>
+                    <h1 className="text-base font-black text-gray-950 leading-tight line-clamp-1">{selectedDoc.title}</h1>
                   </div>
                 </div>
 
@@ -1605,7 +1605,7 @@ export default function App() {
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => { setRevisionNotes(''); setRevisionError(''); setCurrentView('addRevision'); }}
-                      className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 flex-shrink-0"
+                      className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-sm font-black transition-all flex items-center gap-1 flex-shrink-0"
                     >
                       <HistoryIcon /> Revise
                     </button>
@@ -1618,13 +1618,13 @@ export default function App() {
                             setSopDeleteConfirm(null);
                             setCurrentView('dashboard');
                           }}
-                          className="h-8 px-2.5 bg-red-600 text-white rounded-lg text-[10px] font-black"
+                          className="h-8 px-2.5 bg-red-600 text-white rounded-lg text-sm font-black"
                         >
                           Confirm
                         </button>
                         <button
                           onClick={() => setSopDeleteConfirm(null)}
-                          className="h-8 px-2 text-gray-400 hover:text-gray-600 rounded-lg text-[10px] font-black"
+                          className="h-8 px-2 text-gray-400 hover:text-gray-600 rounded-lg text-sm font-black"
                         >
                           Cancel
                         </button>
@@ -1643,7 +1643,7 @@ export default function App() {
               </div>
 
               {/* Version & Author metadata block */}
-              <div className="bg-gray-50 rounded-2xl p-3.5 flex justify-between items-center text-[10px] shadow-xs">
+              <div className="bg-gray-50 rounded-2xl p-3.5 flex justify-between items-center text-sm shadow-xs">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
                     <span className="text-gray-400 font-extrabold uppercase">Current Standard</span>
@@ -1653,12 +1653,12 @@ export default function App() {
                   <p className="text-gray-400 font-bold mt-1">Role: {selectedDoc.lastUpdatedByRole} • {selectedDoc.lastUpdated}</p>
                   
                   {/* Scheduled review date */}
-                  <div className="flex items-center gap-1 text-[9px] text-amber-600 font-bold pt-1.5">
+                  <div className="flex items-center gap-1 text-base text-amber-600 font-bold pt-1.5">
                     <CalendarIcon />
                     <span>Next Compliance Health Review: {selectedDoc.nextReviewDate || "12/28/2026"}</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 px-2 py-1.5 rounded-lg flex-shrink-0">
+                <span className="text-sm font-black text-emerald-800 bg-emerald-50 px-2 py-1.5 rounded-lg flex-shrink-0">
                   {selectedDoc.steps?.length} Steps
                 </span>
               </div>
@@ -1668,14 +1668,14 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-2">
                   {selectedDoc.tools && (
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
-                      <p className="text-[8px] font-black text-blue-700 uppercase tracking-wider mb-1">🔧 Tools</p>
-                      <p className="text-[10px] text-blue-900 font-medium leading-relaxed">{selectedDoc.tools}</p>
+                      <p className="text-sm font-black text-blue-700 uppercase tracking-wider mb-1">🔧 Tools</p>
+                      <p className="text-sm text-blue-900 font-medium leading-relaxed">{selectedDoc.tools}</p>
                     </div>
                   )}
                   {selectedDoc.materials && (
                     <div className="bg-amber-50 border border-amber-100 rounded-xl p-2.5">
-                      <p className="text-[8px] font-black text-amber-700 uppercase tracking-wider mb-1">📦 Materials</p>
-                      <p className="text-[10px] text-amber-900 font-medium leading-relaxed">{selectedDoc.materials}</p>
+                      <p className="text-sm font-black text-amber-700 uppercase tracking-wider mb-1">📦 Materials</p>
+                      <p className="text-sm text-amber-900 font-medium leading-relaxed">{selectedDoc.materials}</p>
                     </div>
                   )}
                 </div>
@@ -1685,7 +1685,7 @@ export default function App() {
               <div className="flex bg-gray-100 p-1 rounded-xl">
                 <button
                   onClick={() => setDocTab('checklist')}
-                  className={`flex-1 text-center py-2 text-xs font-black rounded-lg transition-all ${
+                  className={`flex-1 text-center py-2 text-sm font-black rounded-lg transition-all ${
                     docTab === 'checklist' ? 'bg-white text-emerald-800 shadow-xs' : 'text-gray-500 hover:text-gray-800'
                   }`}
                 >
@@ -1693,7 +1693,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setDocTab('history')}
-                  className={`flex-1 text-center py-2 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 text-center py-2 text-sm font-black rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                     docTab === 'history' ? 'bg-white text-emerald-800 shadow-xs' : 'text-gray-500 hover:text-gray-800'
                   }`}
                 >
@@ -1710,7 +1710,7 @@ export default function App() {
                 return (
                 <div className="space-y-5">
                   {/* Mandatory step completions disclaimer */}
-                  <div className="bg-emerald-50/50 text-[10px] text-emerald-900 p-2.5 rounded-xl font-bold flex items-start gap-1.5 leading-snug">
+                  <div className="bg-emerald-50/50 text-sm text-emerald-900 p-2.5 rounded-xl font-bold flex items-start gap-1.5 leading-snug">
                     <AlertCircleIcon />
                     <span>Compliance Mandate: Please review instructions and check off each step on the left sequentially as you execute them.</span>
                   </div>
@@ -1725,7 +1725,7 @@ export default function App() {
                           {/* Checked/Unchecked index node bubble */}
                           <button
                             onClick={() => toggleStepCompleted(index)}
-                            className={`absolute -left-[35px] top-1 rounded-full w-6 h-6 flex items-center justify-center text-[10px] font-black border-4 border-white shadow-xs transition-all ${
+                            className={`absolute -left-[35px] top-1 rounded-full w-6 h-6 flex items-center justify-center text-sm font-black border-4 border-white shadow-xs transition-all ${
                               isStepDone 
                                 ? 'bg-green-500 text-white border-green-200' 
                                 : 'bg-gray-200 hover:bg-emerald-200 text-gray-500 border-white'
@@ -1757,17 +1757,17 @@ export default function App() {
                             )}
 
                             <div className="space-y-1">
-                              <span className={`text-[9px] font-bold tracking-wider uppercase block ${
+                              <span className={`text-base font-bold tracking-wider uppercase block ${
                                 isStepDone ? 'text-green-600' : 'text-emerald-800'
                               }`}>
                                 {step.summary || "Instructional Action Guideline"}
                               </span>
-                              <h3 className={`text-xs font-black leading-snug ${
+                              <h3 className={`text-sm font-black leading-snug ${
                                 isStepDone ? 'text-gray-500 line-through' : 'text-gray-900'
                               }`}>
                                 {step.title}
                               </h3>
-                              <p className={`text-[11px] leading-relaxed pt-1 font-semibold ${
+                              <p className={`text-base leading-relaxed pt-1 font-semibold ${
                                 isStepDone ? 'text-gray-400 font-normal' : 'text-gray-600 font-medium'
                               }`}>
                                 {step.body}
@@ -1781,7 +1781,7 @@ export default function App() {
 
                   {/* Lock Indicator showing unchecked steps count */}
                   {completedCount < totalStepsCount && (
-                    <div className="bg-amber-50 text-amber-800 p-2.5 rounded-xl text-[10px] font-bold text-center border border-amber-100 shadow-xs">
+                    <div className="bg-amber-50 text-amber-800 p-2.5 rounded-xl text-sm font-bold text-center border border-amber-100 shadow-xs">
                       🔒 Verification Locked: Check off {totalStepsCount - completedCount} remaining procedural action steps to unlock sign-off.
                     </div>
                   )}
@@ -1790,17 +1790,17 @@ export default function App() {
                   <div className="bg-emerald-50/20 border border-emerald-100/50 rounded-2xl p-4 space-y-3.5 shadow-xs">
                     <div className="flex justify-between items-start gap-2">
                       <div className="space-y-0.5">
-                        <h4 className="text-[11px] font-black text-gray-900 leading-none flex items-center gap-1">
+                        <h4 className="text-base font-black text-gray-900 leading-none flex items-center gap-1">
                           <SparklesIcon /> Spot an issue with this SOP?
                         </h4>
-                        <p className="text-[9px] text-gray-400 mt-1 leading-snug">
+                        <p className="text-base text-gray-400 mt-1 leading-snug">
                           Recommend standard operating procedure updates directly to administrators.
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setShowRecommendModal(!showRecommendModal)}
-                        className="h-7 px-3 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-[9px] font-black transition-colors"
+                        className="h-7 px-3 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-base font-black transition-colors"
                       >
                         {showRecommendModal ? "Cancel" : "Recommend Update"}
                       </button>
@@ -1814,11 +1814,11 @@ export default function App() {
                           value={recommendationNotes}
                           onChange={(e) => setRecommendationNotes(e.target.value)}
                           placeholder="e.g., We need to update Step 2 because the new model uses a different torque calibration value..."
-                          className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-[11px] focus:border-emerald-600 focus:outline-none leading-relaxed font-semibold"
+                          className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-base focus:border-emerald-600 focus:outline-none leading-relaxed font-semibold"
                         />
                         <button
                           type="submit"
-                          className="w-full h-9 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-[10px] font-bold transition-all shadow-xs"
+                          className="w-full h-9 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-sm font-bold transition-all shadow-xs"
                         >
                           Send Update Suggestion Alert
                         </button>
@@ -1829,8 +1829,8 @@ export default function App() {
                   {/* Bottom validation button panel */}
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
                     <div className="max-w-[55%]">
-                      <h4 className="text-[11px] font-bold text-gray-900 leading-none">Compliance Registry</h4>
-                      <p className="text-[9px] text-gray-400 mt-1 leading-snug">
+                      <h4 className="text-base font-bold text-gray-900 leading-none">Compliance Registry</h4>
+                      <p className="text-base text-gray-400 mt-1 leading-snug">
                         Validating certifies full execution of procedural version {currentVersion}.
                       </p>
                     </div>
@@ -1838,7 +1838,7 @@ export default function App() {
                     <button
                       onClick={handleMarkAsRead}
                       disabled={completedCount < totalStepsCount || alreadySigned}
-                      className={`h-11 px-4 rounded-xl text-[10px] font-black transition-all flex items-center gap-1.5 ${
+                      className={`h-11 px-4 rounded-xl text-sm font-black transition-all flex items-center gap-1.5 ${
                         alreadySigned
                           ? 'bg-green-100 text-green-700 cursor-not-allowed'
                           : completedCount < totalStepsCount
@@ -1865,18 +1865,18 @@ export default function App() {
               {docTab === 'history' && (
                 <div className="space-y-5">
                   <div className="space-y-2">
-                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                       <HistoryIcon /> Version Revision Changelog
                     </h3>
                     <div className="space-y-3">
                       {selectedDoc.revisionHistory?.map((rev, i) => (
                         <div key={i} className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1 shadow-xs">
-                          <div className="flex justify-between items-center text-[10px] font-black text-gray-900">
+                          <div className="flex justify-between items-center text-sm font-black text-gray-900">
                             <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded-md">{rev.version}</span>
                             <span className="text-gray-400">{rev.date}</span>
                           </div>
-                          <p className="text-[11px] text-gray-800 font-bold mt-1">&ldquo;{rev.notes}&rdquo;</p>
-                          <p className="text-[9px] text-gray-400 font-bold">
+                          <p className="text-base text-gray-800 font-bold mt-1">&ldquo;{rev.notes}&rdquo;</p>
+                          <p className="text-base text-gray-400 font-bold">
                             Revised by: {rev.updatedBy} ({rev.userRole})
                           </p>
                         </div>
@@ -1885,24 +1885,24 @@ export default function App() {
                   </div>
 
                   <div className="space-y-2 pt-2 border-t border-gray-100">
-                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                       <AwardIcon /> Live Sign-off verification log ({selectedDoc.readLogs?.length})
                     </h3>
                     
                     {selectedDoc.readLogs && selectedDoc.readLogs.length === 0 ? (
                       <div className="bg-gray-50 text-center py-6 rounded-xl border border-dashed border-gray-200">
-                        <p className="text-[11px] text-gray-400 font-bold">No compliance sign-offs registered yet.</p>
-                        <p className="text-[9px] text-gray-400">Mark this document as read to log your verification.</p>
+                        <p className="text-base text-gray-400 font-bold">No compliance sign-offs registered yet.</p>
+                        <p className="text-base text-gray-400">Mark this document as read to log your verification.</p>
                       </div>
                     ) : (
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {selectedDoc.readLogs?.map((log, i) => (
-                          <div key={i} className="bg-white border border-gray-100 p-2.5 rounded-xl flex items-center justify-between text-[10px]">
+                          <div key={i} className="bg-white border border-gray-100 p-2.5 rounded-xl flex items-center justify-between text-sm">
                             <div className="space-y-0.5">
                               <p className="text-gray-900 font-black">{log.userName}</p>
                               <p className="text-gray-400 font-medium">{log.userRole} • verified version {log.versionRead}</p>
                             </div>
-                            <span className="text-[9px] font-bold text-gray-400">{log.timestamp}</span>
+                            <span className="text-base font-bold text-gray-400">{log.timestamp}</span>
                           </div>
                         ))}
                       </div>
@@ -1956,7 +1956,7 @@ export default function App() {
                     a.click();
                     URL.revokeObjectURL(url);
                   }}
-                  className="w-full h-11 rounded-xl border border-gray-200 text-[11px] font-black text-gray-500 hover:text-emerald-800 hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
+                  className="w-full h-11 rounded-xl border border-gray-200 text-base font-black text-gray-500 hover:text-emerald-800 hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                   Export SOP
@@ -1977,12 +1977,12 @@ export default function App() {
                   <ArrowLeftIcon />
                 </button>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">SOP Revision Journal</span>
-                  <h1 className="text-sm font-black text-gray-900 leading-none">Drafting Version Changelog</h1>
+                  <span className="text-base uppercase tracking-wider text-gray-400 font-bold">SOP Revision Journal</span>
+                  <h1 className="text-base font-black text-gray-900 leading-none">Drafting Version Changelog</h1>
                 </div>
               </div>
 
-              <div className="bg-emerald-50/50 border border-emerald-100/50 rounded-2xl p-3.5 text-[11px] space-y-1 shadow-xs">
+              <div className="bg-emerald-50/50 border border-emerald-100/50 rounded-2xl p-3.5 text-base space-y-1 shadow-xs">
                 <p className="font-extrabold text-emerald-900">Revision Version Level Shift</p>
                 <p className="text-emerald-800 font-medium">Document: &ldquo;{selectedDoc.title}&rdquo;</p>
                 <p className="text-emerald-800 font-medium font-bold">
@@ -1996,21 +1996,21 @@ export default function App() {
               </div>
 
               {revisionError && (
-                <div className="bg-red-50 border border-red-100 text-red-800 rounded-xl p-3 text-xs font-semibold">
+                <div className="bg-red-50 border border-red-100 text-red-800 rounded-xl p-3 text-sm font-semibold">
                   ⚠️ {revisionError}
                 </div>
               )}
 
               <form onSubmit={handlePublishRevision} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider">Revision Action Notes</label>
+                  <label className="block text-sm font-black text-gray-400 uppercase tracking-wider">Revision Action Notes</label>
                   <textarea
                     rows={4}
                     required
                     placeholder="e.g., Updated safe micron boundaries for coil vacuums to align with updated field equipment protocols..."
                     value={revisionNotes}
                     onChange={(e) => setRevisionNotes(e.target.value)}
-                    className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none transition-all text-gray-800 leading-relaxed font-semibold placeholder:text-gray-300 shadow-xs"
+                    className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none transition-all text-gray-800 leading-relaxed font-semibold placeholder:text-gray-300 shadow-xs"
                   />
                 </div>
 
@@ -2018,13 +2018,13 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setCurrentView('document')}
-                    className="flex-1 h-11 border border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-50 shadow-xs"
+                    className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-50 shadow-xs"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 h-11 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-100"
+                    className="flex-1 h-11 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-emerald-100"
                   >
                     Commit Revision Log
                   </button>
@@ -2046,10 +2046,10 @@ export default function App() {
                   <ArrowLeftIcon />
                 </button>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
+                  <span className="text-base uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
                     <ShieldIcon /> ADMINISTRATOR CONSOLE
                   </span>
-                  <h1 className="text-sm font-black text-gray-950 leading-tight">Oversight & Compliance Matrix</h1>
+                  <h1 className="text-base font-black text-gray-950 leading-tight">Oversight & Compliance Matrix</h1>
                 </div>
               </div>
 
@@ -2057,10 +2057,10 @@ export default function App() {
               <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-4 text-white space-y-4 shadow-lg">
                 <div className="flex justify-between items-center border-b border-gray-700/60 pb-3">
                   <div>
-                    <span className="text-[9px] font-extrabold text-gray-400 tracking-wider uppercase">OVERALL WORKSPACE HEALTH</span>
+                    <span className="text-base font-extrabold text-gray-400 tracking-wider uppercase">OVERALL WORKSPACE HEALTH</span>
                     <h3 className="text-xl font-black mt-0.5">{aggregateComplianceRate}% Compliance</h3>
                   </div>
-                  <span className="text-[10px] bg-blue-600 text-white font-black px-2.5 py-1 rounded-xl">
+                  <span className="text-sm bg-blue-600 text-white font-black px-2.5 py-1 rounded-xl">
                     Active Audit
                   </span>
                 </div>
@@ -2073,7 +2073,7 @@ export default function App() {
                       style={{ width: `${aggregateComplianceRate}%` }}
                     ></div>
                   </div>
-                  <div className="flex justify-between text-[9px] text-gray-400 font-bold">
+                  <div className="flex justify-between text-base text-gray-400 font-bold">
                     <span>Incomplete (Gaps)</span>
                     <span>100% Fully Compliant</span>
                   </div>
@@ -2081,15 +2081,15 @@ export default function App() {
 
                 <div className="grid grid-cols-3 gap-2 pt-1 text-center">
                   <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-[9px] text-gray-400 font-bold leading-none">Total SOPs</p>
+                    <p className="text-base text-gray-400 font-bold leading-none">Total SOPs</p>
                     <p className="text-base font-black mt-1 leading-none">{totalSOPsCount}</p>
                   </div>
                   <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-[9px] text-gray-400 font-bold leading-none">Total Team</p>
+                    <p className="text-base text-gray-400 font-bold leading-none">Total Team</p>
                     <p className="text-base font-black mt-1 leading-none">{totalTeamSize}</p>
                   </div>
                   <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-[9px] text-gray-400 font-bold leading-none">Sign-offs</p>
+                    <p className="text-base text-gray-400 font-bold leading-none">Sign-offs</p>
                     <p className="text-base font-black mt-1 leading-none">{actualReadLogsCount}</p>
                   </div>
                 </div>
@@ -2097,12 +2097,12 @@ export default function App() {
 
               {/* Admin Pending Notifications viewport */}
               <div className="space-y-2">
-                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                   🔔 SOP Update Suggestions ({notifications.length})
                 </h3>
                 {notifications.length === 0 ? (
                   <div className="bg-gray-50 border border-gray-100 text-center py-5 rounded-2xl shadow-xs">
-                    <p className="text-[11px] text-gray-400 font-bold">No update recommendations pending.</p>
+                    <p className="text-base text-gray-400 font-bold">No update recommendations pending.</p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -2123,13 +2123,13 @@ export default function App() {
                         >
                           ✕
                         </button>
-                        <p className="text-[9px] font-black text-emerald-800 uppercase tracking-wider leading-none">
+                        <p className="text-base font-black text-emerald-800 uppercase tracking-wider leading-none">
                           ALERT FOR: {notif.docTitle}
                         </p>
-                        <p className="text-[11px] text-gray-850 font-semibold leading-relaxed pt-0.5">
+                        <p className="text-base text-gray-850 font-semibold leading-relaxed pt-0.5">
                           &ldquo;{notif.notes}&rdquo;
                         </p>
-                        <div className="flex justify-between items-center text-[8px] text-gray-400 font-bold pt-1">
+                        <div className="flex justify-between items-center text-sm text-gray-400 font-bold pt-1">
                           <span>By: {notif.suggestedBy} ({notif.suggestedByRole})</span>
                           <span>{notif.timestamp}</span>
                         </div>
@@ -2145,10 +2145,10 @@ export default function App() {
               {/* Team Member Management */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">👥 Team Members</h3>
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">👥 Team Members</h3>
                   <button
                     onClick={() => { setShowAddUser(v => !v); setNewUserError(''); }}
-                    className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
+                    className="text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
                   >
                     {showAddUser ? 'Cancel' : '+ Add Member'}
                   </button>
@@ -2156,16 +2156,16 @@ export default function App() {
 
                 {showAddUser && (
                   <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3">
-                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider">New Team Member</p>
-                    {newUserError && <p className="text-[10px] text-red-600 font-bold">{newUserError}</p>}
+                    <p className="text-sm font-black text-gray-500 uppercase tracking-wider">New Team Member</p>
+                    {newUserError && <p className="text-sm text-red-600 font-bold">{newUserError}</p>}
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Full Name</label>
-                        <input value={newUserName} onChange={e => setNewUserName(e.target.value)} placeholder="e.g., Jordan Blake" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                        <label className="block text-base font-black text-gray-400 uppercase tracking-wider mb-1">Full Name</label>
+                        <input value={newUserName} onChange={e => setNewUserName(e.target.value)} placeholder="e.g., Jordan Blake" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none" />
                       </div>
                       <div>
-                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Division</label>
-                        <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none text-gray-900">
+                        <label className="block text-base font-black text-gray-400 uppercase tracking-wider mb-1">Division</label>
+                        <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900">
                           <option value="">Select division…</option>
                           <option value="HVAC">HVAC</option>
                           <option value="Home Performance">Home Performance</option>
@@ -2176,14 +2176,14 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Password</label>
-                        <input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} placeholder="Min 8 characters" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                        <label className="block text-base font-black text-gray-400 uppercase tracking-wider mb-1">Password</label>
+                        <input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} placeholder="Min 8 characters" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none" />
                       </div>
                       <div>
-                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Access Level</label>
+                        <label className="block text-base font-black text-gray-400 uppercase tracking-wider mb-1">Access Level</label>
                         <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
-                          <button onClick={() => setNewUserType('user')} className={`flex-1 text-[10px] font-black transition-colors ${newUserType === 'user' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>User</button>
-                          <button onClick={() => setNewUserType('admin')} className={`flex-1 text-[10px] font-black transition-colors ${newUserType === 'admin' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>Admin</button>
+                          <button onClick={() => setNewUserType('user')} className={`flex-1 text-sm font-black transition-colors ${newUserType === 'user' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>User</button>
+                          <button onClick={() => setNewUserType('admin')} className={`flex-1 text-sm font-black transition-colors ${newUserType === 'admin' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>Admin</button>
                         </div>
                       </div>
                     </div>
@@ -2202,7 +2202,7 @@ export default function App() {
                         setNewUserName(''); setNewUserRole(''); setNewUserPassword(''); setNewUserType('user');
                         setShowAddUser(false);
                       }}
-                      className="w-full h-10 bg-emerald-800 text-white rounded-xl text-[11px] font-black hover:bg-emerald-900 transition-colors"
+                      className="w-full h-10 bg-emerald-800 text-white rounded-xl text-base font-black hover:bg-emerald-900 transition-colors"
                     >
                       Add Team Member
                     </button>
@@ -2213,11 +2213,11 @@ export default function App() {
                   {effectiveUsers.map(u => (
                     <div key={u.name} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center justify-between shadow-xs">
                       <div>
-                        <p className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                        <p className="text-sm font-black text-gray-900 flex items-center gap-1.5">
                           {u.name}
-                          <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${u.userType === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>{u.userType}</span>
+                          <span className={`text-sm px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${u.userType === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>{u.userType}</span>
                         </p>
-                        <p className="text-[10px] text-gray-400 font-medium mt-0.5">{u.role}</p>
+                        <p className="text-sm text-gray-400 font-medium mt-0.5">{u.role}</p>
                       </div>
                       {u.name !== currentUser.name && (
                         <button
@@ -2245,7 +2245,7 @@ export default function App() {
 
               {/* Badge Management Panel */}
               <div className="space-y-3">
-                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                   🏅 Badge Management
                 </h3>
                 <div className="space-y-3">
@@ -2256,8 +2256,8 @@ export default function App() {
                       <div key={account.name} className="bg-white border border-gray-100 p-3.5 rounded-2xl shadow-xs space-y-2">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-xs font-black text-gray-900">{account.name}</p>
-                            <p className="text-[9px] text-gray-400 font-bold">{account.role}</p>
+                            <p className="text-sm font-black text-gray-900">{account.name}</p>
+                            <p className="text-base text-gray-400 font-bold">{account.role}</p>
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-1.5 pt-1">
@@ -2284,7 +2284,7 @@ export default function App() {
                                   if (data?.badge) setAllBadges(prev => [...prev, data.badge]);
                                 });
                               }}
-                              className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-dashed border-gray-300 text-gray-400 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
+                              className="inline-flex items-center gap-1 text-base font-black px-1.5 py-0.5 rounded-md border border-dashed border-gray-300 text-gray-400 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
                             >
                               + {badge}
                             </button>
@@ -2300,8 +2300,8 @@ export default function App() {
               {documents.length === 0 && (
                 <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-3">
                   <div>
-                    <p className="text-xs font-black text-amber-900">No SOPs in database</p>
-                    <p className="text-[10px] text-amber-700 mt-0.5">Load the two built-in sample SOPs to get started.</p>
+                    <p className="text-sm font-black text-amber-900">No SOPs in database</p>
+                    <p className="text-sm text-amber-700 mt-0.5">Load the two built-in sample SOPs to get started.</p>
                   </div>
                   <button
                     onClick={async () => {
@@ -2318,7 +2318,7 @@ export default function App() {
                         if (sops?.length) setDocuments(sops);
                       }
                     }}
-                    className="w-full h-10 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-[11px] font-black transition-colors"
+                    className="w-full h-10 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-base font-black transition-colors"
                   >
                     Seed Sample SOPs
                   </button>
@@ -2327,7 +2327,7 @@ export default function App() {
 
               {/* Matrix List of SOP Read Statuses */}
               <div className="space-y-3">
-                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">SOP Readers Audit Matrix</h3>
+                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">SOP Readers Audit Matrix</h3>
                 <div className="space-y-3">
                   {documents.map(doc => {
                     const readCount = doc.readLogs?.length || 0;
@@ -2337,19 +2337,19 @@ export default function App() {
                       <div key={doc.id} className="bg-white border border-gray-100 p-3.5 rounded-2xl shadow-xs space-y-2">
                         <div className="flex justify-between items-start gap-2">
                           <div>
-                            <span className="text-[8px] font-black text-emerald-800 uppercase bg-emerald-50 px-1.5 py-0.5 rounded-xs tracking-wider">
+                            <span className="text-sm font-black text-emerald-800 uppercase bg-emerald-50 px-1.5 py-0.5 rounded-xs tracking-wider">
                               {doc.category}
                             </span>
-                            <h4 className="text-xs font-black text-gray-900 mt-1">{doc.title}</h4>
+                            <h4 className="text-sm font-black text-gray-900 mt-1">{doc.title}</h4>
                           </div>
-                          <span className="text-[10px] font-black text-gray-900">
+                          <span className="text-sm font-black text-gray-900">
                             v{doc.revisionHistory[0]?.version || 'v1.0'}
                           </span>
                         </div>
 
                         {/* Progress Bar for individual SOP */}
                         <div className="space-y-1 pt-1">
-                          <div className="flex justify-between text-[9px] text-gray-400 font-bold leading-none mb-1">
+                          <div className="flex justify-between text-base text-gray-400 font-bold leading-none mb-1">
                             <span>{readCount} of {totalTeamSize} Teammates Verified</span>
                             <span className="text-gray-700 font-extrabold">{completionPct}% Read</span>
                           </div>
@@ -2365,17 +2365,17 @@ export default function App() {
 
                         {/* Display list of readers/non-readers */}
                         <div className="pt-2.5 border-t border-gray-50 space-y-1">
-                          <span className="text-[8px] font-black text-gray-400 tracking-wider uppercase block">Compliance Signature Roster</span>
+                          <span className="text-sm font-black text-gray-400 tracking-wider uppercase block">Compliance Signature Roster</span>
                           <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pt-0.5">
                             {doc.readLogs.length === 0 ? (
-                              <span className="text-[9px] text-red-500 font-extrabold italic bg-red-50 px-1.5 py-0.5 rounded-md">
+                              <span className="text-base text-red-500 font-extrabold italic bg-red-50 px-1.5 py-0.5 rounded-md">
                                 ⚠️ Zero Sign-offs Registered
                               </span>
                             ) : (
                               doc.readLogs.map((log, lIdx) => (
                                 <span 
                                   key={lIdx}
-                                  className="text-[9px] bg-green-50 text-green-700 font-extrabold px-1.5 py-0.5 rounded-md inline-flex items-center gap-1"
+                                  className="text-base bg-green-50 text-green-700 font-extrabold px-1.5 py-0.5 rounded-md inline-flex items-center gap-1"
                                 >
                                   <CheckIcon /> {log.userName}
                                 </span>
@@ -2391,14 +2391,14 @@ export default function App() {
 
               {/* Notification Settings Panel */}
               <div className="space-y-3">
-                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                   🔔 Notification Settings
                 </h3>
                 <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-xs font-black text-gray-900">Auto-Notify on Updates</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">When enabled, all team members receive a notification whenever an SOP or Handbook section is updated. Disable during bulk changes to prevent notification spam.</p>
+                      <p className="text-sm font-black text-gray-900">Auto-Notify on Updates</p>
+                      <p className="text-sm text-gray-400 mt-0.5 leading-relaxed">When enabled, all team members receive a notification whenever an SOP or Handbook section is updated. Disable during bulk changes to prevent notification spam.</p>
                     </div>
                     <button
                       onClick={async () => {
@@ -2415,7 +2415,7 @@ export default function App() {
                       <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${notificationsEnabled ? 'left-5' : 'left-0.5'}`} />
                     </button>
                   </div>
-                  <p className={`text-[10px] font-bold ${notificationsEnabled ? 'text-emerald-700' : 'text-gray-400'}`}>
+                  <p className={`text-sm font-bold ${notificationsEnabled ? 'text-emerald-700' : 'text-gray-400'}`}>
                     {notificationsEnabled ? 'Notifications are ON — team members will be notified of updates.' : 'Notifications are OFF — updates will be silent.'}
                   </p>
                 </div>
@@ -2430,9 +2430,9 @@ export default function App() {
             <div className="space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Company Resource</span>
+                  <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Company Resource</span>
                   <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Handbook</h1>
-                  <p className="text-xs text-gray-400 mt-1">Policies, culture guidelines, and team expectations.</p>
+                  <p className="text-sm text-gray-400 mt-1">Policies, culture guidelines, and team expectations.</p>
                 </div>
                 {currentUser.userType === 'admin' && !handbookLoading && (
                   <div className="flex gap-2 flex-shrink-0 mt-1">
@@ -2442,13 +2442,13 @@ export default function App() {
                           onClick={() => {
                             setEditingSection({ id: null, title: '', content: '', change_note: 'Section created' });
                           }}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-700 text-white text-xs font-bold"
+                          className="px-3 py-1.5 rounded-xl bg-emerald-700 text-white text-sm font-bold"
                         >
                           + Add Section
                         </button>
                         <button
                           onClick={() => { setHandbookEditMode(false); setEditingSection(null); }}
-                          className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold"
+                          className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold"
                         >
                           Done
                         </button>
@@ -2456,7 +2456,7 @@ export default function App() {
                     ) : (
                       <button
                         onClick={() => setHandbookEditMode(true)}
-                        className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200"
+                        className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold hover:bg-gray-200"
                       >
                         Edit Handbook
                       </button>
@@ -2474,22 +2474,22 @@ export default function App() {
               {handbookError && (
                 <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-start gap-3">
                   <AlertCircleIcon />
-                  <p className="text-xs text-red-700">{handbookError}</p>
+                  <p className="text-sm text-red-700">{handbookError}</p>
                 </div>
               )}
 
               {/* Add new section form */}
               {editingSection && editingSection.id === null && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3">
-                  <p className="text-xs font-black text-emerald-800">New Section</p>
+                  <p className="text-sm font-black text-emerald-800">New Section</p>
                   <input
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
                     placeholder="Section title"
                     value={editingSection.title}
                     onChange={e => setEditingSection({ ...editingSection, title: e.target.value })}
                   />
                   <textarea
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[120px] resize-y"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[120px] resize-y"
                     placeholder="Section content..."
                     value={editingSection.content}
                     onChange={e => setEditingSection({ ...editingSection, content: e.target.value })}
@@ -2508,11 +2508,11 @@ export default function App() {
                         setHandbookSaving(false);
                         if (res.ok) { setEditingSection(null); loadHandbook(); }
                       }}
-                      className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-50"
+                      className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-sm font-bold disabled:opacity-50"
                     >
                       {handbookSaving ? 'Saving…' : 'Save Section'}
                     </button>
-                    <button onClick={() => setEditingSection(null)} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">Cancel</button>
+                    <button onClick={() => setEditingSection(null)} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold">Cancel</button>
                   </div>
                 </div>
               )}
@@ -2522,8 +2522,8 @@ export default function App() {
                   <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
                     <HandbookIcon />
                   </div>
-                  <p className="text-sm font-black text-gray-900">No Content Yet</p>
-                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">
+                  <p className="text-base font-black text-gray-900">No Content Yet</p>
+                  <p className="text-sm text-gray-400 max-w-[220px] mx-auto leading-relaxed">
                     {currentUser.userType === 'admin' ? 'Click "Edit Handbook" to add the first section.' : 'Handbook sections have not been loaded. Contact your administrator.'}
                   </p>
                 </div>
@@ -2539,17 +2539,17 @@ export default function App() {
                         {isEditing ? (
                           <div className="p-4 space-y-3">
                             <input
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
                               value={editingSection.title}
                               onChange={e => setEditingSection({ ...editingSection, title: e.target.value })}
                             />
                             <textarea
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[160px] resize-y"
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[160px] resize-y"
                               value={editingSection.content}
                               onChange={e => setEditingSection({ ...editingSection, content: e.target.value })}
                             />
                             <input
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-500 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-500 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
                               placeholder="Change note (optional)"
                               value={editingSection.change_note}
                               onChange={e => setEditingSection({ ...editingSection, change_note: e.target.value })}
@@ -2567,11 +2567,11 @@ export default function App() {
                                   setHandbookSaving(false);
                                   if (res.ok) { setEditingSection(null); loadHandbook(); }
                                 }}
-                                className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-50"
+                                className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-sm font-bold disabled:opacity-50"
                               >
                                 {handbookSaving ? 'Saving…' : 'Save'}
                               </button>
-                              <button onClick={() => setEditingSection(null)} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">Cancel</button>
+                              <button onClick={() => setEditingSection(null)} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold">Cancel</button>
                               <button
                                 disabled={handbookSaving}
                                 onClick={async () => {
@@ -2585,7 +2585,7 @@ export default function App() {
                                   setHandbookSaving(false);
                                   if (res.ok) { setEditingSection(null); loadHandbook(); }
                                 }}
-                                className="ml-auto px-4 py-2 rounded-xl bg-red-50 text-red-600 text-xs font-bold disabled:opacity-50"
+                                className="ml-auto px-4 py-2 rounded-xl bg-red-50 text-red-600 text-sm font-bold disabled:opacity-50"
                               >
                                 Delete
                               </button>
@@ -2603,9 +2603,9 @@ export default function App() {
                               }}
                               className="w-full flex items-center justify-between px-4 py-3.5 text-left"
                             >
-                              <span className="text-sm font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
+                              <span className="text-base font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
                               {handbookEditMode ? (
-                                <span className="flex-shrink-0 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">Edit</span>
+                                <span className="flex-shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">Edit</span>
                               ) : (
                                 <span className={`flex-shrink-0 w-5 h-5 text-emerald-800 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
                                   <ChevronRightIcon />
@@ -2614,7 +2614,7 @@ export default function App() {
                             </button>
                             {isOpen && !handbookEditMode && (
                               <div className="px-4 pb-4 border-t border-gray-50">
-                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line pt-3">{section.content}</p>
+                                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line pt-3">{section.content}</p>
                               </div>
                             )}
                           </>
@@ -2629,17 +2629,17 @@ export default function App() {
               {!handbookLoading && currentUser.userType === 'admin' && handbookRevisions.length > 0 && (
                 <div className="mt-8 pt-6 border-t border-gray-100">
                   <div className="mb-3">
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Addendum</span>
+                    <span className="text-sm font-black text-gray-400 uppercase tracking-widest">Addendum</span>
                     <h2 className="text-base font-black text-gray-700 mt-0.5">Version History</h2>
                   </div>
                   <div className="space-y-2">
                     {handbookRevisions.map((rev) => (
                       <div key={rev.id} className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-bold text-gray-800">{rev.section_title}</p>
-                          <p className="text-[10px] text-gray-400 flex-shrink-0">{new Date(rev.edited_at).toLocaleDateString()}</p>
+                          <p className="text-sm font-bold text-gray-800">{rev.section_title}</p>
+                          <p className="text-sm text-gray-400 flex-shrink-0">{new Date(rev.edited_at).toLocaleDateString()}</p>
                         </div>
-                        <p className="text-[10px] text-gray-500 mt-0.5">by {rev.edited_by}{rev.change_note ? ` — ${rev.change_note}` : ''}</p>
+                        <p className="text-sm text-gray-500 mt-0.5">by {rev.edited_by}{rev.change_note ? ` — ${rev.change_note}` : ''}</p>
                       </div>
                     ))}
                   </div>
@@ -2653,9 +2653,9 @@ export default function App() {
             <div className="space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Inbox</span>
+                  <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Inbox</span>
                   <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Notifications</h1>
-                  <p className="text-xs text-gray-400 mt-1">Updates from SOPs and the Employee Handbook.</p>
+                  <p className="text-sm text-gray-400 mt-1">Updates from SOPs and the Employee Handbook.</p>
                 </div>
                 {userNotifications.filter(n => !n.read_at).length > 0 && (
                   <button
@@ -2664,7 +2664,7 @@ export default function App() {
                         .then(r => r.ok ? setUserNotifications(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? new Date().toISOString() }))) : null)
                         .catch(() => {});
                     }}
-                    className="flex-shrink-0 mt-1 px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold hover:bg-gray-200"
+                    className="flex-shrink-0 mt-1 px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200"
                   >
                     Mark all read
                   </button>
@@ -2676,8 +2676,8 @@ export default function App() {
                   <div className="w-12 h-12 bg-gray-100 text-gray-400 rounded-2xl flex items-center justify-center mx-auto">
                     <BellIcon />
                   </div>
-                  <p className="text-sm font-black text-gray-700">All caught up</p>
-                  <p className="text-xs text-gray-400">You have no notifications yet.</p>
+                  <p className="text-base font-black text-gray-700">All caught up</p>
+                  <p className="text-sm text-gray-400">You have no notifications yet.</p>
                 </div>
               )}
 
@@ -2691,9 +2691,9 @@ export default function App() {
                       {notif.type === 'handbook' ? <HandbookIcon /> : <FileTextIcon />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-xs font-black leading-snug ${notif.read_at ? 'text-gray-700' : 'text-gray-900'}`}>{notif.title}</p>
-                      <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{notif.message}</p>
-                      <p className="text-[10px] text-gray-400 mt-1">{new Date(notif.created_at).toLocaleString()}</p>
+                      <p className={`text-sm font-black leading-snug ${notif.read_at ? 'text-gray-700' : 'text-gray-900'}`}>{notif.title}</p>
+                      <p className="text-base text-gray-500 mt-0.5 leading-relaxed">{notif.message}</p>
+                      <p className="text-sm text-gray-400 mt-1">{new Date(notif.created_at).toLocaleString()}</p>
                     </div>
                     <button
                       onClick={() => {
@@ -2724,14 +2724,14 @@ export default function App() {
               <div className="space-y-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
+                    <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
                     <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
-                    <p className="text-xs text-gray-400 mt-1">Check off skills as you master them.</p>
+                    <p className="text-sm text-gray-400 mt-1">Check off skills as you master them.</p>
                   </div>
                   {currentUser.userType === 'admin' && (
                     <button
                       onClick={() => { setCurrentView('careerAdmin'); if (careerTracks.length === 0) loadCareerData(); }}
-                      className="flex items-center gap-1.5 bg-emerald-800 text-white text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl"
+                      className="flex items-center gap-1.5 bg-emerald-800 text-white text-sm font-black uppercase tracking-wider px-3 py-2 rounded-xl"
                     >
                       <ShieldIcon />
                       Team
@@ -2747,9 +2747,9 @@ export default function App() {
 
                 {careerError && (
                   <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
-                    <p className="text-xs text-amber-800 font-bold">Career ladder tables not found.</p>
-                    <p className="text-xs text-amber-700">Run the career ladder SQL in Supabase, then tap Retry.</p>
-                    <button onClick={() => { setCareerError(''); loadCareerData(); }} className="text-xs font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
+                    <p className="text-sm text-amber-800 font-bold">Career ladder tables not found.</p>
+                    <p className="text-sm text-amber-700">Run the career ladder SQL in Supabase, then tap Retry.</p>
+                    <button onClick={() => { setCareerError(''); loadCareerData(); }} className="text-sm font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
                   </div>
                 )}
 
@@ -2759,8 +2759,8 @@ export default function App() {
                     <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
                       <CareerIcon />
                     </div>
-                    <p className="text-sm font-black text-gray-900">Path Not Assigned Yet</p>
-                    <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Your admin will assign your career path and starting level. Check back soon.</p>
+                    <p className="text-base font-black text-gray-900">Path Not Assigned Yet</p>
+                    <p className="text-sm text-gray-400 max-w-[220px] mx-auto leading-relaxed">Your admin will assign your career path and starting level. Check back soon.</p>
                   </div>
                 )}
 
@@ -2771,22 +2771,22 @@ export default function App() {
                     <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">{assignedTrack.department}</p>
+                          <p className="text-sm font-black text-emerald-700 uppercase tracking-widest">{assignedTrack.department}</p>
                           <p className="text-base font-black text-gray-900 mt-0.5">{assignedTrack.name}</p>
-                          {myAssignment && <p className="text-[10px] text-gray-400 mt-0.5">Assigned by {myAssignment.assigned_by}</p>}
+                          {myAssignment && <p className="text-sm text-gray-400 mt-0.5">Assigned by {myAssignment.assigned_by}</p>}
                         </div>
                         <span className="text-2xl font-black text-emerald-800">{pct}%</span>
                       </div>
                       <div className="mt-3 h-2 bg-emerald-100 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                       </div>
-                      <p className="text-[10px] text-emerald-700 mt-1">{doneTasks} of {totalTasks} tasks complete</p>
+                      <p className="text-sm text-emerald-700 mt-1">{doneTasks} of {totalTasks} tasks complete</p>
                     </div>
 
                     {/* Task list */}
                     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden divide-y divide-gray-50">
                       {assignedTrack.tasks.length === 0 && (
-                        <p className="text-xs text-gray-400 px-4 py-6 text-center">No tasks added to this level yet.</p>
+                        <p className="text-sm text-gray-400 px-4 py-6 text-center">No tasks added to this level yet.</p>
                       )}
                       {assignedTrack.tasks.map(task => {
                         const completion = careerCompletions.find(c => c.task_id === task.id);
@@ -2805,16 +2805,16 @@ export default function App() {
                               </button>
                               <div className="flex-1 min-w-0">
                                 <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
-                                  <p className={`text-sm font-semibold leading-snug ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
+                                  <p className={`text-base font-semibold leading-snug ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
                                   {isDone && completion && (
-                                    <p className="text-[10px] text-emerald-600 mt-0.5 font-medium">
+                                    <p className="text-sm text-emerald-600 mt-0.5 font-medium">
                                       Completed {new Date(completion.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                     </p>
                                   )}
                                 </button>
                                 {isTaskOpen && (
                                   <div className="mt-3 space-y-3">
-                                    {task.description ? <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
+                                    {task.description ? <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
                                     {task.image_urls && task.image_urls.length > 0 && (
                                       <div className="flex gap-2 overflow-x-auto pb-1">
                                         {task.image_urls.map((url, i) => (
@@ -2825,14 +2825,14 @@ export default function App() {
                                     {linkedSop && (
                                       <button onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left">
                                         <BookOpenIcon />
-                                        <span className="text-xs font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
+                                        <span className="text-sm font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
                                         <ChevronRightIcon />
                                       </button>
                                     )}
                                     {task.sop_title && !linkedSop && (
                                       <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
                                         <BookOpenIcon />
-                                        <span className="text-xs text-gray-400 truncate">SOP ref: {task.sop_title}</span>
+                                        <span className="text-sm text-gray-400 truncate">SOP ref: {task.sop_title}</span>
                                       </div>
                                     )}
                                   </div>
@@ -2853,17 +2853,17 @@ export default function App() {
                         <div className="px-4 py-3">
                           {showAddTask === assignedTrack.id ? (
                             <div className="space-y-2">
-                              <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
-                              <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
-                              <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
-                              <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                              <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                              <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
+                              <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
+                              <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
                               <div className="flex gap-2">
-                                <button onClick={() => addCareerTask(assignedTrack.id)} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Add Task</button>
-                                <button onClick={() => setShowAddTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
+                                <button onClick={() => addCareerTask(assignedTrack.id)} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Add Task</button>
+                                <button onClick={() => setShowAddTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
                               </div>
                             </div>
                           ) : (
-                            <button onClick={() => setShowAddTask(assignedTrack.id)} className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold">
+                            <button onClick={() => setShowAddTask(assignedTrack.id)} className="flex items-center gap-1.5 text-sm text-emerald-700 font-bold">
                               <PlusIcon /> Add Task to This Level
                             </button>
                           )}
@@ -2878,21 +2878,21 @@ export default function App() {
                   <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-4">
                     {showAddTrack ? (
                       <div className="space-y-2">
-                        <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">New Level</p>
+                        <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">New Level</p>
                         <div className="flex gap-2">
                           {(['Home Performance', 'HVAC'] as const).map(d => (
-                            <button key={d} onClick={() => setNewTrackDept(d)} className={`flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase border transition-all ${newTrackDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
+                            <button key={d} onClick={() => setNewTrackDept(d)} className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${newTrackDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
                           ))}
                         </div>
-                        <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-                        <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                        <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base" />
+                        <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
                         <div className="flex gap-2">
-                          <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Create Level</button>
-                          <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
+                          <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Create Level</button>
+                          <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
                         </div>
                       </div>
                     ) : (
-                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-xs font-bold">
+                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-sm font-bold">
                         <PlusIcon /> Add New Level
                       </button>
                     )}
@@ -2910,7 +2910,7 @@ export default function App() {
                   <ArrowLeftIcon />
                 </button>
                 <div>
-                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Admin View</span>
+                  <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Admin View</span>
                   <h1 className="text-2xl font-black text-gray-950 tracking-tight">Team Progress</h1>
                 </div>
               </div>
@@ -2938,12 +2938,12 @@ export default function App() {
                         {/* Header */}
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="text-sm font-bold text-gray-900">{account.name}</p>
-                            <p className="text-[11px] text-gray-400">{account.role}</p>
+                            <p className="text-base font-bold text-gray-900">{account.name}</p>
+                            <p className="text-base text-gray-400">{account.role}</p>
                           </div>
                           <button
                             onClick={() => { setAssigningUser(isAssigning ? null : account.name); setAssignDept(assignedTrack?.department as any || 'Home Performance'); setAssignTrackId(assignedTrack?.id || null); }}
-                            className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
+                            className="text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
                           >
                             {assignedTrack ? 'Reassign' : 'Assign Path'}
                           </button>
@@ -2952,16 +2952,16 @@ export default function App() {
                         {/* Assignment picker */}
                         {isAssigning && (
                           <div className="space-y-2 bg-gray-50 rounded-xl p-3">
-                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Assign Career Path</p>
+                            <p className="text-sm font-black text-gray-500 uppercase tracking-wider">Assign Career Path</p>
                             <div className="flex gap-2">
                               {(['Home Performance', 'HVAC'] as const).map(d => (
-                                <button key={d} onClick={() => { setAssignDept(d); setAssignTrackId(null); }} className={`flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase border transition-all ${assignDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
+                                <button key={d} onClick={() => { setAssignDept(d); setAssignTrackId(null); }} className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${assignDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
                               ))}
                             </div>
                             <select
                               value={assignTrackId || ''}
                               onChange={e => setAssignTrackId(Number(e.target.value))}
-                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs bg-white"
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
                             >
                               <option value="">Select level...</option>
                               {careerTracks.filter(t => t.department === assignDept).map(t => (
@@ -2972,11 +2972,11 @@ export default function App() {
                               <button
                                 onClick={() => assignTrackId && saveAssignment(account.name, account.role, assignTrackId)}
                                 disabled={!assignTrackId}
-                                className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2 disabled:opacity-40"
+                                className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40"
                               >
                                 Save Assignment
                               </button>
-                              <button onClick={() => setAssigningUser(null)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
+                              <button onClick={() => setAssigningUser(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
                             </div>
                           </div>
                         )}
@@ -2986,21 +2986,21 @@ export default function App() {
                           <>
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="text-[10px] text-emerald-700 font-black uppercase tracking-wider">{assignedTrack.department}</p>
-                                <p className="text-xs font-bold text-gray-700">{assignedTrack.name}</p>
+                                <p className="text-sm text-emerald-700 font-black uppercase tracking-wider">{assignedTrack.department}</p>
+                                <p className="text-sm font-bold text-gray-700">{assignedTrack.name}</p>
                               </div>
                               <span className="text-base font-black text-emerald-800">{pct}%</span>
                             </div>
                             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                               <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                             </div>
-                            <div className="flex items-center justify-between text-[10px] text-gray-400">
+                            <div className="flex items-center justify-between text-sm text-gray-400">
                               <span>{doneTasks} of {totalTasks} tasks complete</span>
                               {lastActivity && <span>Last: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
                             </div>
                           </>
                         ) : (
-                          <p className="text-xs text-gray-400 italic">No path assigned yet.</p>
+                          <p className="text-sm text-gray-400 italic">No path assigned yet.</p>
                         )}
                       </div>
                     );
@@ -3022,7 +3022,7 @@ export default function App() {
               }`}
             >
               <FolderIcon />
-              <span className="text-[9px] font-black tracking-wider uppercase">SOPs</span>
+              <span className="text-base font-black tracking-wider uppercase">SOPs</span>
             </button>
 
             <button
@@ -3032,7 +3032,7 @@ export default function App() {
               }`}
             >
               <HandbookIcon />
-              <span className="text-[9px] font-black tracking-wider uppercase">Handbook</span>
+              <span className="text-base font-black tracking-wider uppercase">Handbook</span>
             </button>
 
             <button
@@ -3042,7 +3042,7 @@ export default function App() {
               }`}
             >
               <CareerIcon />
-              <span className="text-[9px] font-black tracking-wider uppercase">Career</span>
+              <span className="text-base font-black tracking-wider uppercase">Career</span>
             </button>
 
             <button
@@ -3054,12 +3054,12 @@ export default function App() {
               <div className="relative">
                 <BellIcon />
                 {userNotifications.filter(n => !n.read_at).length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-sm font-black rounded-full w-3.5 h-3.5 flex items-center justify-center">
                     {userNotifications.filter(n => !n.read_at).length > 9 ? '9+' : userNotifications.filter(n => !n.read_at).length}
                   </span>
                 )}
               </div>
-              <span className="text-[9px] font-black tracking-wider uppercase">Alerts</span>
+              <span className="text-base font-black tracking-wider uppercase">Alerts</span>
             </button>
 
             {currentUser.userType === 'admin' && (
@@ -3071,7 +3071,7 @@ export default function App() {
                   }`}
                 >
                   <PlusIcon />
-                  <span className="text-[9px] font-black tracking-wider uppercase">Draft</span>
+                  <span className="text-base font-black tracking-wider uppercase">Draft</span>
                 </button>
 
                 <button
@@ -3081,7 +3081,7 @@ export default function App() {
                   }`}
                 >
                   <ShieldIcon />
-                  <span className="text-[9px] font-black tracking-wider uppercase">Audit</span>
+                  <span className="text-base font-black tracking-wider uppercase">Audit</span>
                 </button>
               </>
             )}
