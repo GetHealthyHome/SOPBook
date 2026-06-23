@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 
 // Unified Custom SVG Icons - Optimized for instant compile rendering and zero bundle conflicts
@@ -103,6 +103,16 @@ interface CareerAssignment {
   track_id: number;
   assigned_by: string;
   assigned_at: string;
+}
+
+interface Notification {
+  id: string;
+  docId: string;
+  docTitle: string;
+  suggestedBy: string;
+  suggestedByRole: string;
+  notes: string;
+  timestamp: string;
 }
 
 const PRESET_ACCOUNTS = [
@@ -245,7 +255,6 @@ export default function App() {
   const [careerLoading, setCareerLoading] = useState(false);
   const [careerError, setCareerError] = useState('');
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
-  const [careerDeptTab, setCareerDeptTab] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   // Admin task/track creation state
   const [showAddTrack, setShowAddTrack] = useState(false);
   const [showAddTask, setShowAddTask] = useState<number | null>(null);
@@ -284,7 +293,7 @@ export default function App() {
   // New Update Recommendation States
   const [showRecommendModal, setShowRecommendModal] = useState(false);
   const [recommendationNotes, setRecommendationNotes] = useState('');
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Auto-sync databases on boot
   useEffect(() => {
@@ -350,16 +359,18 @@ export default function App() {
       ]);
       if (tracksRes.error) throw tracksRes.error;
       if (tasksRes.error) throw tasksRes.error;
-      const tracks: CareerTrack[] = (tracksRes.data || []).map((t: CareerTrack) => ({
+      const taskRows: CareerTask[] = (tasksRes.data as CareerTask[]) || [];
+      const tracks: CareerTrack[] = ((tracksRes.data as Omit<CareerTrack, 'tasks'>[]) || []).map(t => ({
         ...t,
-        tasks: (tasksRes.data || []).filter((tk: CareerTask) => tk.track_id === t.id),
+        tasks: taskRows.filter(tk => tk.track_id === t.id),
       }));
       setCareerTracks(tracks);
-      setCareerCompletions(myCompRes.data || []);
-      setAllCareerCompletions((allCompRes as any).data || []);
-      setMyAssignment((myAssignRes as any).data || null);
-      setAllAssignments((allAssignRes as any).data || []);
-    } catch {
+      setCareerCompletions((myCompRes.data as CareerCompletion[]) || []);
+      setAllCareerCompletions((allCompRes.data as CareerCompletion[]) || []);
+      setMyAssignment((myAssignRes.data as CareerAssignment) || null);
+      setAllAssignments((allAssignRes.data as CareerAssignment[]) || []);
+    } catch (err) {
+      console.warn('Career data load failed:', err);
       setCareerError('Could not load career ladder. Please try again.');
     } finally {
       setCareerLoading(false);
@@ -369,12 +380,18 @@ export default function App() {
   const saveAssignment = async (userName: string, userRole: string, trackId: number) => {
     if (!currentUser) return;
     const existing = allAssignments.find(a => a.user_name === userName);
-    if (existing) {
-      const { data } = await supabase.from('career_assignments').update({ track_id: trackId, assigned_by: currentUser.name, assigned_at: new Date().toISOString() }).eq('id', existing.id).select().single();
-      if (data) setAllAssignments(prev => prev.map(a => a.id === existing.id ? data : a));
-    } else {
-      const { data } = await supabase.from('career_assignments').insert({ user_name: userName, user_role: userRole, track_id: trackId, assigned_by: currentUser.name }).select().single();
-      if (data) setAllAssignments(prev => [...prev, data]);
+    try {
+      if (existing) {
+        const { data, error } = await supabase.from('career_assignments').update({ track_id: trackId, assigned_by: currentUser.name, assigned_at: new Date().toISOString() }).eq('id', existing.id).select().single();
+        if (error) throw error;
+        if (data) setAllAssignments(prev => prev.map(a => a.id === existing.id ? (data as CareerAssignment) : a));
+      } else {
+        const { data, error } = await supabase.from('career_assignments').insert({ user_name: userName, user_role: userRole, track_id: trackId, assigned_by: currentUser.name }).select().single();
+        if (error) throw error;
+        if (data) setAllAssignments(prev => [...prev, data as CareerAssignment]);
+      }
+    } catch (err) {
+      console.error('Failed to save assignment:', err);
     }
     setAssigningUser(null);
   };
@@ -389,9 +406,16 @@ export default function App() {
     if (!currentUser) return;
     const existing = careerCompletions.find(c => c.task_id === task.id);
     if (existing) {
-      await supabase.from('career_completions').delete().eq('id', existing.id);
+      // Optimistic remove
       setCareerCompletions(prev => prev.filter(c => c.id !== existing.id));
       setAllCareerCompletions(prev => prev.filter(c => c.id !== existing.id));
+      const { error } = await supabase.from('career_completions').delete().eq('id', existing.id);
+      if (error) {
+        // Rollback on failure
+        setCareerCompletions(prev => [...prev, existing]);
+        setAllCareerCompletions(prev => [...prev, existing]);
+        console.error('Failed to delete completion:', error);
+      }
     } else {
       const { data } = await supabase.from('career_completions').insert({
         task_id: task.id,
@@ -644,9 +668,9 @@ export default function App() {
     if (!currentUser || !selectedDoc) return;
 
     const totalSteps = selectedDoc.steps?.length || 0;
-    const completedCount = Object.keys(completedSteps).filter(k => completedSteps[parseInt(k)]).length;
+    const completedCount = Object.values(completedSteps).filter(Boolean).length;
     if (completedCount < totalSteps) {
-      return; 
+      return;
     }
 
     const todayString = new Date().toLocaleString('en-US', {
@@ -699,10 +723,10 @@ export default function App() {
     });
 
     const latestRev = selectedDoc.revisionHistory[0];
-    let nextVerNum = "1.0";
-    if (latestRev && latestRev.version) {
-      const parsed = parseFloat(latestRev.version.replace('v', ''));
-      nextVerNum = `v${(parsed + 0.1).toFixed(1)}`;
+    let nextVerNum = "v1.1";
+    if (latestRev?.version) {
+      const [major, minor] = latestRev.version.replace('v', '').split('.').map(Number);
+      nextVerNum = `v${major}.${(minor ?? 0) + 1}`;
     }
 
     const newRevLog: Revision = {
@@ -732,24 +756,27 @@ export default function App() {
 
   const categoriesList = ["All", "HVAC", "Electrical", "Plumbing", "Safety"];
 
-  const filteredDocs = documents.filter(doc => {
-    const matchesSearch = doc.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          doc.summary?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          doc.category?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === "All" || doc.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredDocs = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return documents.filter(doc => {
+      const matchesSearch = doc.title?.toLowerCase().includes(q) ||
+                            doc.summary?.toLowerCase().includes(q) ||
+                            doc.category?.toLowerCase().includes(q);
+      const matchesCategory = selectedCategory === "All" || doc.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [documents, searchQuery, selectedCategory]);
 
-  const totalSOPsCount = documents.length;
-  const totalUniqueReadersCount = Array.from(new Set(documents.flatMap(d => d.readLogs.map(l => l.userName)))).length;
-  
-  const uniqueKnownTeammates = ["Alex Rivers", "Sarah Lin", "Marcus Thorne", "Derrick Vance"];
-  const totalTeamSize = Math.max(uniqueKnownTeammates.length, totalUniqueReadersCount);
-  const potentialTotalReadRecords = totalSOPsCount * totalTeamSize;
-  const actualReadLogsCount = documents.reduce((sum, doc) => sum + doc.readLogs.length, 0);
-  const aggregateComplianceRate = potentialTotalReadRecords > 0 
-    ? Math.round((actualReadLogsCount / potentialTotalReadRecords) * 100) 
-    : 100;
+  const { totalSOPsCount, totalTeamSize, actualReadLogsCount, aggregateComplianceRate } = useMemo(() => {
+    const knownTeamSize = PRESET_ACCOUNTS.length;
+    const uniqueReaderCount = new Set(documents.flatMap(d => d.readLogs.map(l => l.userName))).size;
+    const teamSize = Math.max(knownTeamSize, uniqueReaderCount);
+    const sopCount = documents.length;
+    const readCount = documents.reduce((sum, doc) => sum + doc.readLogs.length, 0);
+    const potential = sopCount * teamSize;
+    const compliance = potential > 0 ? Math.round((readCount / potential) * 100) : 100;
+    return { totalSOPsCount: sopCount, totalTeamSize: teamSize, actualReadLogsCount: readCount, aggregateComplianceRate: compliance };
+  }, [documents]);
 
   if (!mounted) {
     return (
@@ -1373,7 +1400,12 @@ export default function App() {
               </div>
 
               {/* TAB 1: INTERACTIVE TIMELINE CHECKLIST */}
-              {docTab === 'checklist' && (
+              {docTab === 'checklist' && (() => {
+                const totalStepsCount = selectedDoc.steps?.length || 0;
+                const completedCount = Object.values(completedSteps).filter(Boolean).length;
+                const currentVersion = selectedDoc.revisionHistory[0]?.version || 'v1.0';
+                const alreadySigned = selectedDoc.readLogs.some(l => l.userName === currentUser.name && l.versionRead === currentVersion);
+                return (
                 <div className="space-y-5">
                   {/* Mandatory step completions disclaimer */}
                   <div className="bg-emerald-50/50 text-[10px] text-emerald-900 p-2.5 rounded-xl font-bold flex items-start gap-1.5 leading-snug">
@@ -1416,7 +1448,7 @@ export default function App() {
                                   alt={step.title}
                                   className="object-cover w-full h-full"
                                   onError={(e) => {
-                                    e.currentTarget.parentElement!.style.display = 'none';
+                                    if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none';
                                   }}
                                 />
                               </div>
@@ -1446,9 +1478,9 @@ export default function App() {
                   </div>
 
                   {/* Lock Indicator showing unchecked steps count */}
-                  {Object.keys(completedSteps).filter(k => completedSteps[parseInt(k)]).length < (selectedDoc.steps?.length || 0) && (
+                  {completedCount < totalStepsCount && (
                     <div className="bg-amber-50 text-amber-800 p-2.5 rounded-xl text-[10px] font-bold text-center border border-amber-100 shadow-xs">
-                      🔒 Verification Locked: Check off { (selectedDoc.steps?.length || 0) - Object.keys(completedSteps).filter(k => completedSteps[parseInt(k)]).length } remaining procedural action steps to unlock sign-off.
+                      🔒 Verification Locked: Check off {totalStepsCount - completedCount} remaining procedural action steps to unlock sign-off.
                     </div>
                   )}
 
@@ -1497,25 +1529,22 @@ export default function App() {
                     <div className="max-w-[55%]">
                       <h4 className="text-[11px] font-bold text-gray-900 leading-none">Compliance Registry</h4>
                       <p className="text-[9px] text-gray-400 mt-1 leading-snug">
-                        Validating certifies full execution of procedural version {selectedDoc.revisionHistory[0]?.version || 'v1.0'}.
+                        Validating certifies full execution of procedural version {currentVersion}.
                       </p>
                     </div>
 
                     <button
                       onClick={handleMarkAsRead}
-                      disabled={
-                        Object.keys(completedSteps).filter(k => completedSteps[parseInt(k)]).length < (selectedDoc.steps?.length || 0) ||
-                        selectedDoc.readLogs.some(l => l.userName === currentUser.name && l.versionRead === (selectedDoc.revisionHistory[0]?.version || 'v1.0'))
-                      }
+                      disabled={completedCount < totalStepsCount || alreadySigned}
                       className={`h-11 px-4 rounded-xl text-[10px] font-black transition-all flex items-center gap-1.5 ${
-                        selectedDoc.readLogs.some(l => l.userName === currentUser.name && l.versionRead === (selectedDoc.revisionHistory[0]?.version || 'v1.0'))
+                        alreadySigned
                           ? 'bg-green-100 text-green-700 cursor-not-allowed'
-                          : Object.keys(completedSteps).filter(k => completedSteps[parseInt(k)]).length < (selectedDoc.steps?.length || 0)
+                          : completedCount < totalStepsCount
                           ? 'bg-gray-200 text-gray-400 cursor-not-allowed font-bold'
                           : 'bg-emerald-800 text-white hover:bg-emerald-900 active:scale-95 shadow-md shadow-emerald-100'
                       }`}
                     >
-                      {selectedDoc.readLogs.some(l => l.userName === currentUser.name && l.versionRead === (selectedDoc.revisionHistory[0]?.version || 'v1.0')) ? (
+                      {alreadySigned ? (
                         <>
                           <AwardIcon /> Approved
                         </>
@@ -1527,7 +1556,8 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* TAB 2: AUDIT & REVISION LOG JOURNALS */}
               {docTab === 'history' && (
@@ -1602,9 +1632,12 @@ export default function App() {
                 <p className="font-extrabold text-emerald-900">Revision Version Level Shift</p>
                 <p className="text-emerald-800 font-medium">Document: "{selectedDoc.title}"</p>
                 <p className="text-emerald-800 font-medium font-bold">
-                  Target Next Version: {selectedDoc.revisionHistory[0]?.version 
-                    ? `v${(parseFloat(selectedDoc.revisionHistory[0].version.replace('v', '')) + 0.1).toFixed(1)}` 
-                    : "v1.1"}
+                  Target Next Version: {(() => {
+                    const v = selectedDoc.revisionHistory[0]?.version;
+                    if (!v) return 'v1.1';
+                    const [major, minor] = v.replace('v', '').split('.').map(Number);
+                    return `v${major}.${(minor ?? 0) + 1}`;
+                  })()}
                 </p>
               </div>
 
