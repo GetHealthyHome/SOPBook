@@ -2259,6 +2259,35 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Seed Default SOPs — shown only when database has no SOPs */}
+              {documents.length === 0 && (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-3">
+                  <div>
+                    <p className="text-xs font-black text-amber-900">No SOPs in database</p>
+                    <p className="text-[10px] text-amber-700 mt-0.5">Load the two built-in sample SOPs to get started.</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      for (const sop of DEFAULT_SOPS) {
+                        await fetch('/api/sops', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(sop),
+                        });
+                      }
+                      const res = await fetch('/api/sops');
+                      if (res.ok) {
+                        const { sops } = await res.json();
+                        if (sops?.length) setDocuments(sops);
+                      }
+                    }}
+                    className="w-full h-10 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-[11px] font-black transition-colors"
+                  >
+                    Seed Sample SOPs
+                  </button>
+                </div>
+              )}
+
               {/* Matrix List of SOP Read Statuses */}
               <div className="space-y-3">
                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">SOP Readers Audit Matrix</h3>
