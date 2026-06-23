@@ -975,8 +975,7 @@ export default function App() {
   }
 
   return (
-    {/* NOTE: Mobile-first layout (max-w-md phone frame) is preserved for sm/md screens.
-        On lg+ screens the phone chrome is hidden and a sidebar layout is used instead. */}
+    // Mobile-first layout (max-w-md phone frame) preserved for sm/md. lg+ uses sidebar layout.
     <div className="min-h-screen bg-gray-50 flex justify-center items-start py-0 sm:py-8 lg:py-0 font-sans antialiased text-gray-900">
 
       {/* Desktop sidebar — visible only on lg+ when logged in */}
