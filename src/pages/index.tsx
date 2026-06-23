@@ -304,9 +304,13 @@ export default function App() {
 
   // Handbook state
   const [handbookSections, setHandbookSections] = useState<{id: number; title: string; content: string; order_index: number}[]>([]);
+  const [handbookRevisions, setHandbookRevisions] = useState<{id: number; section_id: number; section_title: string; previous_content: string | null; new_content: string; edited_by: string; edited_at: string; change_note: string | null}[]>([]);
   const [handbookLoading, setHandbookLoading] = useState(false);
   const [handbookError, setHandbookError] = useState('');
   const [expandedSection, setExpandedSection] = useState<number | null>(null);
+  const [handbookEditMode, setHandbookEditMode] = useState(false);
+  const [editingSection, setEditingSection] = useState<{id: number | null; title: string; content: string; change_note: string} | null>(null);
+  const [handbookSaving, setHandbookSaving] = useState(false);
 
   // Career Ladder state
   const [careerTracks, setCareerTracks] = useState<CareerTrack[]>([]);
@@ -470,15 +474,22 @@ export default function App() {
     return () => { if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current); };
   }, [lockoutSeconds]);
 
+  const loadHandbook = () => {
+    setHandbookLoading(true);
+    setHandbookError('');
+    fetch('/api/handbook')
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        setHandbookSections(data.sections || []);
+        setHandbookRevisions(data.revisions || []);
+      })
+      .catch(() => setHandbookError('Could not load handbook. Please try again.'))
+      .finally(() => setHandbookLoading(false));
+  };
+
   useEffect(() => {
     if (currentView === 'handbook' && handbookSections.length === 0 && !handbookLoading) {
-      setHandbookLoading(true);
-      setHandbookError('');
-      fetch('/api/handbook')
-        .then(r => r.ok ? r.json() : Promise.reject(r.status))
-        .then(data => setHandbookSections(data.sections || []))
-        .catch(() => setHandbookError('Could not load handbook. Please try again.'))
-        .finally(() => setHandbookLoading(false));
+      loadHandbook();
     }
   }, [currentView]);
 
@@ -2421,10 +2432,41 @@ export default function App() {
           {/* VIEW: HANDBOOK */}
           {currentView === 'handbook' && currentUser && (
             <div className="space-y-5">
-              <div>
-                <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Company Resource</span>
-                <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Handbook</h1>
-                <p className="text-xs text-gray-400 mt-1">Policies, culture guidelines, and team expectations.</p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Company Resource</span>
+                  <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Handbook</h1>
+                  <p className="text-xs text-gray-400 mt-1">Policies, culture guidelines, and team expectations.</p>
+                </div>
+                {currentUser.userType === 'admin' && !handbookLoading && (
+                  <div className="flex gap-2 flex-shrink-0 mt-1">
+                    {handbookEditMode ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditingSection({ id: null, title: '', content: '', change_note: 'Section created' });
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-700 text-white text-xs font-bold"
+                        >
+                          + Add Section
+                        </button>
+                        <button
+                          onClick={() => { setHandbookEditMode(false); setEditingSection(null); }}
+                          className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold"
+                        >
+                          Done
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setHandbookEditMode(true)}
+                        className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200"
+                      >
+                        Edit Handbook
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {handbookLoading && (
@@ -2440,13 +2482,54 @@ export default function App() {
                 </div>
               )}
 
+              {/* Add new section form */}
+              {editingSection && editingSection.id === null && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                  <p className="text-xs font-black text-emerald-800">New Section</p>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="Section title"
+                    value={editingSection.title}
+                    onChange={e => setEditingSection({ ...editingSection, title: e.target.value })}
+                  />
+                  <textarea
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[120px] resize-y"
+                    placeholder="Section content..."
+                    value={editingSection.content}
+                    onChange={e => setEditingSection({ ...editingSection, content: e.target.value })}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      disabled={handbookSaving || !editingSection.title.trim()}
+                      onClick={async () => {
+                        if (!editingSection.title.trim()) return;
+                        setHandbookSaving(true);
+                        const res = await fetch('/api/handbook', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ title: editingSection.title, content: editingSection.content, change_note: editingSection.change_note }),
+                        });
+                        setHandbookSaving(false);
+                        if (res.ok) { setEditingSection(null); loadHandbook(); }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-50"
+                    >
+                      {handbookSaving ? 'Saving…' : 'Save Section'}
+                    </button>
+                    <button onClick={() => setEditingSection(null)} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">Cancel</button>
+                  </div>
+                </div>
+              )}
+
               {!handbookLoading && !handbookError && handbookSections.length === 0 && (
                 <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
                   <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
                     <HandbookIcon />
                   </div>
                   <p className="text-sm font-black text-gray-900">No Content Yet</p>
-                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Handbook sections have not been loaded. Contact your administrator.</p>
+                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">
+                    {currentUser.userType === 'admin' ? 'Click "Edit Handbook" to add the first section.' : 'Handbook sections have not been loaded. Contact your administrator.'}
+                  </p>
                 </div>
               )}
 
@@ -2454,25 +2537,116 @@ export default function App() {
                 <div className="space-y-2">
                   {handbookSections.map((section) => {
                     const isOpen = expandedSection === section.id;
+                    const isEditing = editingSection?.id === section.id;
                     return (
                       <div key={section.id} className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
-                        <button
-                          onClick={() => setExpandedSection(isOpen ? null : section.id)}
-                          className="w-full flex items-center justify-between px-4 py-3.5 text-left"
-                        >
-                          <span className="text-sm font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
-                          <span className={`flex-shrink-0 w-5 h-5 text-emerald-800 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
-                            <ChevronRightIcon />
-                          </span>
-                        </button>
-                        {isOpen && (
-                          <div className="px-4 pb-4 border-t border-gray-50">
-                            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line pt-3">{section.content}</p>
+                        {isEditing ? (
+                          <div className="p-4 space-y-3">
+                            <input
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                              value={editingSection.title}
+                              onChange={e => setEditingSection({ ...editingSection, title: e.target.value })}
+                            />
+                            <textarea
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[160px] resize-y"
+                              value={editingSection.content}
+                              onChange={e => setEditingSection({ ...editingSection, content: e.target.value })}
+                            />
+                            <input
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-500 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                              placeholder="Change note (optional)"
+                              value={editingSection.change_note}
+                              onChange={e => setEditingSection({ ...editingSection, change_note: e.target.value })}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                disabled={handbookSaving}
+                                onClick={async () => {
+                                  setHandbookSaving(true);
+                                  const res = await fetch('/api/handbook', {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ id: editingSection.id, title: editingSection.title, content: editingSection.content, change_note: editingSection.change_note }),
+                                  });
+                                  setHandbookSaving(false);
+                                  if (res.ok) { setEditingSection(null); loadHandbook(); }
+                                }}
+                                className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-50"
+                              >
+                                {handbookSaving ? 'Saving…' : 'Save'}
+                              </button>
+                              <button onClick={() => setEditingSection(null)} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">Cancel</button>
+                              <button
+                                disabled={handbookSaving}
+                                onClick={async () => {
+                                  if (!confirm('Delete this section? This cannot be undone.')) return;
+                                  setHandbookSaving(true);
+                                  const res = await fetch('/api/handbook', {
+                                    method: 'DELETE',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ id: section.id }),
+                                  });
+                                  setHandbookSaving(false);
+                                  if (res.ok) { setEditingSection(null); loadHandbook(); }
+                                }}
+                                className="ml-auto px-4 py-2 rounded-xl bg-red-50 text-red-600 text-xs font-bold disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => {
+                                if (handbookEditMode) {
+                                  setEditingSection({ id: section.id, title: section.title, content: section.content, change_note: '' });
+                                } else {
+                                  setExpandedSection(isOpen ? null : section.id);
+                                }
+                              }}
+                              className="w-full flex items-center justify-between px-4 py-3.5 text-left"
+                            >
+                              <span className="text-sm font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
+                              {handbookEditMode ? (
+                                <span className="flex-shrink-0 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">Edit</span>
+                              ) : (
+                                <span className={`flex-shrink-0 w-5 h-5 text-emerald-800 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
+                                  <ChevronRightIcon />
+                                </span>
+                              )}
+                            </button>
+                            {isOpen && !handbookEditMode && (
+                              <div className="px-4 pb-4 border-t border-gray-50">
+                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line pt-3">{section.content}</p>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Version History Addendum — admin only */}
+              {!handbookLoading && currentUser.userType === 'admin' && handbookRevisions.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-gray-100">
+                  <div className="mb-3">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Addendum</span>
+                    <h2 className="text-base font-black text-gray-700 mt-0.5">Version History</h2>
+                  </div>
+                  <div className="space-y-2">
+                    {handbookRevisions.map((rev) => (
+                      <div key={rev.id} className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-gray-800">{rev.section_title}</p>
+                          <p className="text-[10px] text-gray-400 flex-shrink-0">{new Date(rev.edited_at).toLocaleDateString()}</p>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-0.5">by {rev.edited_by}{rev.change_note ? ` — ${rev.change_note}` : ''}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
