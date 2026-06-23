@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
+import { fanOutNotification } from '@/lib/fanOutNotification';
 
 function toClient(row: Record<string, unknown>) {
   return {
@@ -71,6 +72,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }).eq('id', id).select().single();
 
     if (error) return res.status(500).json({ error: 'Failed to update SOP.' });
+
+    // Fan out notification to all users about SOP update
+    fanOutNotification({
+      type: 'sop',
+      title: `SOP Updated: ${sanitize(String(title ?? ''), 'title')}`,
+      message: `${lastUpdatedBy} updated the SOP "${sanitize(String(title ?? ''), 'title')}". Review the latest revision.`,
+      excludeUser: session.name,
+    }).catch(() => {});
+
     return res.status(200).json({ sop: toClient(data) });
   }
 

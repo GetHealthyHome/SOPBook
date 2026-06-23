@@ -34,6 +34,7 @@ const HandbookIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentC
 const CareerIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>;
 const CalendarIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
 const CloudUploadIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>;
+const BellIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>;
 
 interface Step {
   title: string;
@@ -274,7 +275,7 @@ export default function App() {
   const [mounted, setMounted] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
-  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin'>('login');
+  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications'>('login');
 
   // Account authorization state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -377,6 +378,11 @@ export default function App() {
   const [recommendationNotes, setRecommendationNotes] = useState('');
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
+  // User notifications (inbox)
+  const [userNotifications, setUserNotifications] = useState<{id: number; type: string; title: string; message: string; created_at: string; read_at: string | null}[]>([]);
+  const [userNotifsLoaded, setUserNotifsLoaded] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
   // Inactivity logout — reset the timer on any user interaction
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
@@ -455,6 +461,24 @@ export default function App() {
       .then(data => { setAllBadges(data.badges ?? []); setBadgesLoaded(true); })
       .catch(() => setBadgesLoaded(true));
   }, [currentUser, badgesLoaded]);
+
+  // Load user notifications after login
+  useEffect(() => {
+    if (!currentUser || userNotifsLoaded) return;
+    fetch('/api/user-notifications')
+      .then(r => r.ok ? r.json() : { notifications: [] })
+      .then(data => { setUserNotifications(data.notifications ?? []); setUserNotifsLoaded(true); })
+      .catch(() => setUserNotifsLoaded(true));
+  }, [currentUser, userNotifsLoaded]);
+
+  // Load admin settings after admin login
+  useEffect(() => {
+    if (!currentUser || currentUser.userType !== 'admin') return;
+    fetch('/api/admin/settings')
+      .then(r => r.ok ? r.json() : { settings: {} })
+      .then(data => { setNotificationsEnabled(data.settings?.notifications_enabled !== 'false'); })
+      .catch(() => {});
+  }, [currentUser]);
 
   // Lockout countdown ticker
   useEffect(() => {
@@ -736,6 +760,8 @@ export default function App() {
     setTeamUsers([]);
     setTeamUsersLoaded(false);
     setNotifications([]);
+    setUserNotifications([]);
+    setUserNotifsLoaded(false);
     setLoginPassword('');
     setLoginError('');
     setLockoutSeconds(0);
@@ -1008,6 +1034,7 @@ export default function App() {
               { view: 'dashboard', label: 'SOPs', icon: <FolderIcon />, match: ['dashboard','document','addRevision'] },
               { view: 'handbook', label: 'Handbook', icon: <HandbookIcon />, match: ['handbook'] },
               { view: 'careerLadder', label: 'Career', icon: <CareerIcon />, match: ['careerLadder','careerAdmin'] },
+              { view: 'userNotifications', label: 'Notifications', icon: <BellIcon />, match: ['userNotifications'] },
               ...(currentUser.userType === 'admin' ? [
                 { view: 'new', label: 'Draft SOP', icon: <PlusIcon />, match: ['new'] },
                 { view: 'adminConsole', label: 'Admin Console', icon: <ShieldIcon />, match: ['adminConsole'] },
@@ -1023,7 +1050,12 @@ export default function App() {
                 }`}
               >
                 {icon}
-                {label}
+                <span className="flex-1 text-left">{label}</span>
+                {view === 'userNotifications' && userNotifications.filter(n => !n.read_at).length > 0 && (
+                  <span className="bg-red-500 text-white text-[9px] font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                    {userNotifications.filter(n => !n.read_at).length}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -2403,6 +2435,38 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Notification Settings Panel */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                  🔔 Notification Settings
+                </h3>
+                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-gray-900">Auto-Notify on Updates</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">When enabled, all team members receive a notification whenever an SOP or Handbook section is updated. Disable during bulk changes to prevent notification spam.</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const next = !notificationsEnabled;
+                        setNotificationsEnabled(next);
+                        await fetch('/api/admin/settings', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ key: 'notifications_enabled', value: String(next) }),
+                        });
+                      }}
+                      className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${notificationsEnabled ? 'bg-emerald-600' : 'bg-gray-200'}`}
+                    >
+                      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${notificationsEnabled ? 'left-5' : 'left-0.5'}`} />
+                    </button>
+                  </div>
+                  <p className={`text-[10px] font-bold ${notificationsEnabled ? 'text-emerald-700' : 'text-gray-400'}`}>
+                    {notificationsEnabled ? 'Notifications are ON — team members will be notified of updates.' : 'Notifications are OFF — updates will be silent.'}
+                  </p>
+                </div>
+              </div>
+
               </div>
             </div>
           )}
@@ -2627,6 +2691,72 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* VIEW: USER NOTIFICATIONS */}
+          {currentView === 'userNotifications' && currentUser && (
+            <div className="space-y-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Inbox</span>
+                  <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Notifications</h1>
+                  <p className="text-xs text-gray-400 mt-1">Updates from SOPs and the Employee Handbook.</p>
+                </div>
+                {userNotifications.filter(n => !n.read_at).length > 0 && (
+                  <button
+                    onClick={() => {
+                      fetch('/api/user-notifications', { method: 'PATCH' })
+                        .then(r => r.ok ? setUserNotifications(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? new Date().toISOString() }))) : null)
+                        .catch(() => {});
+                    }}
+                    className="flex-shrink-0 mt-1 px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold hover:bg-gray-200"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              {userNotifications.length === 0 && (
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-8 text-center space-y-2">
+                  <div className="w-12 h-12 bg-gray-100 text-gray-400 rounded-2xl flex items-center justify-center mx-auto">
+                    <BellIcon />
+                  </div>
+                  <p className="text-sm font-black text-gray-700">All caught up</p>
+                  <p className="text-xs text-gray-400">You have no notifications yet.</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {userNotifications.map(notif => (
+                  <div
+                    key={notif.id}
+                    className={`rounded-2xl border px-4 py-3.5 flex items-start gap-3 ${notif.read_at ? 'bg-white border-gray-100' : 'bg-emerald-50 border-emerald-200'}`}
+                  >
+                    <div className={`mt-0.5 flex-shrink-0 ${notif.read_at ? 'text-gray-300' : 'text-emerald-600'}`}>
+                      {notif.type === 'handbook' ? <HandbookIcon /> : <FileTextIcon />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-black leading-snug ${notif.read_at ? 'text-gray-700' : 'text-gray-900'}`}>{notif.title}</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{notif.message}</p>
+                      <p className="text-[10px] text-gray-400 mt-1">{new Date(notif.created_at).toLocaleString()}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        fetch('/api/user-notifications', {
+                          method: 'DELETE',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ id: notif.id }),
+                        }).then(r => { if (r.ok) setUserNotifications(prev => prev.filter(n => n.id !== notif.id)); });
+                      }}
+                      className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors mt-0.5"
+                      title="Dismiss"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -2959,6 +3089,23 @@ export default function App() {
             >
               <CareerIcon />
               <span className="text-[9px] font-black tracking-wider uppercase">Career</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentView('userNotifications')}
+              className={`flex flex-col items-center gap-1 flex-1 relative transition-all ${
+                currentView === 'userNotifications' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <div className="relative">
+                <BellIcon />
+                {userNotifications.filter(n => !n.read_at).length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                    {userNotifications.filter(n => !n.read_at).length > 9 ? '9+' : userNotifications.filter(n => !n.read_at).length}
+                  </span>
+                )}
+              </div>
+              <span className="text-[9px] font-black tracking-wider uppercase">Alerts</span>
             </button>
 
             {currentUser.userType === 'admin' && (
