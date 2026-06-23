@@ -1033,10 +1033,8 @@ export default function App() {
       )}
 
       {/* Main panel — phone frame on mobile/tablet, full content area on desktop */}
-      <div className={`w-full transition-all ${
-        currentUser && currentView !== 'login'
-          ? 'lg:ml-56 lg:max-w-none lg:min-h-screen lg:bg-gray-50'
-          : 'lg:max-w-md lg:mx-auto'
+      <div className={`w-full transition-all lg:max-w-none lg:min-h-screen lg:bg-gray-50 ${
+        currentUser && currentView !== 'login' ? 'lg:ml-56' : ''
       } max-w-md bg-white min-h-screen sm:max-lg:min-h-[840px] sm:max-lg:rounded-[40px] sm:max-lg:shadow-2xl sm:max-lg:border-[8px] sm:max-lg:border-gray-900 relative overflow-hidden flex flex-col`}>
 
         {/* Status Bar emulation — hidden on desktop */}
@@ -1053,7 +1051,7 @@ export default function App() {
 
           {/* VIEW: COMPREHENSIVE LOGIN PORTAL */}
           {currentView === 'login' && (
-            <div className="space-y-6 py-8">
+            <div className="space-y-6 py-8 lg:max-w-sm lg:mx-auto">
               <div className="text-center space-y-1.5">
                 <h1 className="text-2xl font-black tracking-tight text-emerald-800 leading-tight block px-2">
                   Healthy Home Energy & Consulting
