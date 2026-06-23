@@ -975,11 +975,73 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center items-start py-0 sm:py-8 font-sans antialiased text-gray-900">
-      <div className="w-full max-w-md bg-white min-h-screen sm:min-h-[840px] sm:rounded-[40px] sm:shadow-2xl sm:border-[8px] sm:border-gray-900 relative overflow-hidden flex flex-col">
-        
-        {/* Status Bar emulation */}
-        <div className="bg-white px-6 pt-3 pb-2 flex justify-between items-center text-[11px] font-bold text-gray-400 select-none border-b border-gray-50">
+    {/* NOTE: Mobile-first layout (max-w-md phone frame) is preserved for sm/md screens.
+        On lg+ screens the phone chrome is hidden and a sidebar layout is used instead. */}
+    <div className="min-h-screen bg-gray-50 flex justify-center items-start py-0 sm:py-8 lg:py-0 font-sans antialiased text-gray-900">
+
+      {/* Desktop sidebar — visible only on lg+ when logged in */}
+      {currentUser && currentView !== 'login' && (
+        <aside className="hidden lg:flex flex-col w-56 min-h-screen bg-white border-r border-gray-100 shadow-sm fixed top-0 left-0 z-40">
+          <div className="px-5 py-6 border-b border-gray-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-emerald-700 rounded-lg flex items-center justify-center">
+                <ShieldIcon />
+              </div>
+              <div>
+                <p className="text-xs font-black text-gray-900 leading-none">SOPBook</p>
+                <p className="text-[9px] text-gray-400 font-bold mt-0.5">Healthy Home</p>
+              </div>
+            </div>
+          </div>
+          <nav className="flex-1 px-3 py-4 space-y-1">
+            {[
+              { view: 'dashboard', label: 'SOPs', icon: <FolderIcon />, match: ['dashboard','document','addRevision'] },
+              { view: 'handbook', label: 'Handbook', icon: <HandbookIcon />, match: ['handbook'] },
+              { view: 'careerLadder', label: 'Career', icon: <CareerIcon />, match: ['careerLadder','careerAdmin'] },
+              ...(currentUser.userType === 'admin' ? [
+                { view: 'new', label: 'Draft SOP', icon: <PlusIcon />, match: ['new'] },
+                { view: 'adminConsole', label: 'Admin Console', icon: <ShieldIcon />, match: ['adminConsole'] },
+              ] : []),
+            ].map(({ view, label, icon, match }) => (
+              <button
+                key={view}
+                onClick={() => setCurrentView(view as typeof currentView)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  match.includes(currentView)
+                    ? 'bg-emerald-50 text-emerald-800'
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                }`}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="px-3 py-4 border-t border-gray-100">
+            <div className="px-3 py-2 mb-2">
+              <p className="text-[10px] font-black text-gray-900 leading-none">{currentUser.name}</p>
+              <p className="text-[9px] text-gray-400 font-medium mt-0.5">{currentUser.role}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:bg-red-50 hover:text-red-600 transition-all"
+            >
+              <LogOutIcon />
+              Sign Out
+            </button>
+          </div>
+        </aside>
+      )}
+
+      {/* Main panel — phone frame on mobile/tablet, full content area on desktop */}
+      <div className={`w-full transition-all ${
+        currentUser && currentView !== 'login'
+          ? 'lg:ml-56 lg:max-w-none lg:min-h-screen lg:rounded-none lg:shadow-none lg:border-0 lg:bg-gray-50'
+          : 'lg:max-w-md lg:mx-auto'
+      } max-w-md bg-white min-h-screen sm:min-h-[840px] sm:rounded-[40px] sm:shadow-2xl sm:border-[8px] sm:border-gray-900 relative overflow-hidden flex flex-col`}>
+
+        {/* Status Bar emulation — hidden on desktop */}
+        <div className="lg:hidden bg-white px-6 pt-3 pb-2 flex justify-between items-center text-[11px] font-bold text-gray-400 select-none border-b border-gray-50">
           <span>9:41</span>
           <div className="flex items-center gap-1.5">
             <span className="w-3.5 h-2 bg-gray-400 rounded-xs inline-block"></span>
@@ -988,7 +1050,7 @@ export default function App() {
         </div>
 
         {/* View Router Body Viewport */}
-        <div className="flex-1 overflow-y-auto pb-24 px-5 pt-4">
+        <div className="flex-1 overflow-y-auto pb-24 lg:pb-8 px-5 lg:px-8 pt-4 lg:pt-8 lg:max-w-4xl lg:mx-auto lg:w-full">
 
           {/* VIEW: COMPREHENSIVE LOGIN PORTAL */}
           {currentView === 'login' && (
@@ -2114,6 +2176,9 @@ export default function App() {
                 )}
               </div>
 
+              {/* Panels grid — single column on mobile, two columns on desktop */}
+              <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-5 lg:space-y-0">
+
               {/* Team Member Management */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -2708,14 +2773,16 @@ export default function App() {
                   })}
                 </div>
               )}
+
+              </div>{/* end panels grid */}
             </div>
           )}
 
         </div>
 
-        {/* Unified Mobile Bottom Navigation Drawer */}
+        {/* Unified Mobile Bottom Navigation Drawer — hidden on desktop (sidebar used instead) */}
         {currentUser && currentView !== 'login' && (
-          <div className="absolute bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around px-2 z-50 shadow-lg">
+          <div className="lg:hidden absolute bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around px-2 z-50 shadow-lg">
             <button
               onClick={() => setCurrentView('dashboard')}
               className={`flex flex-col items-center gap-1 flex-1 transition-all ${
