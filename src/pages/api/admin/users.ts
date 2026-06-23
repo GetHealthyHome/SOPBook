@@ -60,6 +60,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (name === session.name) return res.status(400).json({ error: 'Cannot delete your own account.' });
     const { error } = await db.from('app_users').delete().eq('name', name);
     if (error) return res.status(500).json({ error: 'Failed to delete user.' });
+    // Clean up orphaned badge assignments for this user
+    await db.from('user_badges').delete().eq('user_name', name);
     return res.status(200).json({ ok: true });
   }
 
