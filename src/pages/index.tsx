@@ -1,6 +1,21 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import {
+  hashPassword,
+  getAttemptRecord,
+  recordFailedAttempt,
+  clearAttempts,
+  isLockedOut,
+  lockoutRemainingMs,
+  attemptsUntilNextLock,
+  createSession,
+  loadSession,
+  touchSession,
+  destroySession,
+  isSessionValid,
+  sanitize,
+} from '@/lib/security';
 
 // Unified Custom SVG Icons - Optimized for instant compile rendering and zero bundle conflicts
 const PlusIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6v12m6-6H6"/></svg>;
@@ -116,11 +131,20 @@ interface Notification {
 }
 
 const PRESET_ACCOUNTS = [
-  { name: "Marcus Thorne", role: "HVAC Supervisor", userType: "admin", password: "marcusPassword" },
-  { name: "Sarah Lin", role: "Master Electrician", userType: "admin", password: "sarahPassword" },
-  { name: "Alex Rivers", role: "Field Apprentice", userType: "user", password: "alexPassword" },
-  { name: "Derrick Vance", role: "Plumbing Specialist", userType: "user", password: "derrickPassword" }
+  { name: "Marcus Thorne", role: "HVAC Supervisor", userType: "admin" },
+  { name: "Sarah Lin", role: "Master Electrician", userType: "admin" },
+  { name: "Alex Rivers", role: "Field Apprentice", userType: "user" },
+  { name: "Derrick Vance", role: "Plumbing Specialist", userType: "user" },
 ];
+
+// Passwords are only used client-side to compute SHA-256 hashes on boot.
+// The plaintext values are never stored or transmitted after hashing.
+const PRESET_CREDENTIALS: Record<string, string> = {
+  "marcus thorne": "marcusPassword",
+  "sarah lin":     "sarahPassword",
+  "alex rivers":   "alexPassword",
+  "derrick vance": "derrickPassword",
+};
 
 const PHOTO_PRESETS = [
   { name: "Coil Gauges", url: "https://images.unsplash.com/photo-1581094288338-2314dddb7eed?w=600&auto=format&fit=crop&q=80" },
@@ -215,22 +239,36 @@ const DEFAULT_SOPS: SOP[] = [
   }
 ];
 
+// Session inactivity timeout: 30 minutes of no interaction auto-logs out
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+
 export default function App() {
   // Mounting check to eliminate Next.js server/client hydration mismatch errors
   const [mounted, setMounted] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin'>('login');
-  
+
   // Account authorization state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginName, setLoginName] = useState('');
   const [loginRole, setLoginRole] = useState('Field Apprentice');
   const [loginUserType, setLoginUserType] = useState<'admin' | 'user'>('user');
-  
+
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [showDemoDirectory, setShowDemoDirectory] = useState(false);
+
+  // Security: pre-computed password hashes (populated on mount via Web Crypto)
+  const passwordHashesRef = useRef<Record<string, string>>({});
+
+  // Security: rate-limiting / lockout display state
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
+  const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Security: inactivity timeout ref
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Core Operational Procedures Database State
   const [documents, setDocuments] = useState<SOP[]>([]);
@@ -295,14 +333,41 @@ export default function App() {
   const [recommendationNotes, setRecommendationNotes] = useState('');
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // Auto-sync databases on boot
+  // Inactivity logout — reset the timer on any user interaction
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = setTimeout(() => {
+      handleLogout();
+    }, INACTIVITY_TIMEOUT_MS);
+    touchSession();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-sync databases on boot + security initialisation
   useEffect(() => {
     setMounted(true);
+
+    // Pre-compute SHA-256 hashes for all preset account passwords
+    Promise.all(
+      Object.entries(PRESET_CREDENTIALS).map(async ([name, pw]) => {
+        const hash = await hashPassword(pw);
+        return [name, hash] as const;
+      })
+    ).then(entries => {
+      passwordHashesRef.current = Object.fromEntries(entries);
+    });
+
     try {
+      // Validate existing session before restoring user
+      const session = loadSession();
       const savedUser = localStorage.getItem('sop_user');
-      if (savedUser) {
+      if (savedUser && session && isSessionValid(session)) {
         setCurrentUser(JSON.parse(savedUser));
         setCurrentView('dashboard');
+        touchSession();
+      } else if (savedUser) {
+        // Session expired — clear stale data and force re-login
+        localStorage.removeItem('sop_user');
+        destroySession();
       }
 
       const savedSOPs = localStorage.getItem('sop_database_v3');
@@ -313,7 +378,6 @@ export default function App() {
         setDocuments(DEFAULT_SOPS);
       }
 
-      // Load active admin update recommendations
       const savedNotifs = localStorage.getItem('admin_notifications');
       if (savedNotifs) {
         setNotifications(JSON.parse(savedNotifs));
@@ -324,6 +388,37 @@ export default function App() {
       setLoading(false);
     }
   }, []);
+
+  // Attach inactivity listeners when a user is logged in
+  useEffect(() => {
+    if (!currentUser) return;
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    const handler = () => resetInactivityTimer();
+    events.forEach(ev => window.addEventListener(ev, handler, { passive: true }));
+    resetInactivityTimer();
+    return () => {
+      events.forEach(ev => window.removeEventListener(ev, handler));
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    };
+  }, [currentUser, resetInactivityTimer]);
+
+  // Lockout countdown ticker
+  useEffect(() => {
+    if (lockoutSeconds <= 0) {
+      if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current);
+      return;
+    }
+    lockoutTimerRef.current = setInterval(() => {
+      setLockoutSeconds(s => {
+        if (s <= 1) {
+          if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => { if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current); };
+  }, [lockoutSeconds]);
 
   useEffect(() => {
     if (currentView === 'handbook' && handbookSections.length === 0 && !handbookLoading) {
@@ -481,13 +576,16 @@ export default function App() {
     e.preventDefault();
     if (!currentUser || !selectedDoc || !recommendationNotes.trim()) return;
 
+    const cleanNotes = sanitize(recommendationNotes, 'notes');
+    if (!cleanNotes) return;
+
     const newNotif = {
       id: `notif-${Date.now()}`,
       docId: selectedDoc.id,
       docTitle: selectedDoc.title,
       suggestedBy: currentUser.name,
       suggestedByRole: currentUser.role,
-      notes: recommendationNotes.trim(),
+      notes: cleanNotes,
       timestamp: new Date().toLocaleString('en-US', {
         month: '2-digit',
         day: '2-digit',
@@ -510,58 +608,90 @@ export default function App() {
     saveToLocal(DEFAULT_SOPS);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
-    if (!loginName.trim()) {
-      setLoginError('Teammate Name is required.');
-      return;
-    }
-    if (!loginPassword) {
-      setLoginError('Password is required.');
+    const rawName = loginName.trim();
+    const rawPassword = loginPassword;
+
+    if (!rawName) { setLoginError('Teammate Name is required.'); return; }
+    if (!rawPassword) { setLoginError('Password is required.'); return; }
+
+    const nameKey = rawName.toLowerCase();
+
+    // --- Rate limit check ---
+    const rec = getAttemptRecord(nameKey);
+    if (isLockedOut(rec)) {
+      const secs = Math.ceil(lockoutRemainingMs(rec) / 1000);
+      setLockoutSeconds(secs);
+      setLoginError(`Account temporarily locked. Try again in ${secs}s.`);
+      setLoginPassword('');
       return;
     }
 
-    const matchedAccount = PRESET_ACCOUNTS.find(
-      acc => acc.name.toLowerCase() === loginName.trim().toLowerCase()
-    );
+    const matchedAccount = PRESET_ACCOUNTS.find(a => a.name.toLowerCase() === nameKey);
 
     if (matchedAccount) {
-      if (matchedAccount.password !== loginPassword) {
-        setLoginError('Incorrect password for this teammate account.');
+      // Hash the entered password and compare to pre-computed hash
+      const enteredHash = await hashPassword(rawPassword);
+      const storedHash = passwordHashesRef.current[nameKey];
+
+      if (!storedHash || enteredHash !== storedHash) {
+        const updated = recordFailedAttempt(nameKey);
+        if (isLockedOut(updated)) {
+          const secs = Math.ceil(lockoutRemainingMs(updated) / 1000);
+          setLockoutSeconds(secs);
+          setLoginError(`Too many failed attempts. Locked for ${secs}s.`);
+        } else {
+          const left = attemptsUntilNextLock(updated);
+          setAttemptsLeft(left);
+          setLoginError(`Incorrect password. ${left} attempt${left !== 1 ? 's' : ''} remaining before lockout.`);
+        }
+        setLoginPassword('');
         return;
       }
-      
-      const userObj: User = { 
-        name: matchedAccount.name, 
-        role: matchedAccount.role, 
-        userType: matchedAccount.userType as 'admin' | 'user' 
+
+      // Success — clear rate limit, create session
+      clearAttempts(nameKey);
+      setAttemptsLeft(null);
+      const userObj: User = {
+        name: matchedAccount.name,
+        role: matchedAccount.role,
+        userType: matchedAccount.userType as 'admin' | 'user',
       };
+      createSession();
       setCurrentUser(userObj);
       localStorage.setItem('sop_user', JSON.stringify(userObj));
       setCurrentView('dashboard');
     } else {
-      const userObj: User = { 
-        name: loginName.trim(), 
-        role: loginRole, 
-        userType: loginUserType 
-      };
-      setCurrentUser(userObj);
-      localStorage.setItem('sop_user', JSON.stringify(userObj));
-      setCurrentView('dashboard');
+      // Non-preset account: apply the same rate-limit / lockout to prevent enumeration
+      const updated = recordFailedAttempt(nameKey);
+      if (isLockedOut(updated)) {
+        const secs = Math.ceil(lockoutRemainingMs(updated) / 1000);
+        setLockoutSeconds(secs);
+        setLoginError(`Too many attempts. Locked for ${secs}s.`);
+      } else {
+        setLoginError('Account not found. Check your name and try again.');
+      }
+      setLoginPassword('');
+      return;
     }
 
     setLoginPassword('');
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
+  const handleLogout = useCallback(() => {
+    destroySession();
     localStorage.removeItem('sop_user');
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    setCurrentUser(null);
     setLoginPassword('');
     setLoginError('');
+    setLockoutSeconds(0);
+    setAttemptsLeft(null);
     setCurrentView('login');
-  };
+  }, []);
 
   const toggleStepCompleted = (index: number) => {
     setCompletedSteps(prev => ({
@@ -606,8 +736,11 @@ export default function App() {
   const handlePublishSOP = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.userType !== 'admin') return;
-    
-    if (!newTitle.trim() || !newSummary.trim()) {
+
+    const cleanTitle = sanitize(newTitle, 'title');
+    const cleanSummary = sanitize(newSummary, 'summary');
+
+    if (!cleanTitle || !cleanSummary) {
       setFormError('Please enter a procedure title and overview tagline.');
       return;
     }
@@ -634,8 +767,8 @@ export default function App() {
     const newSOP: SOP = {
       id: `sop-${Date.now()}`,
       category: newCategory,
-      title: newTitle,
-      summary: newSummary,
+      title: cleanTitle,
+      summary: cleanSummary,
       lastUpdated: todayString,
       lastUpdatedBy: currentUser.name,
       lastUpdatedByRole: currentUser.role,
@@ -711,7 +844,8 @@ export default function App() {
   const handlePublishRevision = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !selectedDoc || currentUser.userType !== 'admin') return;
-    if (!revisionNotes.trim()) {
+    const cleanRevNotes = sanitize(revisionNotes, 'notes');
+    if (!cleanRevNotes) {
       setRevisionError('Please enter detailed changelog notes.');
       return;
     }
@@ -734,7 +868,7 @@ export default function App() {
       date: todayString,
       updatedBy: currentUser.name,
       userRole: currentUser.role,
-      notes: revisionNotes.trim()
+      notes: cleanRevNotes,
     };
 
     const updatedDoc: SOP = {
@@ -889,11 +1023,35 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Lockout countdown banner */}
+                {lockoutSeconds > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center space-y-1">
+                    <p className="text-xs font-black text-red-700">🔒 Account Locked</p>
+                    <p className="text-[10px] text-red-600 font-semibold">
+                      Try again in <span className="font-black">{lockoutSeconds}s</span>
+                    </p>
+                  </div>
+                )}
+
+                {/* Attempts-remaining warning */}
+                {attemptsLeft !== null && attemptsLeft > 0 && lockoutSeconds === 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-center">
+                    <p className="text-[10px] font-bold text-amber-700">
+                      ⚠️ {attemptsLeft} attempt{attemptsLeft !== 1 ? 's' : ''} remaining before temporary lockout
+                    </p>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  className="w-full h-12 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-100 transition-all active:scale-95 duration-100 mt-2"
+                  disabled={lockoutSeconds > 0}
+                  className={`w-full h-12 rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 duration-100 mt-2 ${
+                    lockoutSeconds > 0
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
+                      : 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-emerald-100'
+                  }`}
                 >
-                  Enter Operational Portal
+                  {lockoutSeconds > 0 ? `Locked (${lockoutSeconds}s)` : 'Enter Operational Portal'}
                 </button>
               </form>
 
@@ -913,7 +1071,7 @@ export default function App() {
                 {showDemoDirectory && (
                   <div className="mt-3 bg-gray-50 border border-gray-100 rounded-xl p-3.5 space-y-2.5">
                     <p className="text-[9px] text-gray-400 font-bold leading-relaxed">
-                      Copy and paste these pre-registered teammate credentials to test the permission flows (Admins can review logs and edit SOPs, Users can read and sign off):
+                      Pre-registered teammate accounts for testing permission flows. Contact your administrator for credentials.
                     </p>
                     <div className="space-y-2 divide-y divide-gray-100/60 text-[10px]">
                       {PRESET_ACCOUNTS.map((acc, i) => (
@@ -929,10 +1087,7 @@ export default function App() {
                             </p>
                             <p className="text-gray-400 font-medium text-[9px]">{acc.role}</p>
                           </div>
-                          <div className="text-right">
-                            <span className="text-gray-400 text-[9px] block">Password:</span>
-                            <code className="bg-white border border-gray-100 px-1.5 py-0.5 rounded-md font-mono font-bold text-emerald-800 select-all">{acc.password}</code>
-                          </div>
+                          <span className="text-[9px] font-bold text-gray-400 italic">Protected</span>
                         </div>
                       ))}
                     </div>
