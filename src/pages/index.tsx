@@ -1833,6 +1833,58 @@ export default function App() {
                 </div>
               )}
 
+              {/* Export Button */}
+              <div className="border-t border-gray-100 pt-4">
+                <button
+                  onClick={() => {
+                    const doc = selectedDoc;
+                    const version = doc.revisionHistory[0]?.version || 'v1.0';
+                    const lines: string[] = [
+                      `SOP: ${doc.title}`,
+                      `Category: ${doc.category}  |  Version: ${version}`,
+                      `Last Updated: ${doc.lastUpdated} by ${doc.lastUpdatedBy} (${doc.lastUpdatedByRole})`,
+                      `Next Review: ${doc.nextReviewDate}`,
+                      '',
+                      `OVERVIEW`,
+                      doc.summary,
+                      '',
+                    ];
+                    if (doc.tools)     lines.push(`TOOLS REQUIRED`, doc.tools, '');
+                    if (doc.materials) lines.push(`MATERIALS NEEDED`, doc.materials, '');
+                    lines.push(`CHECKLIST STEPS`);
+                    doc.steps?.forEach((step, i) => {
+                      lines.push(``, `Step ${i + 1}: ${step.title}`);
+                      if (step.summary) lines.push(`  Summary: ${step.summary}`);
+                      lines.push(`  ${step.body}`);
+                    });
+                    lines.push('', `REVISION HISTORY`);
+                    doc.revisionHistory?.forEach(rev => {
+                      lines.push(`  ${rev.version} — ${rev.date} — ${rev.updatedBy} (${rev.userRole})`);
+                      lines.push(`  "${rev.notes}"`);
+                    });
+                    lines.push('', `SIGN-OFF LOG`);
+                    if (doc.readLogs?.length) {
+                      doc.readLogs.forEach(log => {
+                        lines.push(`  ${log.userName} (${log.userRole}) — ${log.versionRead} — ${log.timestamp}`);
+                      });
+                    } else {
+                      lines.push('  No sign-offs recorded.');
+                    }
+                    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${doc.title.replace(/[^a-z0-9]/gi, '_')}_${version}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="w-full h-11 rounded-xl border border-gray-200 text-[11px] font-black text-gray-500 hover:text-emerald-800 hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  Export SOP
+                </button>
+              </div>
+
             </div>
           )}
 
