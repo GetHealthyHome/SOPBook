@@ -976,7 +976,7 @@ export default function App() {
 
   return (
     // Mobile-first layout (max-w-md phone frame) preserved for sm/md. lg+ uses sidebar layout.
-    <div className="min-h-screen bg-gray-50 flex justify-center items-start py-0 sm:py-8 lg:py-0 font-sans antialiased text-gray-900">
+    <div className="min-h-screen bg-gray-50 flex justify-center items-start py-0 sm:max-lg:py-8 font-sans antialiased text-gray-900">
 
       {/* Desktop sidebar — visible only on lg+ when logged in */}
       {currentUser && currentView !== 'login' && (
@@ -1035,9 +1035,9 @@ export default function App() {
       {/* Main panel — phone frame on mobile/tablet, full content area on desktop */}
       <div className={`w-full transition-all ${
         currentUser && currentView !== 'login'
-          ? 'lg:ml-56 lg:max-w-none lg:min-h-screen lg:rounded-none lg:shadow-none lg:border-0 lg:bg-gray-50'
+          ? 'lg:ml-56 lg:max-w-none lg:min-h-screen lg:bg-gray-50'
           : 'lg:max-w-md lg:mx-auto'
-      } max-w-md bg-white min-h-screen sm:min-h-[840px] sm:rounded-[40px] sm:shadow-2xl sm:border-[8px] sm:border-gray-900 relative overflow-hidden flex flex-col`}>
+      } max-w-md bg-white min-h-screen sm:max-lg:min-h-[840px] sm:max-lg:rounded-[40px] sm:max-lg:shadow-2xl sm:max-lg:border-[8px] sm:max-lg:border-gray-900 relative overflow-hidden flex flex-col`}>
 
         {/* Status Bar emulation — hidden on desktop */}
         <div className="lg:hidden bg-white px-6 pt-3 pb-2 flex justify-between items-center text-[11px] font-bold text-gray-400 select-none border-b border-gray-50">
