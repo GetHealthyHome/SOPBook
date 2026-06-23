@@ -96,6 +96,15 @@ interface CareerCompletion {
   completed_at: string;
 }
 
+interface CareerAssignment {
+  id: number;
+  user_name: string;
+  user_role: string;
+  track_id: number;
+  assigned_by: string;
+  assigned_at: string;
+}
+
 const PRESET_ACCOUNTS = [
   { name: "Marcus Thorne", role: "HVAC Supervisor", userType: "admin", password: "marcusPassword" },
   { name: "Sarah Lin", role: "Master Electrician", userType: "admin", password: "sarahPassword" },
@@ -231,11 +240,11 @@ export default function App() {
   const [careerTracks, setCareerTracks] = useState<CareerTrack[]>([]);
   const [careerCompletions, setCareerCompletions] = useState<CareerCompletion[]>([]);
   const [allCareerCompletions, setAllCareerCompletions] = useState<CareerCompletion[]>([]);
+  const [myAssignment, setMyAssignment] = useState<CareerAssignment | null>(null);
+  const [allAssignments, setAllAssignments] = useState<CareerAssignment[]>([]);
   const [careerLoading, setCareerLoading] = useState(false);
   const [careerError, setCareerError] = useState('');
-  const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
-  const [careerTab, setCareerTab] = useState<'mine' | 'team'>('mine');
   const [careerDeptTab, setCareerDeptTab] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   // Admin task/track creation state
   const [showAddTrack, setShowAddTrack] = useState(false);
@@ -247,6 +256,10 @@ export default function App() {
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskImages, setNewTaskImages] = useState('');
   const [newTaskSop, setNewTaskSop] = useState('');
+  // Admin assignment state
+  const [assigningUser, setAssigningUser] = useState<string | null>(null);
+  const [assignDept, setAssignDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
+  const [assignTrackId, setAssignTrackId] = useState<number | null>(null);
 
   // Interactive Checklist completion tracking state
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
@@ -326,11 +339,14 @@ export default function App() {
     setCareerLoading(true);
     setCareerError('');
     try {
-      const [tracksRes, tasksRes, myCompRes, allCompRes] = await Promise.all([
+      const isAdmin = user.userType === 'admin';
+      const [tracksRes, tasksRes, myCompRes, allCompRes, myAssignRes, allAssignRes] = await Promise.all([
         supabase.from('career_tracks').select('*').order('order_index'),
         supabase.from('career_tasks').select('*').order('order_index'),
         supabase.from('career_completions').select('*').eq('user_name', user.name),
-        user.userType === 'admin' ? supabase.from('career_completions').select('*') : Promise.resolve({ data: [], error: null }),
+        isAdmin ? supabase.from('career_completions').select('*') : Promise.resolve({ data: [], error: null }),
+        supabase.from('career_assignments').select('*').eq('user_name', user.name).maybeSingle(),
+        isAdmin ? supabase.from('career_assignments').select('*') : Promise.resolve({ data: [], error: null }),
       ]);
       if (tracksRes.error) throw tracksRes.error;
       if (tasksRes.error) throw tasksRes.error;
@@ -341,11 +357,26 @@ export default function App() {
       setCareerTracks(tracks);
       setCareerCompletions(myCompRes.data || []);
       setAllCareerCompletions((allCompRes as any).data || []);
+      setMyAssignment((myAssignRes as any).data || null);
+      setAllAssignments((allAssignRes as any).data || []);
     } catch {
       setCareerError('Could not load career ladder. Please try again.');
     } finally {
       setCareerLoading(false);
     }
+  };
+
+  const saveAssignment = async (userName: string, userRole: string, trackId: number) => {
+    if (!currentUser) return;
+    const existing = allAssignments.find(a => a.user_name === userName);
+    if (existing) {
+      const { data } = await supabase.from('career_assignments').update({ track_id: trackId, assigned_by: currentUser.name, assigned_at: new Date().toISOString() }).eq('id', existing.id).select().single();
+      if (data) setAllAssignments(prev => prev.map(a => a.id === existing.id ? data : a));
+    } else {
+      const { data } = await supabase.from('career_assignments').insert({ user_name: userName, user_role: userRole, track_id: trackId, assigned_by: currentUser.name }).select().single();
+      if (data) setAllAssignments(prev => [...prev, data]);
+    }
+    setAssigningUser(null);
   };
 
   useEffect(() => {
@@ -1846,210 +1877,192 @@ export default function App() {
           )}
 
           {/* VIEW: CAREER LADDER — Employee */}
-          {currentView === 'careerLadder' && currentUser && (
-            <div className="space-y-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
-                  <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
-                  <p className="text-xs text-gray-400 mt-1">Check off skills as you master them.</p>
-                </div>
-                {currentUser.userType === 'admin' && (
-                  <button
-                    onClick={() => { setCurrentView('careerAdmin'); if (careerTracks.length === 0) loadCareerData(currentUser); }}
-                    className="flex items-center gap-1.5 bg-emerald-800 text-white text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl"
-                  >
-                    <ShieldIcon />
-                    Team
-                  </button>
-                )}
-              </div>
-
-              {careerLoading && (
-                <div className="flex items-center justify-center py-16">
-                  <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
-
-              {careerError && (
-                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
-                  <p className="text-xs text-amber-800 font-bold">Career ladder tables not found.</p>
-                  <p className="text-xs text-amber-700">Run the career ladder SQL in Supabase, then tap Retry.</p>
-                  <button onClick={() => { setCareerError(''); loadCareerData(currentUser); }} className="text-xs font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
-                </div>
-              )}
-
-              {!careerLoading && !careerError && careerTracks.length === 0 && (
-                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
-                  <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
-                    <CareerIcon />
+          {currentView === 'careerLadder' && currentUser && (() => {
+            const assignedTrack = myAssignment ? careerTracks.find(t => t.id === myAssignment.track_id) : null;
+            const totalTasks = assignedTrack ? assignedTrack.tasks.length : 0;
+            const doneTasks = assignedTrack ? assignedTrack.tasks.filter(t => careerCompletions.some(c => c.task_id === t.id)).length : 0;
+            const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+            return (
+              <div className="space-y-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
+                    <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
+                    <p className="text-xs text-gray-400 mt-1">Check off skills as you master them.</p>
                   </div>
-                  <p className="text-sm font-black text-gray-900">No Levels Yet</p>
-                  <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Use the form below to add your first career level, or run the seed SQL to load all levels at once.</p>
-                </div>
-              )}
-
-              {/* Department tab switcher — only show when there are tracks */}
-              {!careerLoading && careerTracks.length > 0 && (
-                <div className="flex bg-gray-100 rounded-2xl p-1 gap-1">
-                  {(['Home Performance', 'HVAC'] as const).map(dept => (
+                  {currentUser.userType === 'admin' && (
                     <button
-                      key={dept}
-                      onClick={() => setCareerDeptTab(dept)}
-                      className={`flex-1 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${careerDeptTab === dept ? 'bg-white text-emerald-800 shadow-sm' : 'text-gray-400'}`}
+                      onClick={() => { setCurrentView('careerAdmin'); if (careerTracks.length === 0) loadCareerData(currentUser); }}
+                      className="flex items-center gap-1.5 bg-emerald-800 text-white text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl"
                     >
-                      {dept}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Track list for selected department */}
-              {!careerLoading && !careerError && careerTracks.filter(t => t.department === careerDeptTab).map(track => {
-                const totalTasks = track.tasks.length;
-                const doneTasks = track.tasks.filter(t => careerCompletions.some(c => c.task_id === t.id)).length;
-                const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-                const isTrackOpen = expandedTrack === track.id;
-                return (
-                  <div key={track.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-                    <button
-                      onClick={() => setExpandedTrack(isTrackOpen ? null : track.id)}
-                      className="w-full flex items-center justify-between px-4 py-4 text-left"
-                    >
-                      <div className="flex-1 min-w-0 pr-3">
-                        <p className="text-sm font-bold text-gray-900">{track.name}</p>
-                        {track.description ? <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">{track.description}</p> : null}
-                        <div className="flex items-center gap-2 mt-2">
-                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className="text-[10px] font-black text-emerald-800 whitespace-nowrap">{doneTasks}/{totalTasks}</span>
-                        </div>
-                      </div>
-                      <span className={`flex-shrink-0 text-emerald-800 transition-transform duration-200 ${isTrackOpen ? 'rotate-90' : ''}`}>
-                        <ChevronRightIcon />
-                      </span>
-                    </button>
-
-                    {isTrackOpen && (
-                      <div className="border-t border-gray-50 divide-y divide-gray-50">
-                        {track.tasks.length === 0 && (
-                          <p className="text-xs text-gray-400 px-4 py-4 text-center">No tasks yet — admins can add tasks below.</p>
-                        )}
-                        {track.tasks.map(task => {
-                          const completion = careerCompletions.find(c => c.task_id === task.id);
-                          const isDone = !!completion;
-                          const isTaskOpen = expandedTask === task.id;
-                          const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
-                          const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title);
-                          return (
-                            <div key={task.id} className="px-4 py-3">
-                              <div className="flex items-start gap-3">
-                                <button
-                                  onClick={() => toggleTaskCompletion(task)}
-                                  className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 ${isDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-300'}`}
-                                >
-                                  {isDone && <CheckIcon />}
-                                </button>
-                                <div className="flex-1 min-w-0">
-                                  <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
-                                    <p className={`text-sm font-semibold leading-snug ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
-                                    {isDone && completion && (
-                                      <p className="text-[10px] text-emerald-600 mt-0.5 font-medium">
-                                        Completed {new Date(completion.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                      </p>
-                                    )}
-                                  </button>
-                                  {isTaskOpen && (
-                                    <div className="mt-3 space-y-3">
-                                      {task.description ? <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
-                                      {task.image_urls && task.image_urls.length > 0 && (
-                                        <div className="flex gap-2 overflow-x-auto pb-1">
-                                          {task.image_urls.map((url, i) => (
-                                            <img key={i} src={url} alt={`Example ${i + 1}`} className="h-32 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
-                                          ))}
-                                        </div>
-                                      )}
-                                      {linkedSop && (
-                                        <button onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left">
-                                          <BookOpenIcon />
-                                          <span className="text-xs font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
-                                          <ChevronRightIcon />
-                                        </button>
-                                      )}
-                                      {task.sop_title && !linkedSop && (
-                                        <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                                          <BookOpenIcon />
-                                          <span className="text-xs text-gray-400 truncate">SOP ref: {task.sop_title}</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                                {hasDetail && (
-                                  <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
-                                    <ChevronRightIcon />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-
-                        {/* Admin: add task inline */}
-                        {currentUser.userType === 'admin' && (
-                          <div className="px-4 py-3">
-                            {showAddTask === track.id ? (
-                              <div className="space-y-2">
-                                <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
-                                <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
-                                <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
-                                <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
-                                <div className="flex gap-2">
-                                  <button onClick={() => addCareerTask(track.id)} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Add Task</button>
-                                  <button onClick={() => setShowAddTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <button onClick={() => setShowAddTask(track.id)} className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold">
-                                <PlusIcon /> Add Task
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Admin: add level to current department */}
-              {currentUser.userType === 'admin' && !careerLoading && (
-                <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-4">
-                  {showAddTrack ? (
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">New Level — {newTrackDept}</p>
-                      <div className="flex gap-2">
-                        {(['Home Performance', 'HVAC'] as const).map(d => (
-                          <button key={d} onClick={() => setNewTrackDept(d)} className={`flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase border transition-all ${newTrackDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
-                        ))}
-                      </div>
-                      <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-                      <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
-                      <div className="flex gap-2">
-                        <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Create Level</button>
-                        <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button onClick={() => { setShowAddTrack(true); setNewTrackDept(careerDeptTab); }} className="flex items-center justify-center gap-2 w-full text-gray-400 text-xs font-bold">
-                      <PlusIcon /> Add Level to {careerDeptTab}
+                      <ShieldIcon />
+                      Team
                     </button>
                   )}
                 </div>
-              )}
-            </div>
-          )}
+
+                {careerLoading && (
+                  <div className="flex items-center justify-center py-16">
+                    <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+
+                {careerError && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
+                    <p className="text-xs text-amber-800 font-bold">Career ladder tables not found.</p>
+                    <p className="text-xs text-amber-700">Run the career ladder SQL in Supabase, then tap Retry.</p>
+                    <button onClick={() => { setCareerError(''); loadCareerData(currentUser); }} className="text-xs font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
+                  </div>
+                )}
+
+                {/* Employee: not yet assigned */}
+                {!careerLoading && !careerError && !assignedTrack && currentUser.userType !== 'admin' && (
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 text-center space-y-2">
+                    <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
+                      <CareerIcon />
+                    </div>
+                    <p className="text-sm font-black text-gray-900">Path Not Assigned Yet</p>
+                    <p className="text-xs text-gray-400 max-w-[220px] mx-auto leading-relaxed">Your admin will assign your career path and starting level. Check back soon.</p>
+                  </div>
+                )}
+
+                {/* Employee / Admin: assigned track view */}
+                {!careerLoading && !careerError && assignedTrack && (
+                  <div className="space-y-4">
+                    {/* Assignment banner */}
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">{assignedTrack.department}</p>
+                          <p className="text-base font-black text-gray-900 mt-0.5">{assignedTrack.name}</p>
+                          {myAssignment && <p className="text-[10px] text-gray-400 mt-0.5">Assigned by {myAssignment.assigned_by}</p>}
+                        </div>
+                        <span className="text-2xl font-black text-emerald-800">{pct}%</span>
+                      </div>
+                      <div className="mt-3 h-2 bg-emerald-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      <p className="text-[10px] text-emerald-700 mt-1">{doneTasks} of {totalTasks} tasks complete</p>
+                    </div>
+
+                    {/* Task list */}
+                    <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden divide-y divide-gray-50">
+                      {assignedTrack.tasks.length === 0 && (
+                        <p className="text-xs text-gray-400 px-4 py-6 text-center">No tasks added to this level yet.</p>
+                      )}
+                      {assignedTrack.tasks.map(task => {
+                        const completion = careerCompletions.find(c => c.task_id === task.id);
+                        const isDone = !!completion;
+                        const isTaskOpen = expandedTask === task.id;
+                        const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
+                        const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title);
+                        return (
+                          <div key={task.id} className="px-4 py-3">
+                            <div className="flex items-start gap-3">
+                              <button
+                                onClick={() => toggleTaskCompletion(task)}
+                                className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 ${isDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-300'}`}
+                              >
+                                {isDone && <CheckIcon />}
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
+                                  <p className={`text-sm font-semibold leading-snug ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
+                                  {isDone && completion && (
+                                    <p className="text-[10px] text-emerald-600 mt-0.5 font-medium">
+                                      Completed {new Date(completion.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </p>
+                                  )}
+                                </button>
+                                {isTaskOpen && (
+                                  <div className="mt-3 space-y-3">
+                                    {task.description ? <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
+                                    {task.image_urls && task.image_urls.length > 0 && (
+                                      <div className="flex gap-2 overflow-x-auto pb-1">
+                                        {task.image_urls.map((url, i) => (
+                                          <img key={i} src={url} alt={`Example ${i + 1}`} className="h-32 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
+                                        ))}
+                                      </div>
+                                    )}
+                                    {linkedSop && (
+                                      <button onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left">
+                                        <BookOpenIcon />
+                                        <span className="text-xs font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
+                                        <ChevronRightIcon />
+                                      </button>
+                                    )}
+                                    {task.sop_title && !linkedSop && (
+                                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                                        <BookOpenIcon />
+                                        <span className="text-xs text-gray-400 truncate">SOP ref: {task.sop_title}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {hasDetail && (
+                                <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
+                                  <ChevronRightIcon />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Admin: add task inline */}
+                      {currentUser.userType === 'admin' && (
+                        <div className="px-4 py-3">
+                          {showAddTask === assignedTrack.id ? (
+                            <div className="space-y-2">
+                              <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                              <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
+                              <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none" />
+                              <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                              <div className="flex gap-2">
+                                <button onClick={() => addCareerTask(assignedTrack.id)} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Add Task</button>
+                                <button onClick={() => setShowAddTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button onClick={() => setShowAddTask(assignedTrack.id)} className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold">
+                              <PlusIcon /> Add Task to This Level
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin: add level form */}
+                {currentUser.userType === 'admin' && !careerLoading && !careerError && (
+                  <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-4">
+                    {showAddTrack ? (
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">New Level</p>
+                        <div className="flex gap-2">
+                          {(['Home Performance', 'HVAC'] as const).map(d => (
+                            <button key={d} onClick={() => setNewTrackDept(d)} className={`flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase border transition-all ${newTrackDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
+                          ))}
+                        </div>
+                        <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                        <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs" />
+                        <div className="flex gap-2">
+                          <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2">Create Level</button>
+                          <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-xs font-bold">
+                        <PlusIcon /> Add New Level
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* VIEW: CAREER LADDER — Admin Team Dashboard */}
           {currentView === 'careerAdmin' && currentUser && currentUser.userType === 'admin' && (
@@ -2070,70 +2083,92 @@ export default function App() {
                 </div>
               )}
 
-              {!careerLoading && (() => {
-                const totalTasks = careerTracks.flatMap(t => t.tasks).length;
-                const userMap: Record<string, { name: string; role: string; completions: CareerCompletion[] }> = {};
-                allCareerCompletions.forEach(c => {
-                  if (!userMap[c.user_name]) userMap[c.user_name] = { name: c.user_name, role: c.user_role, completions: [] };
-                  userMap[c.user_name].completions.push(c);
-                });
-                const users = Object.values(userMap);
-                if (users.length === 0) return (
-                  <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 text-center">
-                    <p className="text-sm font-black text-gray-900">No completions yet</p>
-                    <p className="text-xs text-gray-400 mt-1">Team members haven't started checking off tasks.</p>
-                  </div>
-                );
-                return (
-                  <div className="space-y-3">
-                    {users.sort((a, b) => b.completions.length - a.completions.length).map(u => {
-                      const pct = totalTasks > 0 ? Math.round((u.completions.length / totalTasks) * 100) : 0;
-                      const sorted = [...u.completions].sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
-                      const lastActivity = sorted[0];
-                      return (
-                        <div key={u.name} className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="text-sm font-bold text-gray-900">{u.name}</p>
-                              <p className="text-[11px] text-gray-400">{u.role}</p>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-lg font-black text-emerald-800">{pct}%</span>
-                              <p className="text-[10px] text-gray-400">{u.completions.length}/{totalTasks} tasks</p>
-                            </div>
+              {!careerLoading && (
+                <div className="space-y-3">
+                  {PRESET_ACCOUNTS.filter(a => a.userType !== 'admin').map(account => {
+                    const assignment = allAssignments.find(a => a.user_name === account.name);
+                    const assignedTrack = assignment ? careerTracks.find(t => t.id === assignment.track_id) : null;
+                    const userCompletions = allCareerCompletions.filter(c => c.user_name === account.name);
+                    const totalTasks = assignedTrack ? assignedTrack.tasks.length : 0;
+                    const doneTasks = assignedTrack ? assignedTrack.tasks.filter(t => userCompletions.some(c => c.task_id === t.id)).length : 0;
+                    const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+                    const sorted = [...userCompletions].sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
+                    const lastActivity = sorted[0];
+                    const isAssigning = assigningUser === account.name;
+                    return (
+                      <div key={account.name} className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
+                        {/* Header */}
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{account.name}</p>
+                            <p className="text-[11px] text-gray-400">{account.role}</p>
                           </div>
-                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                          </div>
-                          {lastActivity && <p className="text-[10px] text-gray-400">Last activity: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
-                          {/* Per-department then per-level breakdown */}
-                          {(['Home Performance', 'HVAC'] as const).map(dept => {
-                            const deptTracks = careerTracks.filter(t => t.department === dept);
-                            if (deptTracks.length === 0) return null;
-                            return (
-                              <div key={dept} className="pt-2 border-t border-gray-50 space-y-1.5">
-                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{dept}</p>
-                                {deptTracks.map(track => {
-                                  const trackDone = track.tasks.filter(t => u.completions.some(c => c.task_id === t.id)).length;
-                                  return (
-                                    <div key={track.id} className="flex items-center gap-2">
-                                      <span className="text-[10px] text-gray-500 w-24 truncate">{track.name}</span>
-                                      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                                        <div className="h-full bg-emerald-400 rounded-full" style={{ width: track.tasks.length > 0 ? `${Math.round((trackDone / track.tasks.length) * 100)}%` : '0%' }} />
-                                      </div>
-                                      <span className="text-[10px] text-gray-400 w-10 text-right">{trackDone}/{track.tasks.length}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })}
+                          <button
+                            onClick={() => { setAssigningUser(isAssigning ? null : account.name); setAssignDept(assignedTrack?.department as any || 'Home Performance'); setAssignTrackId(assignedTrack?.id || null); }}
+                            className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
+                          >
+                            {assignedTrack ? 'Reassign' : 'Assign Path'}
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+
+                        {/* Assignment picker */}
+                        {isAssigning && (
+                          <div className="space-y-2 bg-gray-50 rounded-xl p-3">
+                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Assign Career Path</p>
+                            <div className="flex gap-2">
+                              {(['Home Performance', 'HVAC'] as const).map(d => (
+                                <button key={d} onClick={() => { setAssignDept(d); setAssignTrackId(null); }} className={`flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase border transition-all ${assignDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
+                              ))}
+                            </div>
+                            <select
+                              value={assignTrackId || ''}
+                              onChange={e => setAssignTrackId(Number(e.target.value))}
+                              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs bg-white"
+                            >
+                              <option value="">Select level...</option>
+                              {careerTracks.filter(t => t.department === assignDept).map(t => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                              ))}
+                            </select>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => assignTrackId && saveAssignment(account.name, account.role, assignTrackId)}
+                                disabled={!assignTrackId}
+                                className="flex-1 bg-emerald-800 text-white text-xs font-bold rounded-xl py-2 disabled:opacity-40"
+                              >
+                                Save Assignment
+                              </button>
+                              <button onClick={() => setAssigningUser(null)} className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-xl py-2">Cancel</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Current path & progress */}
+                        {assignedTrack ? (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-[10px] text-emerald-700 font-black uppercase tracking-wider">{assignedTrack.department}</p>
+                                <p className="text-xs font-bold text-gray-700">{assignedTrack.name}</p>
+                              </div>
+                              <span className="text-base font-black text-emerald-800">{pct}%</span>
+                            </div>
+                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-gray-400">
+                              <span>{doneTasks} of {totalTasks} tasks complete</span>
+                              {lastActivity && <span>Last: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic">No path assigned yet.</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
