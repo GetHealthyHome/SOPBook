@@ -1107,38 +1107,6 @@ export default function App() {
                   />
                 </div>
 
-                <div className="bg-gray-50 p-3 rounded-xl space-y-2 border border-gray-100">
-                  <p className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wide">Registering New Account?</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="block text-[8px] font-bold text-gray-400 uppercase tracking-wider">Access Profile</label>
-                      <select
-                        value={loginUserType}
-                        onChange={(e) => setLoginUserType(e.target.value as 'admin' | 'user')}
-                        className="w-full h-10 px-2 bg-white border border-gray-200 rounded-lg text-[10px] font-semibold focus:outline-none text-gray-900"
-                      >
-                        <option value="user">Standard User</option>
-                        <option value="admin">Administrator</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="block text-[8px] font-bold text-gray-400 uppercase tracking-wider">Assigned Role</label>
-                      <select
-                        value={loginRole}
-                        onChange={(e) => setLoginRole(e.target.value)}
-                        className="w-full h-10 px-2 bg-white border border-gray-200 rounded-lg text-[10px] font-semibold focus:outline-none text-gray-900"
-                      >
-                        <option value="HVAC Tech Lead">HVAC Tech Lead</option>
-                        <option value="Field Apprentice">Field Apprentice</option>
-                        <option value="Master Electrician">Master Electrician</option>
-                        <option value="Plumbing Specialist">Plumbing Specialist</option>
-                        <option value="Safety Inspector">Safety Inspector</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Lockout countdown banner */}
                 {lockoutSeconds > 0 && (
                   <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center space-y-1">
