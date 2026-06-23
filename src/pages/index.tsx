@@ -65,7 +65,9 @@ interface SOP {
   lastUpdated: string;
   lastUpdatedBy: string;
   lastUpdatedByRole: string;
-  nextReviewDate: string; 
+  nextReviewDate: string;
+  tools: string;
+  materials: string;
   steps: Step[];
   revisionHistory: Revision[];
   readLogs: ReadLog[];
@@ -151,6 +153,8 @@ const DEFAULT_SOPS: SOP[] = [
     lastUpdatedBy: "Marcus Thorne",
     lastUpdatedByRole: "HVAC Supervisor",
     nextReviewDate: "12/18/2026",
+    tools: "Manifold gauge set, vacuum pump, micron gauge, service wrench",
+    materials: "Refrigerant (as specified), gasket seals",
     steps: [
       { 
         title: "Manifold Connection", 
@@ -199,8 +203,10 @@ const DEFAULT_SOPS: SOP[] = [
     lastUpdatedBy: "Sarah Lin",
     lastUpdatedByRole: "Master Electrician",
     nextReviewDate: "12/15/2026",
+    tools: "Non-contact voltage tester, multi-meter, wire stripper",
+    materials: "C-wire (blue common wire), thermostat unit, terminal board",
     steps: [
-      { 
+      {
         title: "Power Cycle Verification", 
         summary: "Isolate circuit breaker power loop.", 
         body: "Always verify line voltage status at the master switch panel. Use a non-contact voltage tester before touching internal copper wire clusters or handling low-voltage terminations.",
@@ -228,6 +234,40 @@ const DEFAULT_SOPS: SOP[] = [
 
 // Session inactivity timeout: 30 minutes of no interaction auto-logs out
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+
+interface UserBadge {
+  id: number;
+  user_name: string;
+  badge: string;
+  assigned_by: string;
+  assigned_at: string;
+}
+
+const ALL_BADGES = ['EPA 608', 'Spray Foam', 'BPI', 'Radon', 'Lead', 'Mold Testing', 'Forklift'] as const;
+type BadgeType = typeof ALL_BADGES[number];
+
+const BADGE_STYLES: Record<BadgeType, { bg: string; text: string; border: string; emoji: string }> = {
+  'EPA 608':      { bg: 'bg-blue-50',    text: 'text-blue-800',    border: 'border-blue-200',    emoji: '❄️' },
+  'Spray Foam':   { bg: 'bg-purple-50',  text: 'text-purple-800',  border: 'border-purple-200',  emoji: '🔫' },
+  'BPI':          { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', emoji: '🏠' },
+  'Radon':        { bg: 'bg-amber-50',   text: 'text-amber-800',   border: 'border-amber-200',   emoji: '☢️' },
+  'Lead':         { bg: 'bg-orange-50',  text: 'text-orange-800',  border: 'border-orange-200',  emoji: '⚠️' },
+  'Mold Testing': { bg: 'bg-teal-50',    text: 'text-teal-800',    border: 'border-teal-200',    emoji: '🔬' },
+  'Forklift':     { bg: 'bg-yellow-50',  text: 'text-yellow-800',  border: 'border-yellow-200',  emoji: '🏗️' },
+};
+
+const BadgeChip = ({ badge, onRemove }: { badge: string; onRemove?: () => void }) => {
+  const style = BADGE_STYLES[badge as BadgeType] ?? { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', emoji: '🏅' };
+  return (
+    <span className={`inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md border ${style.bg} ${style.text} ${style.border} leading-none`}>
+      <span>{style.emoji}</span>
+      <span>{badge}</span>
+      {onRemove && (
+        <button onClick={onRemove} className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none">✕</button>
+      )}
+    </span>
+  );
+};
 
 export default function App() {
   // Mounting check to eliminate Next.js server/client hydration mismatch errors
@@ -292,6 +332,20 @@ export default function App() {
   const [assignDept, setAssignDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   const [assignTrackId, setAssignTrackId] = useState<number | null>(null);
 
+  const [allBadges, setAllBadges] = useState<UserBadge[]>([]);
+  const [badgesLoaded, setBadgesLoaded] = useState(false);
+
+  const [teamUsers, setTeamUsers] = useState<User[]>([]);
+  const [teamUsersLoaded, setTeamUsersLoaded] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserRole, setNewUserRole] = useState('');
+  const [newUserType, setNewUserType] = useState<'admin' | 'user'>('user');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserError, setNewUserError] = useState('');
+
+  const [sopDeleteConfirm, setSopDeleteConfirm] = useState<string | null>(null);
+
   // Interactive Checklist completion tracking state
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
 
@@ -299,6 +353,8 @@ export default function App() {
   const [newCategory, setNewCategory] = useState('HVAC');
   const [newTitle, setNewTitle] = useState('');
   const [newSummary, setNewSummary] = useState('');
+  const [newTools, setNewTools] = useState('');
+  const [newMaterials, setNewMaterials] = useState('');
   const [newSteps, setNewSteps] = useState<Step[]>([
     { title: '', summary: '', body: '', imageUrl: '' }
   ]);
@@ -323,7 +379,7 @@ export default function App() {
     inactivityTimerRef.current = setTimeout(() => {
       handleLogout();
     }, INACTIVITY_TIMEOUT_MS);
-    touchSession();
+    // session kept alive via httpOnly cookie — no client-side touch needed
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-sync databases on boot + session validation via server cookie
@@ -341,24 +397,7 @@ export default function App() {
         }
       })
       .catch(() => {}) // network error — remain on login screen
-      .finally(() => {
-        // Load SOP and notification data from localStorage
-        try {
-          const savedSOPs = localStorage.getItem('sop_database_v3');
-          if (savedSOPs) {
-            setDocuments(JSON.parse(savedSOPs));
-          } else {
-            localStorage.setItem('sop_database_v3', JSON.stringify(DEFAULT_SOPS));
-            setDocuments(DEFAULT_SOPS);
-          }
-          const savedNotifs = localStorage.getItem('admin_notifications');
-          if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
-        } catch {
-          setDocuments(DEFAULT_SOPS);
-        } finally {
-          setLoading(false);
-        }
-      });
+      .finally(() => { setLoading(false); });
   }, []);
 
   // Attach inactivity listeners when a user is logged in
@@ -373,6 +412,45 @@ export default function App() {
       if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     };
   }, [currentUser, resetInactivityTimer]);
+
+  // Load SOPs from Supabase whenever a user logs in
+  useEffect(() => {
+    if (!currentUser) return;
+    fetch('/api/sops')
+      .then(r => r.ok ? r.json() : { sops: [] })
+      .then(data => {
+        const sops = data.sops ?? [];
+        setDocuments(sops.length > 0 ? sops : DEFAULT_SOPS);
+      })
+      .catch(() => setDocuments(DEFAULT_SOPS));
+  }, [currentUser]);
+
+  // Load team members after login
+  useEffect(() => {
+    if (!currentUser || teamUsersLoaded) return;
+    fetch('/api/admin/users')
+      .then(r => r.ok ? r.json() : { users: [] })
+      .then(data => { setTeamUsers(data.users ?? []); setTeamUsersLoaded(true); })
+      .catch(() => setTeamUsersLoaded(true));
+  }, [currentUser, teamUsersLoaded]);
+
+  // Load notifications after login (admin only)
+  useEffect(() => {
+    if (!currentUser || currentUser.userType !== 'admin') return;
+    fetch('/api/notifications')
+      .then(r => r.ok ? r.json() : { notifications: [] })
+      .then(data => setNotifications(data.notifications ?? []))
+      .catch(() => {});
+  }, [currentUser]);
+
+  // Load badges whenever a user logs in
+  useEffect(() => {
+    if (!currentUser || badgesLoaded) return;
+    fetch('/api/badges')
+      .then(r => r.ok ? r.json() : { badges: [] })
+      .then(data => { setAllBadges(data.badges ?? []); setBadgesLoaded(true); })
+      .catch(() => setBadgesLoaded(true));
+  }, [currentUser, badgesLoaded]);
 
   // Lockout countdown ticker
   useEffect(() => {
@@ -535,50 +613,48 @@ export default function App() {
     setShowAddTask(null);
   };
 
-  const saveToLocal = (newDocs: SOP[]) => {
-    setDocuments(newDocs);
-    try {
-      localStorage.setItem('sop_database_v3', JSON.stringify(newDocs));
-    } catch (e) {
-      console.warn("Storage exception:", e);
-    }
+  const saveSOPToServer = async (sop: SOP): Promise<SOP | null> => {
+    const res = await fetch(`/api/sops/${sop.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sop),
+    });
+    if (!res.ok) return null;
+    const { sop: updated } = await res.json();
+    return updated ?? null;
   };
 
   // Handler for recommending SOP updates
-  const handleRecommendUpdate = (e: React.FormEvent) => {
+  const handleRecommendUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !selectedDoc || !recommendationNotes.trim()) return;
 
     const cleanNotes = sanitize(recommendationNotes, 'notes');
     if (!cleanNotes) return;
 
-    const newNotif = {
+    const newNotif: Notification = {
       id: `notif-${Date.now()}`,
       docId: selectedDoc.id,
       docTitle: selectedDoc.title,
       suggestedBy: currentUser.name,
       suggestedByRole: currentUser.role,
       notes: cleanNotes,
-      timestamp: new Date().toLocaleString('en-US', {
-        month: '2-digit',
-        day: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      })
+      timestamp: new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }),
     };
 
-    const updatedNotifs = [newNotif, ...notifications];
-    setNotifications(updatedNotifs);
-    localStorage.setItem('admin_notifications', JSON.stringify(updatedNotifs));
-
+    setNotifications(prev => [newNotif, ...prev]);
     setRecommendationNotes('');
     setShowRecommendModal(false);
+
+    fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newNotif),
+    }).catch(() => {});
   };
 
   const handleLoadSamples = () => {
-    saveToLocal(DEFAULT_SOPS);
+    setDocuments(DEFAULT_SOPS);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -644,6 +720,11 @@ export default function App() {
     fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     setCurrentUser(null);
+    setAllBadges([]);
+    setBadgesLoaded(false);
+    setTeamUsers([]);
+    setTeamUsersLoaded(false);
+    setNotifications([]);
     setLoginPassword('');
     setLoginError('');
     setLockoutSeconds(0);
@@ -691,7 +772,7 @@ export default function App() {
     setNewSteps(updated);
   };
 
-  const handlePublishSOP = (e: React.FormEvent) => {
+  const handlePublishSOP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.userType !== 'admin') return;
 
@@ -708,19 +789,10 @@ export default function App() {
       return;
     }
 
-    const todayString = new Date().toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric'
-    });
-
-    const nextYear = new Date();
-    nextYear.setMonth(nextYear.getMonth() + 6);
-    const reviewString = nextYear.toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric'
-    });
+    const todayString = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const nextReview = new Date();
+    nextReview.setMonth(nextReview.getMonth() + 6);
+    const reviewString = nextReview.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
     const newSOP: SOP = {
       id: `sop-${Date.now()}`,
@@ -731,75 +803,80 @@ export default function App() {
       lastUpdatedBy: currentUser.name,
       lastUpdatedByRole: currentUser.role,
       nextReviewDate: reviewString,
+      tools: sanitize(newTools, 'notes'),
+      materials: sanitize(newMaterials, 'notes'),
       steps: newSteps,
-      revisionHistory: [
-        {
-          version: "v1.0",
-          date: todayString,
-          updatedBy: currentUser.name,
-          userRole: currentUser.role,
-          notes: "Initial protocol creation and structural verification check paths setup."
-        }
-      ],
+      revisionHistory: [{ version: "v1.0", date: todayString, updatedBy: currentUser.name, userRole: currentUser.role, notes: "Initial protocol creation." }],
       readLogs: []
     };
 
-    const updated = [newSOP, ...documents];
-    saveToLocal(updated);
+    try {
+      const res = await fetch('/api/sops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSOP),
+      });
+      if (!res.ok) throw new Error();
+      const { sop } = await res.json();
+      setDocuments(prev => [sop, ...prev]);
+    } catch {
+      setFormError('Failed to save SOP. Please try again.');
+      return;
+    }
 
     setNewTitle('');
     setNewSummary('');
+    setNewTools('');
+    setNewMaterials('');
     setNewCategory('HVAC');
     setNewSteps([{ title: '', summary: '', body: '', imageUrl: '' }]);
     setFormError('');
     setCurrentView('dashboard');
   };
 
-  const handleMarkAsRead = () => {
+  const handleMarkAsRead = async () => {
     if (!currentUser || !selectedDoc) return;
 
     const totalSteps = selectedDoc.steps?.length || 0;
     const completedCount = Object.values(completedSteps).filter(Boolean).length;
-    if (completedCount < totalSteps) {
-      return;
-    }
-
-    const todayString = new Date().toLocaleString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
+    if (completedCount < totalSteps) return;
 
     const currentVersion = selectedDoc.revisionHistory[0]?.version || 'v1.0';
-
     const alreadySigned = selectedDoc.readLogs.some(
       log => log.userName === currentUser.name && log.versionRead === currentVersion
     );
-
     if (alreadySigned) return;
 
     const newLog: ReadLog = {
       userName: currentUser.name,
       userRole: currentUser.role,
-      timestamp: todayString,
-      versionRead: currentVersion
+      timestamp: new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }),
+      versionRead: currentVersion,
     };
 
-    const updatedDoc = {
-      ...selectedDoc,
-      readLogs: [newLog, ...selectedDoc.readLogs]
-    };
-
+    // Optimistic update
+    const updatedDoc = { ...selectedDoc, readLogs: [newLog, ...selectedDoc.readLogs] };
     setSelectedDoc(updatedDoc);
+    setDocuments(prev => prev.map(d => d.id === selectedDoc.id ? updatedDoc : d));
 
-    const updatedDocsList = documents.map(d => d.id === selectedDoc.id ? updatedDoc : d);
-    saveToLocal(updatedDocsList);
+    try {
+      const res = await fetch(`/api/sops/${selectedDoc.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ readLogOnly: true, newLog }),
+      });
+      if (!res.ok) throw new Error();
+      const { sop } = await res.json();
+      setDocuments(prev => prev.map(d => d.id === sop.id ? sop : d));
+      setSelectedDoc(sop);
+    } catch {
+      // Revert optimistic update on failure
+      setSelectedDoc(selectedDoc);
+      setDocuments(prev => prev.map(d => d.id === selectedDoc.id ? selectedDoc : d));
+    }
   };
 
-  const handlePublishRevision = (e: React.FormEvent) => {
+  const handlePublishRevision = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !selectedDoc || currentUser.userType !== 'admin') return;
     const cleanRevNotes = sanitize(revisionNotes, 'notes');
@@ -837,16 +914,27 @@ export default function App() {
       revisionHistory: [newRevLog, ...selectedDoc.revisionHistory]
     };
 
-    setSelectedDoc(updatedDoc);
     setRevisionNotes('');
     setRevisionError('');
 
-    const updatedList = documents.map(d => d.id === selectedDoc.id ? updatedDoc : d);
-    saveToLocal(updatedList);
+    try {
+      const saved = await saveSOPToServer(updatedDoc);
+      if (!saved) throw new Error();
+      setSelectedDoc(saved);
+      setDocuments(prev => prev.map(d => d.id === saved.id ? saved : d));
+    } catch {
+      setRevisionError('Failed to save revision. Please try again.');
+      return;
+    }
     setCurrentView('document');
   };
 
   const categoriesList = ["All", "HVAC", "Electrical", "Plumbing", "Safety"];
+
+  // Falls back to PRESET_ACCOUNTS while DB users haven't loaded yet
+  const effectiveUsers: User[] = teamUsers.length > 0
+    ? teamUsers
+    : PRESET_ACCOUNTS.map(a => ({ ...a, userType: a.userType as 'admin' | 'user' }));
 
   const filteredDocs = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -860,7 +948,7 @@ export default function App() {
   }, [documents, searchQuery, selectedCategory]);
 
   const { totalSOPsCount, totalTeamSize, actualReadLogsCount, aggregateComplianceRate } = useMemo(() => {
-    const knownTeamSize = PRESET_ACCOUNTS.length;
+    const knownTeamSize = effectiveUsers.length;
     const uniqueReaderCount = new Set(documents.flatMap(d => d.readLogs.map(l => l.userName))).size;
     const teamSize = Math.max(knownTeamSize, uniqueReaderCount);
     const sopCount = documents.length;
@@ -1032,7 +1120,7 @@ export default function App() {
                       Pre-registered teammate accounts for testing permission flows. Contact your administrator for credentials.
                     </p>
                     <div className="space-y-2 divide-y divide-gray-100/60 text-[10px]">
-                      {PRESET_ACCOUNTS.map((acc, i) => (
+                      {effectiveUsers.map((acc, i) => (
                         <div key={i} className="pt-2 flex justify-between items-start gap-1">
                           <div className="space-y-0.5">
                             <p className="font-extrabold text-gray-900 flex items-center gap-1">
@@ -1071,6 +1159,13 @@ export default function App() {
                       {currentUser.userType === 'admin' && <ShieldIcon />}
                       <span className="capitalize">{currentUser.userType}</span> — {currentUser.role}
                     </span>
+                    {allBadges.filter(b => b.user_name === currentUser.name).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {allBadges.filter(b => b.user_name === currentUser.name).map(b => (
+                          <BadgeChip key={b.id} badge={b.badge} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button
@@ -1294,6 +1389,30 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Tools & Materials */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Tools Required</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Manifold gauge, vacuum pump..."
+                      value={newTools}
+                      onChange={(e) => setNewTools(e.target.value)}
+                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Materials Needed</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Refrigerant, gasket seals..."
+                      value={newMaterials}
+                      onChange={(e) => setNewMaterials(e.target.value)}
+                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                    />
+                  </div>
+                </div>
+
                 {/* Steps constructor list */}
                 <div className="border-t border-gray-100 pt-4 space-y-3">
                   <div className="flex justify-between items-center">
@@ -1458,16 +1577,43 @@ export default function App() {
                 </div>
 
                 {currentUser.userType === 'admin' && (
-                  <button
-                    onClick={() => {
-                      setRevisionNotes('');
-                      setRevisionError('');
-                      setCurrentView('addRevision');
-                    }}
-                    className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 flex-shrink-0"
-                  >
-                    <HistoryIcon /> Revise
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => { setRevisionNotes(''); setRevisionError(''); setCurrentView('addRevision'); }}
+                      className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 flex-shrink-0"
+                    >
+                      <HistoryIcon /> Revise
+                    </button>
+                    {sopDeleteConfirm === selectedDoc.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={async () => {
+                            await fetch(`/api/sops/${selectedDoc.id}`, { method: 'DELETE' });
+                            setDocuments(prev => prev.filter(d => d.id !== selectedDoc.id));
+                            setSopDeleteConfirm(null);
+                            setCurrentView('dashboard');
+                          }}
+                          className="h-8 px-2.5 bg-red-600 text-white rounded-lg text-[10px] font-black"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setSopDeleteConfirm(null)}
+                          className="h-8 px-2 text-gray-400 hover:text-gray-600 rounded-lg text-[10px] font-black"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setSopDeleteConfirm(selectedDoc.id)}
+                        className="h-8 w-8 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        title="Delete SOP"
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -1491,6 +1637,24 @@ export default function App() {
                   {selectedDoc.steps?.length} Steps
                 </span>
               </div>
+
+              {/* Tools & Materials */}
+              {(selectedDoc.tools || selectedDoc.materials) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedDoc.tools && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
+                      <p className="text-[8px] font-black text-blue-700 uppercase tracking-wider mb-1">🔧 Tools</p>
+                      <p className="text-[10px] text-blue-900 font-medium leading-relaxed">{selectedDoc.tools}</p>
+                    </div>
+                  )}
+                  {selectedDoc.materials && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-2.5">
+                      <p className="text-[8px] font-black text-amber-700 uppercase tracking-wider mb-1">📦 Materials</p>
+                      <p className="text-[10px] text-amber-900 font-medium leading-relaxed">{selectedDoc.materials}</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* View toggle tabs */}
               <div className="flex bg-gray-100 p-1 rounded-xl">
@@ -1722,6 +1886,58 @@ export default function App() {
                 </div>
               )}
 
+              {/* Export Button */}
+              <div className="border-t border-gray-100 pt-4">
+                <button
+                  onClick={() => {
+                    const doc = selectedDoc;
+                    const version = doc.revisionHistory[0]?.version || 'v1.0';
+                    const lines: string[] = [
+                      `SOP: ${doc.title}`,
+                      `Category: ${doc.category}  |  Version: ${version}`,
+                      `Last Updated: ${doc.lastUpdated} by ${doc.lastUpdatedBy} (${doc.lastUpdatedByRole})`,
+                      `Next Review: ${doc.nextReviewDate}`,
+                      '',
+                      `OVERVIEW`,
+                      doc.summary,
+                      '',
+                    ];
+                    if (doc.tools)     lines.push(`TOOLS REQUIRED`, doc.tools, '');
+                    if (doc.materials) lines.push(`MATERIALS NEEDED`, doc.materials, '');
+                    lines.push(`CHECKLIST STEPS`);
+                    doc.steps?.forEach((step, i) => {
+                      lines.push(``, `Step ${i + 1}: ${step.title}`);
+                      if (step.summary) lines.push(`  Summary: ${step.summary}`);
+                      lines.push(`  ${step.body}`);
+                    });
+                    lines.push('', `REVISION HISTORY`);
+                    doc.revisionHistory?.forEach(rev => {
+                      lines.push(`  ${rev.version} — ${rev.date} — ${rev.updatedBy} (${rev.userRole})`);
+                      lines.push(`  "${rev.notes}"`);
+                    });
+                    lines.push('', `SIGN-OFF LOG`);
+                    if (doc.readLogs?.length) {
+                      doc.readLogs.forEach(log => {
+                        lines.push(`  ${log.userName} (${log.userRole}) — ${log.versionRead} — ${log.timestamp}`);
+                      });
+                    } else {
+                      lines.push('  No sign-offs recorded.');
+                    }
+                    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${doc.title.replace(/[^a-z0-9]/gi, '_')}_${version}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="w-full h-11 rounded-xl border border-gray-200 text-[11px] font-black text-gray-500 hover:text-emerald-800 hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  Export SOP
+                </button>
+              </div>
+
             </div>
           )}
 
@@ -1870,9 +2086,12 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => {
-                            const updated = notifications.filter(n => n.id !== notif.id);
-                            setNotifications(updated);
-                            localStorage.setItem('admin_notifications', JSON.stringify(updated));
+                            setNotifications(prev => prev.filter(n => n.id !== notif.id));
+                            fetch('/api/notifications', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ id: notif.id }),
+                            }).catch(() => {});
                           }}
                           className="absolute top-2.5 right-2.5 text-amber-700 hover:text-red-500 p-1"
                           title="Dismiss Suggestion"
@@ -1894,6 +2113,180 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              {/* Team Member Management */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">👥 Team Members</h3>
+                  <button
+                    onClick={() => { setShowAddUser(v => !v); setNewUserError(''); }}
+                    className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
+                  >
+                    {showAddUser ? 'Cancel' : '+ Add Member'}
+                  </button>
+                </div>
+
+                {showAddUser && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3">
+                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider">New Team Member</p>
+                    {newUserError && <p className="text-[10px] text-red-600 font-bold">{newUserError}</p>}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Full Name</label>
+                        <input value={newUserName} onChange={e => setNewUserName(e.target.value)} placeholder="e.g., Jordan Blake" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Job Title</label>
+                        <input value={newUserRole} onChange={e => setNewUserRole(e.target.value)} placeholder="e.g., HVAC Technician" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Password</label>
+                        <input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} placeholder="Min 8 characters" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Access Level</label>
+                        <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
+                          <button onClick={() => setNewUserType('user')} className={`flex-1 text-[10px] font-black transition-colors ${newUserType === 'user' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>User</button>
+                          <button onClick={() => setNewUserType('admin')} className={`flex-1 text-[10px] font-black transition-colors ${newUserType === 'admin' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>Admin</button>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setNewUserError('');
+                        if (!newUserName.trim() || !newUserRole.trim() || !newUserPassword) { setNewUserError('All fields are required.'); return; }
+                        const res = await fetch('/api/admin/users', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ name: newUserName.trim(), role: newUserRole.trim(), userType: newUserType, password: newUserPassword }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) { setNewUserError(data.error ?? 'Failed to add user.'); return; }
+                        setTeamUsers(prev => [...prev, data.user]);
+                        setNewUserName(''); setNewUserRole(''); setNewUserPassword(''); setNewUserType('user');
+                        setShowAddUser(false);
+                      }}
+                      className="w-full h-10 bg-emerald-800 text-white rounded-xl text-[11px] font-black hover:bg-emerald-900 transition-colors"
+                    >
+                      Add Team Member
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {effectiveUsers.map(u => (
+                    <div key={u.name} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center justify-between shadow-xs">
+                      <div>
+                        <p className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                          {u.name}
+                          <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${u.userType === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>{u.userType}</span>
+                        </p>
+                        <p className="text-[10px] text-gray-400 font-medium mt-0.5">{u.role}</p>
+                      </div>
+                      {u.name !== currentUser.name && (
+                        <button
+                          onClick={async () => {
+                            const res = await fetch('/api/admin/users', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ name: u.name }),
+                            });
+                            if (res.ok) setTeamUsers(prev => prev.filter(m => m.name !== u.name));
+                          }}
+                          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          title={`Remove ${u.name}`}
+                        >
+                          <TrashIcon />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Badge Management Panel */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                  🏅 Badge Management
+                </h3>
+                <div className="space-y-3">
+                  {effectiveUsers.map(account => {
+                    const userBadges = allBadges.filter(b => b.user_name === account.name);
+                    const unassigned = ALL_BADGES.filter(b => !userBadges.some(ub => ub.badge === b));
+                    return (
+                      <div key={account.name} className="bg-white border border-gray-100 p-3.5 rounded-2xl shadow-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-black text-gray-900">{account.name}</p>
+                            <p className="text-[9px] text-gray-400 font-bold">{account.role}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {userBadges.map(ub => (
+                            <BadgeChip key={ub.id} badge={ub.badge} onRemove={() => {
+                              fetch('/api/badges', {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userName: account.name, badge: ub.badge }),
+                              }).then(r => {
+                                if (r.ok) setAllBadges(prev => prev.filter(b => b.id !== ub.id));
+                              });
+                            }} />
+                          ))}
+                          {unassigned.map(badge => (
+                            <button
+                              key={badge}
+                              onClick={() => {
+                                fetch('/api/badges', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ userName: account.name, badge }),
+                                }).then(r => r.ok ? r.json() : null).then(data => {
+                                  if (data?.badge) setAllBadges(prev => [...prev, data.badge]);
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-dashed border-gray-300 text-gray-400 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
+                            >
+                              + {badge}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Seed Default SOPs — shown only when database has no SOPs */}
+              {documents.length === 0 && (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-3">
+                  <div>
+                    <p className="text-xs font-black text-amber-900">No SOPs in database</p>
+                    <p className="text-[10px] text-amber-700 mt-0.5">Load the two built-in sample SOPs to get started.</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      for (const sop of DEFAULT_SOPS) {
+                        await fetch('/api/sops', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(sop),
+                        });
+                      }
+                      const res = await fetch('/api/sops');
+                      if (res.ok) {
+                        const { sops } = await res.json();
+                        if (sops?.length) setDocuments(sops);
+                      }
+                    }}
+                    className="w-full h-10 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-[11px] font-black transition-colors"
+                  >
+                    Seed Sample SOPs
+                  </button>
+                </div>
+              )}
 
               {/* Matrix List of SOP Read Statuses */}
               <div className="space-y-3">
@@ -2231,7 +2624,7 @@ export default function App() {
 
               {!careerLoading && (
                 <div className="space-y-3">
-                  {PRESET_ACCOUNTS.filter(a => a.userType !== 'admin').map(account => {
+                  {effectiveUsers.filter(a => a.userType !== 'admin').map(account => {
                     const assignment = allAssignments.find(a => a.user_name === account.name);
                     const assignedTrack = assignment ? careerTracks.find(t => t.id === assignment.track_id) : null;
                     const userCompletions = allCareerCompletions.filter(c => c.user_name === account.name);
