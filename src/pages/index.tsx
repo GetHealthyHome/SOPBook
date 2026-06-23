@@ -65,7 +65,9 @@ interface SOP {
   lastUpdated: string;
   lastUpdatedBy: string;
   lastUpdatedByRole: string;
-  nextReviewDate: string; 
+  nextReviewDate: string;
+  tools: string;
+  materials: string;
   steps: Step[];
   revisionHistory: Revision[];
   readLogs: ReadLog[];
@@ -151,6 +153,8 @@ const DEFAULT_SOPS: SOP[] = [
     lastUpdatedBy: "Marcus Thorne",
     lastUpdatedByRole: "HVAC Supervisor",
     nextReviewDate: "12/18/2026",
+    tools: "Manifold gauge set, vacuum pump, micron gauge, service wrench",
+    materials: "Refrigerant (as specified), gasket seals",
     steps: [
       { 
         title: "Manifold Connection", 
@@ -199,8 +203,10 @@ const DEFAULT_SOPS: SOP[] = [
     lastUpdatedBy: "Sarah Lin",
     lastUpdatedByRole: "Master Electrician",
     nextReviewDate: "12/15/2026",
+    tools: "Non-contact voltage tester, multi-meter, wire stripper",
+    materials: "C-wire (blue common wire), thermostat unit, terminal board",
     steps: [
-      { 
+      {
         title: "Power Cycle Verification", 
         summary: "Isolate circuit breaker power loop.", 
         body: "Always verify line voltage status at the master switch panel. Use a non-contact voltage tester before touching internal copper wire clusters or handling low-voltage terminations.",
@@ -336,6 +342,8 @@ export default function App() {
   const [newCategory, setNewCategory] = useState('HVAC');
   const [newTitle, setNewTitle] = useState('');
   const [newSummary, setNewSummary] = useState('');
+  const [newTools, setNewTools] = useState('');
+  const [newMaterials, setNewMaterials] = useState('');
   const [newSteps, setNewSteps] = useState<Step[]>([
     { title: '', summary: '', body: '', imageUrl: '' }
   ]);
@@ -379,22 +387,12 @@ export default function App() {
       })
       .catch(() => {}) // network error — remain on login screen
       .finally(() => {
-        // Load SOP and notification data from localStorage
+        // Load notifications from localStorage (SOPs come from Supabase after login)
         try {
-          const savedSOPs = localStorage.getItem('sop_database_v3');
-          if (savedSOPs) {
-            setDocuments(JSON.parse(savedSOPs));
-          } else {
-            localStorage.setItem('sop_database_v3', JSON.stringify(DEFAULT_SOPS));
-            setDocuments(DEFAULT_SOPS);
-          }
           const savedNotifs = localStorage.getItem('admin_notifications');
           if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
-        } catch {
-          setDocuments(DEFAULT_SOPS);
-        } finally {
-          setLoading(false);
-        }
+        } catch { /* ignore */ }
+        setLoading(false);
       });
   }, []);
 
@@ -410,6 +408,18 @@ export default function App() {
       if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     };
   }, [currentUser, resetInactivityTimer]);
+
+  // Load SOPs from Supabase whenever a user logs in
+  useEffect(() => {
+    if (!currentUser) return;
+    fetch('/api/sops')
+      .then(r => r.ok ? r.json() : { sops: [] })
+      .then(data => {
+        const sops = data.sops ?? [];
+        setDocuments(sops.length > 0 ? sops : DEFAULT_SOPS);
+      })
+      .catch(() => setDocuments(DEFAULT_SOPS));
+  }, [currentUser]);
 
   // Load badges whenever a user logs in
   useEffect(() => {
@@ -581,13 +591,15 @@ export default function App() {
     setShowAddTask(null);
   };
 
-  const saveToLocal = (newDocs: SOP[]) => {
-    setDocuments(newDocs);
-    try {
-      localStorage.setItem('sop_database_v3', JSON.stringify(newDocs));
-    } catch (e) {
-      console.warn("Storage exception:", e);
-    }
+  const saveSOPToServer = async (sop: SOP): Promise<SOP | null> => {
+    const res = await fetch(`/api/sops/${sop.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sop),
+    });
+    if (!res.ok) return null;
+    const { sop: updated } = await res.json();
+    return updated ?? null;
   };
 
   // Handler for recommending SOP updates
@@ -624,7 +636,7 @@ export default function App() {
   };
 
   const handleLoadSamples = () => {
-    saveToLocal(DEFAULT_SOPS);
+    setDocuments(DEFAULT_SOPS);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -739,7 +751,7 @@ export default function App() {
     setNewSteps(updated);
   };
 
-  const handlePublishSOP = (e: React.FormEvent) => {
+  const handlePublishSOP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.userType !== 'admin') return;
 
@@ -756,19 +768,10 @@ export default function App() {
       return;
     }
 
-    const todayString = new Date().toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric'
-    });
-
-    const nextYear = new Date();
-    nextYear.setMonth(nextYear.getMonth() + 6);
-    const reviewString = nextYear.toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric'
-    });
+    const todayString = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const nextReview = new Date();
+    nextReview.setMonth(nextReview.getMonth() + 6);
+    const reviewString = nextReview.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
     const newSOP: SOP = {
       id: `sop-${Date.now()}`,
@@ -779,75 +782,80 @@ export default function App() {
       lastUpdatedBy: currentUser.name,
       lastUpdatedByRole: currentUser.role,
       nextReviewDate: reviewString,
+      tools: sanitize(newTools, 'notes'),
+      materials: sanitize(newMaterials, 'notes'),
       steps: newSteps,
-      revisionHistory: [
-        {
-          version: "v1.0",
-          date: todayString,
-          updatedBy: currentUser.name,
-          userRole: currentUser.role,
-          notes: "Initial protocol creation and structural verification check paths setup."
-        }
-      ],
+      revisionHistory: [{ version: "v1.0", date: todayString, updatedBy: currentUser.name, userRole: currentUser.role, notes: "Initial protocol creation." }],
       readLogs: []
     };
 
-    const updated = [newSOP, ...documents];
-    saveToLocal(updated);
+    try {
+      const res = await fetch('/api/sops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSOP),
+      });
+      if (!res.ok) throw new Error();
+      const { sop } = await res.json();
+      setDocuments(prev => [sop, ...prev]);
+    } catch {
+      setFormError('Failed to save SOP. Please try again.');
+      return;
+    }
 
     setNewTitle('');
     setNewSummary('');
+    setNewTools('');
+    setNewMaterials('');
     setNewCategory('HVAC');
     setNewSteps([{ title: '', summary: '', body: '', imageUrl: '' }]);
     setFormError('');
     setCurrentView('dashboard');
   };
 
-  const handleMarkAsRead = () => {
+  const handleMarkAsRead = async () => {
     if (!currentUser || !selectedDoc) return;
 
     const totalSteps = selectedDoc.steps?.length || 0;
     const completedCount = Object.values(completedSteps).filter(Boolean).length;
-    if (completedCount < totalSteps) {
-      return;
-    }
-
-    const todayString = new Date().toLocaleString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
+    if (completedCount < totalSteps) return;
 
     const currentVersion = selectedDoc.revisionHistory[0]?.version || 'v1.0';
-
     const alreadySigned = selectedDoc.readLogs.some(
       log => log.userName === currentUser.name && log.versionRead === currentVersion
     );
-
     if (alreadySigned) return;
 
     const newLog: ReadLog = {
       userName: currentUser.name,
       userRole: currentUser.role,
-      timestamp: todayString,
-      versionRead: currentVersion
+      timestamp: new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }),
+      versionRead: currentVersion,
     };
 
-    const updatedDoc = {
-      ...selectedDoc,
-      readLogs: [newLog, ...selectedDoc.readLogs]
-    };
-
+    // Optimistic update
+    const updatedDoc = { ...selectedDoc, readLogs: [newLog, ...selectedDoc.readLogs] };
     setSelectedDoc(updatedDoc);
+    setDocuments(prev => prev.map(d => d.id === selectedDoc.id ? updatedDoc : d));
 
-    const updatedDocsList = documents.map(d => d.id === selectedDoc.id ? updatedDoc : d);
-    saveToLocal(updatedDocsList);
+    try {
+      const res = await fetch(`/api/sops/${selectedDoc.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ readLogOnly: true, newLog }),
+      });
+      if (!res.ok) throw new Error();
+      const { sop } = await res.json();
+      setDocuments(prev => prev.map(d => d.id === sop.id ? sop : d));
+      setSelectedDoc(sop);
+    } catch {
+      // Revert optimistic update on failure
+      setSelectedDoc(selectedDoc);
+      setDocuments(prev => prev.map(d => d.id === selectedDoc.id ? selectedDoc : d));
+    }
   };
 
-  const handlePublishRevision = (e: React.FormEvent) => {
+  const handlePublishRevision = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !selectedDoc || currentUser.userType !== 'admin') return;
     const cleanRevNotes = sanitize(revisionNotes, 'notes');
@@ -885,12 +893,18 @@ export default function App() {
       revisionHistory: [newRevLog, ...selectedDoc.revisionHistory]
     };
 
-    setSelectedDoc(updatedDoc);
     setRevisionNotes('');
     setRevisionError('');
 
-    const updatedList = documents.map(d => d.id === selectedDoc.id ? updatedDoc : d);
-    saveToLocal(updatedList);
+    try {
+      const saved = await saveSOPToServer(updatedDoc);
+      if (!saved) throw new Error();
+      setSelectedDoc(saved);
+      setDocuments(prev => prev.map(d => d.id === saved.id ? saved : d));
+    } catch {
+      setRevisionError('Failed to save revision. Please try again.');
+      return;
+    }
     setCurrentView('document');
   };
 
@@ -1349,6 +1363,30 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Tools & Materials */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Tools Required</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Manifold gauge, vacuum pump..."
+                      value={newTools}
+                      onChange={(e) => setNewTools(e.target.value)}
+                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">Materials Needed</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Refrigerant, gasket seals..."
+                      value={newMaterials}
+                      onChange={(e) => setNewMaterials(e.target.value)}
+                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                    />
+                  </div>
+                </div>
+
                 {/* Steps constructor list */}
                 <div className="border-t border-gray-100 pt-4 space-y-3">
                   <div className="flex justify-between items-center">
@@ -1546,6 +1584,24 @@ export default function App() {
                   {selectedDoc.steps?.length} Steps
                 </span>
               </div>
+
+              {/* Tools & Materials */}
+              {(selectedDoc.tools || selectedDoc.materials) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedDoc.tools && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
+                      <p className="text-[8px] font-black text-blue-700 uppercase tracking-wider mb-1">🔧 Tools</p>
+                      <p className="text-[10px] text-blue-900 font-medium leading-relaxed">{selectedDoc.tools}</p>
+                    </div>
+                  )}
+                  {selectedDoc.materials && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-2.5">
+                      <p className="text-[8px] font-black text-amber-700 uppercase tracking-wider mb-1">📦 Materials</p>
+                      <p className="text-[10px] text-amber-900 font-medium leading-relaxed">{selectedDoc.materials}</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* View toggle tabs */}
               <div className="flex bg-gray-100 p-1 rounded-xl">
