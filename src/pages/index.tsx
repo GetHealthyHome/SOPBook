@@ -1850,7 +1850,7 @@ export default function App() {
                             <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded-md">{rev.version}</span>
                             <span className="text-gray-400">{rev.date}</span>
                           </div>
-                          <p className="text-[11px] text-gray-800 font-bold mt-1">"{rev.notes}"</p>
+                          <p className="text-[11px] text-gray-800 font-bold mt-1">&ldquo;{rev.notes}&rdquo;</p>
                           <p className="text-[9px] text-gray-400 font-bold">
                             Revised by: {rev.updatedBy} ({rev.userRole})
                           </p>
@@ -1959,7 +1959,7 @@ export default function App() {
 
               <div className="bg-emerald-50/50 border border-emerald-100/50 rounded-2xl p-3.5 text-[11px] space-y-1 shadow-xs">
                 <p className="font-extrabold text-emerald-900">Revision Version Level Shift</p>
-                <p className="text-emerald-800 font-medium">Document: "{selectedDoc.title}"</p>
+                <p className="text-emerald-800 font-medium">Document: &ldquo;{selectedDoc.title}&rdquo;</p>
                 <p className="text-emerald-800 font-medium font-bold">
                   Target Next Version: {(() => {
                     const v = selectedDoc.revisionHistory[0]?.version;
@@ -2102,7 +2102,7 @@ export default function App() {
                           ALERT FOR: {notif.docTitle}
                         </p>
                         <p className="text-[11px] text-gray-850 font-semibold leading-relaxed pt-0.5">
-                          "{notif.notes}"
+                          &ldquo;{notif.notes}&rdquo;
                         </p>
                         <div className="flex justify-between items-center text-[8px] text-gray-400 font-bold pt-1">
                           <span>By: {notif.suggestedBy} ({notif.suggestedByRole})</span>
