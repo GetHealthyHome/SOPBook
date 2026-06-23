@@ -1097,10 +1097,10 @@ export default function App() {
             <div className="space-y-6 py-8 lg:max-w-sm lg:mx-auto">
               <div className="text-center space-y-1.5">
                 <h1 className="text-2xl font-black tracking-tight text-emerald-800 leading-tight block px-2">
-                  Healthy Home Energy & Consulting
+                  Healthy Home<br />Energy &amp; Consulting
                 </h1>
-                <p className="text-xs font-bold tracking-widest text-gray-400 uppercase block">
-                  SOP Guide
+                <p className="text-lg font-bold tracking-widest text-gray-400 uppercase block">
+                  Field Guide
                 </p>
                 <p className="text-xs text-gray-400 max-w-[250px] mx-auto pt-2">Access organized operational guides and sign off compliance checklists.</p>
               </div>
@@ -1171,45 +1171,6 @@ export default function App() {
                 </button>
               </form>
 
-              {/* Expandable Demo Directory Drawer */}
-              <div className="border-t border-gray-100 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowDemoDirectory(!showDemoDirectory)}
-                  className="w-full py-2 flex items-center justify-between text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider hover:bg-emerald-50/50 rounded-lg px-2 transition-all"
-                >
-                  <span>{showDemoDirectory ? "Hide" : "Show"} Demo Credentials Directory</span>
-                  <svg className={`w-3.5 h-3.5 transform transition-transform ${showDemoDirectory ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"/>
-                  </svg>
-                </button>
-
-                {showDemoDirectory && (
-                  <div className="mt-3 bg-gray-50 border border-gray-100 rounded-xl p-3.5 space-y-2.5">
-                    <p className="text-[9px] text-gray-400 font-bold leading-relaxed">
-                      Pre-registered teammate accounts for testing permission flows. Contact your administrator for credentials.
-                    </p>
-                    <div className="space-y-2 divide-y divide-gray-100/60 text-[10px]">
-                      {effectiveUsers.map((acc, i) => (
-                        <div key={i} className="pt-2 flex justify-between items-start gap-1">
-                          <div className="space-y-0.5">
-                            <p className="font-extrabold text-gray-900 flex items-center gap-1">
-                              <span>{acc.name}</span>
-                              <span className={`text-[8px] px-1 py-0.2 rounded-xs font-black uppercase tracking-wider ${
-                                acc.userType === 'admin' ? 'bg-emerald-100 text-emerald-900' : 'bg-gray-200 text-gray-700'
-                              }`}>
-                                {acc.userType}
-                              </span>
-                            </p>
-                            <p className="text-gray-400 font-medium text-[9px]">{acc.role}</p>
-                          </div>
-                          <span className="text-[9px] font-bold text-gray-400 italic">Protected</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           )}
 
