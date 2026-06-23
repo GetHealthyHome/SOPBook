@@ -2773,7 +2773,7 @@ export default function App() {
                 </div>
               )}
 
-              </div>{/* end panels grid */}
+              </div>
             </div>
           )}
 
