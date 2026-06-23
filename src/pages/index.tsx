@@ -360,7 +360,7 @@ export default function App() {
     inactivityTimerRef.current = setTimeout(() => {
       handleLogout();
     }, INACTIVITY_TIMEOUT_MS);
-    touchSession();
+    // session kept alive via httpOnly cookie — no client-side touch needed
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-sync databases on boot + session validation via server cookie

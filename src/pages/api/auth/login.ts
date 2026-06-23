@@ -10,12 +10,13 @@ function sha256(value: string): string {
   return crypto.createHash('sha256').update(SALT + value).digest('hex');
 }
 
-// Build the account table once at module load (server start)
+// Build the account table once at module load (server start).
+// Passwords are read from environment variables — never hardcoded in source.
 const RAW: [string, string, 'admin' | 'user', string][] = [
-  ['Marcus Thorne', 'HVAC Supervisor',      'admin', 'marcusPassword'],
-  ['Sarah Lin',     'Master Electrician',   'admin', 'sarahPassword'],
-  ['Alex Rivers',   'Field Apprentice',     'user',  'alexPassword'],
-  ['Derrick Vance', 'Plumbing Specialist',  'user',  'derrickPassword'],
+  ['Marcus Thorne', 'HVAC Supervisor',     'admin', process.env.PW_MARCUS      ?? ''],
+  ['Sarah Lin',     'Master Electrician',  'admin', process.env.PW_SARAH       ?? ''],
+  ['Alex Rivers',   'Field Apprentice',    'user',  process.env.PW_ALEX        ?? ''],
+  ['Derrick Vance', 'Plumbing Specialist', 'user',  process.env.PW_DERRICK     ?? ''],
 ];
 for (const [name, role, userType, pw] of RAW) {
   ACCOUNTS[name.toLowerCase()] = { role, userType, pwHash: sha256(pw) };

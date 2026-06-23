@@ -117,9 +117,9 @@ const MAX_PER_WINDOW = 10; // requests per window
 
 function cleanIpStore() {
   const now = Date.now();
-  for (const [ip, rec] of ipStore) {
+  ipStore.forEach((rec, ip) => {
     if (rec.resetAt < now) ipStore.delete(ip);
-  }
+  });
 }
 
 export function checkIpRateLimit(req: IncomingMessage): boolean {
