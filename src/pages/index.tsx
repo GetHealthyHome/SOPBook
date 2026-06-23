@@ -783,15 +783,21 @@ export default function App() {
     setUploadTargetIdx(null);
   };
 
-  const triggerMockUpload = (stepIndex: number) => {
+  const uploadImageFile = async (stepIndex: number, file: File) => {
     setIsUploading(prev => ({ ...prev, [stepIndex]: true }));
-    setTimeout(() => {
-      const randomPreset = PHOTO_PRESETS[Math.floor(Math.random() * PHOTO_PRESETS.length)];
-      const updated = [...newSteps];
-      updated[stepIndex] = { ...updated[stepIndex], imageUrl: randomPreset.url };
-      setNewSteps(updated);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        const updated = [...newSteps];
+        updated[stepIndex] = { ...updated[stepIndex], imageUrl: data.url };
+        setNewSteps(updated);
+      }
+    } finally {
       setIsUploading(prev => ({ ...prev, [stepIndex]: false }));
-    }, 1500);
+    }
   };
 
   const handleAddCreatorStep = () => {
@@ -1024,7 +1030,7 @@ export default function App() {
                 <ShieldIcon />
               </div>
               <div>
-                <p className="text-xs font-black text-gray-900 leading-none">SOPBook</p>
+                <p className="text-xs font-black text-gray-900 leading-none">Field Guide</p>
                 <p className="text-[9px] text-gray-400 font-bold mt-0.5">Healthy Home</p>
               </div>
             </div>
@@ -1509,20 +1515,27 @@ export default function App() {
                                 <ImageIcon /> Preset Library
                               </button>
 
-                              <button
-                                type="button"
-                                onClick={() => triggerMockUpload(index)}
-                                disabled={isUploading[index]}
-                                className="flex-1 h-8 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-[9px] font-extrabold text-emerald-800 transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
-                              >
-                                {isUploading[index] ? (
-                                  "Uploading..."
-                                ) : (
-                                  <>
-                                    <CloudUploadIcon /> Simulate Upload
-                                  </>
-                                )}
-                              </button>
+                              <label className={`flex-1 h-8 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-[9px] font-extrabold text-emerald-800 transition-colors flex items-center justify-center gap-1 cursor-pointer ${isUploading[index] ? 'opacity-50 pointer-events-none' : ''}`}>
+                                {isUploading[index] ? 'Uploading...' : <><CloudUploadIcon /> Upload Photo</>}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  disabled={isUploading[index]}
+                                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadImageFile(index, f); e.target.value = ''; }}
+                                />
+                              </label>
+                              <label className={`flex-1 h-8 bg-blue-50 hover:bg-blue-100 rounded-lg text-[9px] font-extrabold text-blue-700 transition-colors flex items-center justify-center gap-1 cursor-pointer ${isUploading[index] ? 'opacity-50 pointer-events-none' : ''}`}>
+                                📷 Camera
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  disabled={isUploading[index]}
+                                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadImageFile(index, f); e.target.value = ''; }}
+                                />
+                              </label>
                             </div>
 
                             {/* Preset Image Selection Dropdown Grid */}
