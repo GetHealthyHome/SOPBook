@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
+import { fanOutNotification } from '@/lib/fanOutNotification';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!checkIpRateLimit(req)) return res.status(429).json({ error: 'Too many requests.' });
@@ -46,6 +47,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       change_note: change_note ?? 'Section created',
     });
 
+    fanOutNotification({
+      type: 'handbook',
+      title: `Handbook Updated: ${title}`,
+      message: `A new section "${title}" was added to the Employee Handbook by ${session.name}.`,
+      excludeUser: session.name,
+    }).catch(() => {});
+
     return res.status(201).json({ section: data });
   }
 
@@ -72,6 +80,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       edited_by: session.name,
       change_note: change_note ?? null,
     });
+
+    fanOutNotification({
+      type: 'handbook',
+      title: `Handbook Updated: ${title}`,
+      message: `The section "${title}" was updated in the Employee Handbook by ${session.name}${change_note ? ` — ${change_note}` : ''}.`,
+      excludeUser: session.name,
+    }).catch(() => {});
 
     return res.status(200).json({ section: data });
   }
