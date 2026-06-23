@@ -1234,7 +1234,7 @@ export default function App() {
               {/* Title Section */}
               <div className="flex justify-between items-center">
                 <div>
-                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Workspace Manual</span>
+                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">Field Guide SOP</span>
                   <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Active Procedures</h1>
                 </div>
                 
@@ -1364,7 +1364,6 @@ export default function App() {
                   <ArrowLeftIcon />
                 </button>
                 <div>
-                  <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Workspace Creator</span>
                   <h1 className="text-lg font-black text-gray-950 leading-tight">Draft New SOP</h1>
                 </div>
               </div>
@@ -1537,25 +1536,6 @@ export default function App() {
                                 />
                               </label>
                             </div>
-
-                            {/* Preset Image Selection Dropdown Grid */}
-                            {uploadTargetIdx === index && (
-                              <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-gray-50">
-                                {PHOTO_PRESETS.map((preset, pIdx) => (
-                                  <button
-                                    key={pIdx}
-                                    type="button"
-                                    onClick={() => selectPresetPhoto(index, preset.url)}
-                                    className="flex items-center gap-1 p-1 hover:bg-emerald-50/70 rounded-md transition-colors text-left"
-                                  >
-                                    <span className="w-6 h-6 rounded-md overflow-hidden bg-gray-100 inline-block flex-shrink-0">
-                                      <img src={preset.url} alt="" className="object-cover w-full h-full" />
-                                    </span>
-                                    <span className="text-[9px] font-semibold text-gray-500 truncate">{preset.name}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
 
                             {/* Manual link override */}
                             <input
