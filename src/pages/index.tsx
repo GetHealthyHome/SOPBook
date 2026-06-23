@@ -335,6 +335,17 @@ export default function App() {
   const [allBadges, setAllBadges] = useState<UserBadge[]>([]);
   const [badgesLoaded, setBadgesLoaded] = useState(false);
 
+  const [teamUsers, setTeamUsers] = useState<User[]>([]);
+  const [teamUsersLoaded, setTeamUsersLoaded] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserRole, setNewUserRole] = useState('');
+  const [newUserType, setNewUserType] = useState<'admin' | 'user'>('user');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserError, setNewUserError] = useState('');
+
+  const [sopDeleteConfirm, setSopDeleteConfirm] = useState<string | null>(null);
+
   // Interactive Checklist completion tracking state
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
 
@@ -386,14 +397,7 @@ export default function App() {
         }
       })
       .catch(() => {}) // network error — remain on login screen
-      .finally(() => {
-        // Load notifications from localStorage (SOPs come from Supabase after login)
-        try {
-          const savedNotifs = localStorage.getItem('admin_notifications');
-          if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
-        } catch { /* ignore */ }
-        setLoading(false);
-      });
+      .finally(() => { setLoading(false); });
   }, []);
 
   // Attach inactivity listeners when a user is logged in
@@ -419,6 +423,24 @@ export default function App() {
         setDocuments(sops.length > 0 ? sops : DEFAULT_SOPS);
       })
       .catch(() => setDocuments(DEFAULT_SOPS));
+  }, [currentUser]);
+
+  // Load team members after login
+  useEffect(() => {
+    if (!currentUser || teamUsersLoaded) return;
+    fetch('/api/admin/users')
+      .then(r => r.ok ? r.json() : { users: [] })
+      .then(data => { setTeamUsers(data.users ?? []); setTeamUsersLoaded(true); })
+      .catch(() => setTeamUsersLoaded(true));
+  }, [currentUser, teamUsersLoaded]);
+
+  // Load notifications after login (admin only)
+  useEffect(() => {
+    if (!currentUser || currentUser.userType !== 'admin') return;
+    fetch('/api/notifications')
+      .then(r => r.ok ? r.json() : { notifications: [] })
+      .then(data => setNotifications(data.notifications ?? []))
+      .catch(() => {});
   }, [currentUser]);
 
   // Load badges whenever a user logs in
@@ -603,36 +625,32 @@ export default function App() {
   };
 
   // Handler for recommending SOP updates
-  const handleRecommendUpdate = (e: React.FormEvent) => {
+  const handleRecommendUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !selectedDoc || !recommendationNotes.trim()) return;
 
     const cleanNotes = sanitize(recommendationNotes, 'notes');
     if (!cleanNotes) return;
 
-    const newNotif = {
+    const newNotif: Notification = {
       id: `notif-${Date.now()}`,
       docId: selectedDoc.id,
       docTitle: selectedDoc.title,
       suggestedBy: currentUser.name,
       suggestedByRole: currentUser.role,
       notes: cleanNotes,
-      timestamp: new Date().toLocaleString('en-US', {
-        month: '2-digit',
-        day: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      })
+      timestamp: new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }),
     };
 
-    const updatedNotifs = [newNotif, ...notifications];
-    setNotifications(updatedNotifs);
-    localStorage.setItem('admin_notifications', JSON.stringify(updatedNotifs));
-
+    setNotifications(prev => [newNotif, ...prev]);
     setRecommendationNotes('');
     setShowRecommendModal(false);
+
+    fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newNotif),
+    }).catch(() => {});
   };
 
   const handleLoadSamples = () => {
@@ -704,6 +722,9 @@ export default function App() {
     setCurrentUser(null);
     setAllBadges([]);
     setBadgesLoaded(false);
+    setTeamUsers([]);
+    setTeamUsersLoaded(false);
+    setNotifications([]);
     setLoginPassword('');
     setLoginError('');
     setLockoutSeconds(0);
@@ -910,6 +931,11 @@ export default function App() {
 
   const categoriesList = ["All", "HVAC", "Electrical", "Plumbing", "Safety"];
 
+  // Falls back to PRESET_ACCOUNTS while DB users haven't loaded yet
+  const effectiveUsers: User[] = teamUsers.length > 0
+    ? teamUsers
+    : PRESET_ACCOUNTS.map(a => ({ ...a, userType: a.userType as 'admin' | 'user' }));
+
   const filteredDocs = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return documents.filter(doc => {
@@ -922,7 +948,7 @@ export default function App() {
   }, [documents, searchQuery, selectedCategory]);
 
   const { totalSOPsCount, totalTeamSize, actualReadLogsCount, aggregateComplianceRate } = useMemo(() => {
-    const knownTeamSize = PRESET_ACCOUNTS.length;
+    const knownTeamSize = effectiveUsers.length;
     const uniqueReaderCount = new Set(documents.flatMap(d => d.readLogs.map(l => l.userName))).size;
     const teamSize = Math.max(knownTeamSize, uniqueReaderCount);
     const sopCount = documents.length;
@@ -1094,7 +1120,7 @@ export default function App() {
                       Pre-registered teammate accounts for testing permission flows. Contact your administrator for credentials.
                     </p>
                     <div className="space-y-2 divide-y divide-gray-100/60 text-[10px]">
-                      {PRESET_ACCOUNTS.map((acc, i) => (
+                      {effectiveUsers.map((acc, i) => (
                         <div key={i} className="pt-2 flex justify-between items-start gap-1">
                           <div className="space-y-0.5">
                             <p className="font-extrabold text-gray-900 flex items-center gap-1">
@@ -1551,16 +1577,43 @@ export default function App() {
                 </div>
 
                 {currentUser.userType === 'admin' && (
-                  <button
-                    onClick={() => {
-                      setRevisionNotes('');
-                      setRevisionError('');
-                      setCurrentView('addRevision');
-                    }}
-                    className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 flex-shrink-0"
-                  >
-                    <HistoryIcon /> Revise
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => { setRevisionNotes(''); setRevisionError(''); setCurrentView('addRevision'); }}
+                      className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 flex-shrink-0"
+                    >
+                      <HistoryIcon /> Revise
+                    </button>
+                    {sopDeleteConfirm === selectedDoc.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={async () => {
+                            await fetch(`/api/sops/${selectedDoc.id}`, { method: 'DELETE' });
+                            setDocuments(prev => prev.filter(d => d.id !== selectedDoc.id));
+                            setSopDeleteConfirm(null);
+                            setCurrentView('dashboard');
+                          }}
+                          className="h-8 px-2.5 bg-red-600 text-white rounded-lg text-[10px] font-black"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setSopDeleteConfirm(null)}
+                          className="h-8 px-2 text-gray-400 hover:text-gray-600 rounded-lg text-[10px] font-black"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setSopDeleteConfirm(selectedDoc.id)}
+                        className="h-8 w-8 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        title="Delete SOP"
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -2033,9 +2086,12 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => {
-                            const updated = notifications.filter(n => n.id !== notif.id);
-                            setNotifications(updated);
-                            localStorage.setItem('admin_notifications', JSON.stringify(updated));
+                            setNotifications(prev => prev.filter(n => n.id !== notif.id));
+                            fetch('/api/notifications', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ id: notif.id }),
+                            }).catch(() => {});
                           }}
                           className="absolute top-2.5 right-2.5 text-amber-700 hover:text-red-500 p-1"
                           title="Dismiss Suggestion"
@@ -2058,13 +2114,105 @@ export default function App() {
                 )}
               </div>
 
+              {/* Team Member Management */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">👥 Team Members</h3>
+                  <button
+                    onClick={() => { setShowAddUser(v => !v); setNewUserError(''); }}
+                    className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
+                  >
+                    {showAddUser ? 'Cancel' : '+ Add Member'}
+                  </button>
+                </div>
+
+                {showAddUser && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3">
+                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider">New Team Member</p>
+                    {newUserError && <p className="text-[10px] text-red-600 font-bold">{newUserError}</p>}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Full Name</label>
+                        <input value={newUserName} onChange={e => setNewUserName(e.target.value)} placeholder="e.g., Jordan Blake" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Job Title</label>
+                        <input value={newUserRole} onChange={e => setNewUserRole(e.target.value)} placeholder="e.g., HVAC Technician" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Password</label>
+                        <input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} placeholder="Min 8 characters" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs focus:border-emerald-600 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black text-gray-400 uppercase tracking-wider mb-1">Access Level</label>
+                        <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
+                          <button onClick={() => setNewUserType('user')} className={`flex-1 text-[10px] font-black transition-colors ${newUserType === 'user' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>User</button>
+                          <button onClick={() => setNewUserType('admin')} className={`flex-1 text-[10px] font-black transition-colors ${newUserType === 'admin' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>Admin</button>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setNewUserError('');
+                        if (!newUserName.trim() || !newUserRole.trim() || !newUserPassword) { setNewUserError('All fields are required.'); return; }
+                        const res = await fetch('/api/admin/users', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ name: newUserName.trim(), role: newUserRole.trim(), userType: newUserType, password: newUserPassword }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) { setNewUserError(data.error ?? 'Failed to add user.'); return; }
+                        setTeamUsers(prev => [...prev, data.user]);
+                        setNewUserName(''); setNewUserRole(''); setNewUserPassword(''); setNewUserType('user');
+                        setShowAddUser(false);
+                      }}
+                      className="w-full h-10 bg-emerald-800 text-white rounded-xl text-[11px] font-black hover:bg-emerald-900 transition-colors"
+                    >
+                      Add Team Member
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {effectiveUsers.map(u => (
+                    <div key={u.name} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center justify-between shadow-xs">
+                      <div>
+                        <p className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                          {u.name}
+                          <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${u.userType === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>{u.userType}</span>
+                        </p>
+                        <p className="text-[10px] text-gray-400 font-medium mt-0.5">{u.role}</p>
+                      </div>
+                      {u.name !== currentUser.name && (
+                        <button
+                          onClick={async () => {
+                            const res = await fetch('/api/admin/users', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ name: u.name }),
+                            });
+                            if (res.ok) setTeamUsers(prev => prev.filter(m => m.name !== u.name));
+                          }}
+                          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          title={`Remove ${u.name}`}
+                        >
+                          <TrashIcon />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Badge Management Panel */}
               <div className="space-y-3">
                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
                   🏅 Badge Management
                 </h3>
                 <div className="space-y-3">
-                  {PRESET_ACCOUNTS.map(account => {
+                  {effectiveUsers.map(account => {
                     const userBadges = allBadges.filter(b => b.user_name === account.name);
                     const unassigned = ALL_BADGES.filter(b => !userBadges.some(ub => ub.badge === b));
                     return (
@@ -2447,7 +2595,7 @@ export default function App() {
 
               {!careerLoading && (
                 <div className="space-y-3">
-                  {PRESET_ACCOUNTS.filter(a => a.userType !== 'admin').map(account => {
+                  {effectiveUsers.filter(a => a.userType !== 'admin').map(account => {
                     const assignment = allAssignments.find(a => a.user_name === account.name);
                     const assignedTrack = assignment ? careerTracks.find(t => t.id === assignment.track_id) : null;
                     const userCompletions = allCareerCompletions.filter(c => c.user_name === account.name);
