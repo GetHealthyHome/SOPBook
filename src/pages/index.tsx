@@ -75,7 +75,7 @@ interface SOP {
 
 interface User {
   name: string;
-  role: string;      // Division (HVAC, Home Performance, Sales)
+  role: string;      // Division (HVAC, Home Performance, Sales, Front Office)
   userType: 'admin' | 'user'; // Explicit permissions restriction
 }
 
@@ -2184,6 +2184,7 @@ export default function App() {
                           <option value="HVAC">HVAC</option>
                           <option value="Home Performance">Home Performance</option>
                           <option value="Sales">Sales</option>
+                          <option value="Front Office">Front Office</option>
                         </select>
                       </div>
                     </div>
