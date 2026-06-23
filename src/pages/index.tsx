@@ -2234,7 +2234,10 @@ export default function App() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ name: u.name }),
                             });
-                            if (res.ok) setTeamUsers(prev => prev.filter(m => m.name !== u.name));
+                            if (res.ok) {
+                              setTeamUsers(prev => prev.filter(m => m.name !== u.name));
+                              setAllBadges(prev => prev.filter(b => b.user_name !== u.name));
+                            }
                           }}
                           className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                           title={`Remove ${u.name}`}
