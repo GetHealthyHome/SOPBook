@@ -333,6 +333,14 @@ export default function App() {
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskImages, setNewTaskImages] = useState('');
   const [newTaskSop, setNewTaskSop] = useState('');
+  // Ladder builder (careerAdmin) state
+  const [builderDept, setBuilderDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
+  const [expandedBuilderTrack, setExpandedBuilderTrack] = useState<number | null>(null);
+  const [editingTrack, setEditingTrack] = useState<{ id: number; name: string; description: string } | null>(null);
+  const [editingTask, setEditingTask] = useState<{ id: number; track_id: number; title: string; description: string; imageUrls: string; sopTitle: string } | null>(null);
+  const [trackDeleteConfirm, setTrackDeleteConfirm] = useState<number | null>(null);
+  const [taskDeleteConfirm, setTaskDeleteConfirm] = useState<number | null>(null);
+  const [builderSaving, setBuilderSaving] = useState(false);
   // Admin assignment state
   const [assigningUser, setAssigningUser] = useState<string | null>(null);
   const [assignDept, setAssignDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
@@ -608,14 +616,15 @@ export default function App() {
     }
   };
 
-  const addCareerTrack = async () => {
+  const addCareerTrack = async (dept?: 'Home Performance' | 'HVAC') => {
     if (!newTrackName.trim()) return;
-    const deptTracks = careerTracks.filter(t => t.department === newTrackDept);
+    const department = dept ?? newTrackDept;
+    const deptTracks = careerTracks.filter(t => t.department === department);
     try {
       const res = await fetch('/api/career/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newTrackName.trim(), description: newTrackDesc.trim(), department: newTrackDept, orderIndex: deptTracks.length }),
+        body: JSON.stringify({ name: newTrackName.trim(), description: newTrackDesc.trim(), department, orderIndex: deptTracks.length }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { track } = await res.json();
@@ -624,6 +633,80 @@ export default function App() {
     setNewTrackName('');
     setNewTrackDesc('');
     setShowAddTrack(false);
+  };
+
+  const updateCareerTrack = async () => {
+    if (!editingTrack || !editingTrack.name.trim()) return;
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/track', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId: editingTrack.id, name: editingTrack.name.trim(), description: editingTrack.description.trim() }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { track } = await res.json();
+      setCareerTracks(prev => prev.map(t => t.id === track.id ? { ...t, name: track.name, description: track.description } : t));
+      setEditingTrack(null);
+    } catch (err) { console.error('updateCareerTrack failed:', err); }
+    setBuilderSaving(false);
+  };
+
+  const deleteCareerTrack = async (trackId: number) => {
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/track', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setCareerTracks(prev => prev.filter(t => t.id !== trackId));
+      setAllAssignments(prev => prev.filter(a => a.track_id !== trackId));
+      if (myAssignment?.track_id === trackId) setMyAssignment(null);
+    } catch (err) { console.error('deleteCareerTrack failed:', err); }
+    setTrackDeleteConfirm(null);
+    setBuilderSaving(false);
+  };
+
+  const updateCareerTask = async () => {
+    if (!editingTask || !editingTask.title.trim()) return;
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/task', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: editingTask.id,
+          title: editingTask.title.trim(),
+          description: editingTask.description.trim(),
+          imageUrls: editingTask.imageUrls.split('\n').map(s => s.trim()).filter(Boolean),
+          sopTitle: editingTask.sopTitle.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { task } = await res.json();
+      setCareerTracks(prev => prev.map(t => t.id === task.track_id ? { ...t, tasks: t.tasks.map(tk => tk.id === task.id ? task : tk) } : t));
+      setEditingTask(null);
+    } catch (err) { console.error('updateCareerTask failed:', err); }
+    setBuilderSaving(false);
+  };
+
+  const deleteCareerTask = async (task: CareerTask) => {
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/task', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setCareerTracks(prev => prev.map(t => t.id === task.track_id ? { ...t, tasks: t.tasks.filter(tk => tk.id !== task.id) } : t));
+      setCareerCompletions(prev => prev.filter(c => c.task_id !== task.id));
+      setAllCareerCompletions(prev => prev.filter(c => c.task_id !== task.id));
+    } catch (err) { console.error('deleteCareerTask failed:', err); }
+    setTaskDeleteConfirm(null);
+    setBuilderSaving(false);
   };
 
   const addCareerTask = async (trackId: number) => {
@@ -2246,6 +2329,21 @@ export default function App() {
                 )}
               </div>
 
+              {/* Career ladder management shortcut */}
+              <button
+                onClick={() => { setCurrentView('careerAdmin'); if (careerTracks.length === 0) loadCareerData(); }}
+                className="w-full bg-white border border-gray-100 hover:border-emerald-200 hover:shadow-xs rounded-2xl p-4 flex items-center justify-between transition-all shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl"><CareerIcon /></div>
+                  <div className="text-left">
+                    <p className="text-sm font-black text-gray-900">Career Ladder Manager</p>
+                    <p className="text-base text-gray-400 font-medium">Add levels &amp; milestones, assign paths, track team progress.</p>
+                  </div>
+                </div>
+                <ChevronRightIcon />
+              </button>
+
               {/* Panels grid — single column on mobile, two columns on desktop */}
               <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-5 lg:space-y-0">
 
@@ -2994,7 +3092,7 @@ export default function App() {
                         <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base" />
                         <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
                         <div className="flex gap-2">
-                          <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Create Level</button>
+                          <button onClick={() => addCareerTrack()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Create Level</button>
                           <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
                         </div>
                       </div>
@@ -3018,7 +3116,7 @@ export default function App() {
                 </button>
                 <div>
                   <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Admin View</span>
-                  <h1 className="text-2xl font-black text-gray-950 tracking-tight">Team Progress</h1>
+                  <h1 className="text-2xl font-black text-gray-950 tracking-tight">Career Ladder Manager</h1>
                 </div>
               </div>
 
@@ -3028,8 +3126,159 @@ export default function App() {
                 </div>
               )}
 
+              {/* LADDER BUILDER — manage levels (sections) & milestones */}
               {!careerLoading && (
                 <div className="space-y-3">
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">🪜 Ladder Builder</h3>
+
+                  {/* Department tabs */}
+                  <div className="flex gap-2">
+                    {(['Home Performance', 'HVAC'] as const).map(d => (
+                      <button
+                        key={d}
+                        onClick={() => { setBuilderDept(d); setExpandedBuilderTrack(null); setEditingTrack(null); setEditingTask(null); setTrackDeleteConfirm(null); setTaskDeleteConfirm(null); }}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${builderDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+
+                  {careerTracks.filter(t => t.department === builderDept).length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-3">No levels in this department yet — add the first one below.</p>
+                  )}
+
+                  {careerTracks.filter(t => t.department === builderDept).map(track => {
+                    const isOpen = expandedBuilderTrack === track.id;
+                    return (
+                      <div key={track.id} className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+                        {/* Level header / edit form */}
+                        {editingTrack?.id === track.id ? (
+                          <div className="p-3.5 space-y-2 bg-emerald-50/40">
+                            <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">Edit Level</p>
+                            <input value={editingTrack.name} onChange={e => setEditingTrack({ ...editingTrack, name: e.target.value })} placeholder="Level name*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                            <input value={editingTrack.description} onChange={e => setEditingTrack({ ...editingTrack, description: e.target.value })} placeholder="Short description" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                            <div className="flex gap-2">
+                              <button onClick={updateCareerTrack} disabled={builderSaving || !editingTrack.name.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Save</button>
+                              <button onClick={() => setEditingTrack(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3.5 flex items-center gap-2">
+                            <button onClick={() => setExpandedBuilderTrack(isOpen ? null : track.id)} className="flex-1 text-left min-w-0">
+                              <p className="text-base font-black text-gray-900 leading-snug">{track.name}</p>
+                              <p className="text-sm text-gray-400 mt-0.5 truncate">{track.tasks.length} milestone{track.tasks.length !== 1 ? 's' : ''}{track.description ? ` — ${track.description}` : ''}</p>
+                            </button>
+                            <button onClick={() => { setEditingTrack({ id: track.id, name: track.name, description: track.description || '' }); setTrackDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit level">
+                              <EditIcon />
+                            </button>
+                            {trackDeleteConfirm === track.id ? (
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => deleteCareerTrack(track.id)} disabled={builderSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
+                                <button onClick={() => setTrackDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setTrackDeleteConfirm(track.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete level (also removes its milestones)">
+                                <TrashIcon />
+                              </button>
+                            )}
+                            <button onClick={() => setExpandedBuilderTrack(isOpen ? null : track.id)} className={`p-1 text-gray-300 transition-transform ${isOpen ? 'rotate-90' : ''}`}>
+                              <ChevronRightIcon />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Milestones */}
+                        {isOpen && (
+                          <div className="border-t border-gray-50 divide-y divide-gray-50">
+                            {track.tasks.length === 0 && <p className="text-sm text-gray-400 px-4 py-3 text-center">No milestones yet.</p>}
+                            {track.tasks.map(task => (
+                              editingTask?.id === task.id ? (
+                                <div key={task.id} className="px-4 py-3 space-y-2 bg-emerald-50/40">
+                                  <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">Edit Milestone</p>
+                                  <input value={editingTask.title} onChange={e => setEditingTask({ ...editingTask, title: e.target.value })} placeholder="Milestone title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                                  <textarea value={editingTask.description} onChange={e => setEditingTask({ ...editingTask, description: e.target.value })} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                                  <textarea value={editingTask.imageUrls} onChange={e => setEditingTask({ ...editingTask, imageUrls: e.target.value })} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                                  <input value={editingTask.sopTitle} onChange={e => setEditingTask({ ...editingTask, sopTitle: e.target.value })} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                                  <div className="flex gap-2">
+                                    <button onClick={updateCareerTask} disabled={builderSaving || !editingTask.title.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Save</button>
+                                    <button onClick={() => setEditingTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div key={task.id} className="px-4 py-2.5 flex items-center gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-base font-semibold text-gray-900 leading-snug">{task.title}</p>
+                                    {(task.sop_title || task.description) && (
+                                      <p className="text-sm text-gray-400 truncate">{task.sop_title ? `SOP: ${task.sop_title}` : task.description}</p>
+                                    )}
+                                  </div>
+                                  <button onClick={() => { setEditingTask({ id: task.id, track_id: task.track_id, title: task.title, description: task.description || '', imageUrls: (task.image_urls || []).join('\n'), sopTitle: task.sop_title || '' }); setTaskDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit milestone">
+                                    <EditIcon />
+                                  </button>
+                                  {taskDeleteConfirm === task.id ? (
+                                    <div className="flex items-center gap-1">
+                                      <button onClick={() => deleteCareerTask(task)} disabled={builderSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
+                                      <button onClick={() => setTaskDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => setTaskDeleteConfirm(task.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete milestone">
+                                      <TrashIcon />
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            ))}
+
+                            {/* Add milestone */}
+                            <div className="px-4 py-3">
+                              {showAddTask === track.id ? (
+                                <div className="space-y-2">
+                                  <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Milestone title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                                  <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
+                                  <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
+                                  <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                                  <div className="flex gap-2">
+                                    <button onClick={() => addCareerTask(track.id)} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Add Milestone</button>
+                                    <button onClick={() => setShowAddTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button onClick={() => setShowAddTask(track.id)} className="flex items-center gap-1.5 text-sm text-emerald-700 font-bold">
+                                  <PlusIcon /> Add Milestone
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Add level */}
+                  <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-4">
+                    {showAddTrack ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">New {builderDept} Level</p>
+                        <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base" />
+                        <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                        <div className="flex gap-2">
+                          <button onClick={() => addCareerTrack(builderDept)} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Create Level</button>
+                          <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-sm font-bold">
+                        <PlusIcon /> Add New Level
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!careerLoading && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest pt-2">📊 Team Progress</h3>
                   {effectiveUsers.filter(a => a.userType !== 'admin').map(account => {
                     const assignment = allAssignments.find(a => a.user_name === account.name);
                     const assignedTrack = assignment ? careerTracks.find(t => t.id === assignment.track_id) : null;
