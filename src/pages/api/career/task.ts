@@ -21,28 +21,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const db = getSupabase();
   const body = req.body ?? {};
 
-  // POST — create a task (career ladder milestone)
+  // POST — create a task (milestone) or sub-task (parentTaskId set)
   if (req.method === 'POST') {
-    const { trackId, title, description, imageUrls, sopTitle, orderIndex } = body;
+    const { trackId, title, description, imageUrls, sopTitle, orderIndex, parentTaskId } = body;
     if (typeof trackId !== 'number') return res.status(400).json({ error: 'trackId required.' });
     const cleanTitle = sanitize(String(title ?? ''), 'title');
     if (!cleanTitle) return res.status(400).json({ error: 'Task title required.' });
 
-    const { data, error } = await db
-      .from('career_tasks')
-      .insert({
-        track_id:    trackId,
-        title:       cleanTitle,
-        description: sanitize(String(description ?? ''), 'notes'),
-        image_urls:  cleanImageUrls(imageUrls),
-        sop_title:   sanitize(String(sopTitle ?? ''), 'title'),
-        order_index: typeof orderIndex === 'number' ? orderIndex : 0,
-      })
-      .select().single();
+    const row: Record<string, unknown> = {
+      track_id:    trackId,
+      title:       cleanTitle,
+      description: sanitize(String(description ?? ''), 'notes'),
+      image_urls:  cleanImageUrls(imageUrls),
+      sop_title:   sanitize(String(sopTitle ?? ''), 'title'),
+      order_index: typeof orderIndex === 'number' ? orderIndex : 0,
+    };
+    if (typeof parentTaskId === 'number') {
+      // Sub-tasks nest one level deep: the parent must be a top-level
+      // task in the same track.
+      const { data: parent } = await db
+        .from('career_tasks')
+        .select('id, track_id, parent_task_id')
+        .eq('id', parentTaskId)
+        .maybeSingle();
+      if (!parent || parent.track_id !== trackId) return res.status(400).json({ error: 'Parent task not found in this track.' });
+      if (parent.parent_task_id) return res.status(400).json({ error: 'Sub-tasks cannot have their own sub-tasks.' });
+      row.parent_task_id = parentTaskId;
+    }
+
+    const { data, error } = await db.from('career_tasks').insert(row).select().single();
 
     if (error) {
       logError('career/task POST', error);
-      return res.status(500).json({ error: 'Insert failed.' });
+      return res.status(500).json({ error: 'Insert failed. If you are adding a sub-task, make sure db/career_ladder_upgrade.sql has been run in Supabase.' });
     }
     return res.status(201).json({ task: data });
   }
@@ -75,17 +86,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ task: data });
   }
 
-  // DELETE — remove a milestone and its completion records
+  // DELETE — remove a milestone, its sub-tasks, and their completion records
   if (req.method === 'DELETE') {
     const { taskId } = body;
     if (typeof taskId !== 'number') return res.status(400).json({ error: 'taskId required.' });
 
-    const { error: compErr } = await db.from('career_completions').delete().eq('task_id', taskId);
+    // Collect sub-task ids; tolerate a database that predates the
+    // parent_task_id migration (no sub-tasks can exist there).
+    const { data: subs, error: subsErr } = await db
+      .from('career_tasks').select('id').eq('parent_task_id', taskId);
+    const ids = [taskId, ...(!subsErr && subs ? subs.map((s: { id: number }) => s.id) : [])];
+
+    const { error: compErr } = await db.from('career_completions').delete().in('task_id', ids);
     if (compErr) {
       logError('career/task DELETE completions', compErr);
       return res.status(500).json({ error: 'Delete failed.' });
     }
-    const { error } = await db.from('career_tasks').delete().eq('id', taskId);
+    const { error } = await db.from('career_tasks').delete().in('id', ids);
     if (error) {
       logError('career/task DELETE', error);
       return res.status(500).json({ error: 'Delete failed.' });

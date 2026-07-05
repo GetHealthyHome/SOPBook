@@ -89,6 +89,7 @@ interface CareerTask {
   image_urls: string[];
   sop_title: string;
   order_index: number;
+  parent_task_id?: number | null; // set on sub-tasks
 }
 
 interface CareerTrack {
@@ -106,6 +107,8 @@ interface CareerCompletion {
   user_name: string;
   user_role: string;
   completed_at: string;
+  verified_by?: string | null; // admin who signed off; null = pending
+  verified_at?: string | null;
 }
 
 interface CareerAssignment {
@@ -326,6 +329,7 @@ export default function App() {
   // Admin task/track creation state
   const [showAddTrack, setShowAddTrack] = useState(false);
   const [showAddTask, setShowAddTask] = useState<number | null>(null);
+  const [showAddSubtask, setShowAddSubtask] = useState<number | null>(null); // parent task id
   const [newTrackName, setNewTrackName] = useState('');
   const [newTrackDesc, setNewTrackDesc] = useState('');
   const [newTrackDept, setNewTrackDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
@@ -590,6 +594,7 @@ export default function App() {
   const toggleTaskCompletion = async (task: CareerTask) => {
     if (!currentUser) return;
     const existing = careerCompletions.find(c => c.task_id === task.id);
+    if (existing?.verified_by) return; // verified by an admin — locked
     if (existing) {
       // Optimistic remove
       setCareerCompletions(prev => prev.filter(c => c.id !== existing.id));
@@ -706,15 +711,56 @@ export default function App() {
         body: JSON.stringify({ taskId: task.id }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setCareerTracks(prev => prev.map(t => t.id === task.track_id ? { ...t, tasks: t.tasks.filter(tk => tk.id !== task.id) } : t));
-      setCareerCompletions(prev => prev.filter(c => c.task_id !== task.id));
-      setAllCareerCompletions(prev => prev.filter(c => c.task_id !== task.id));
+      // Remove the task and any of its sub-tasks (the server cascades too)
+      const removedIds = new Set([task.id]);
+      const track = careerTracks.find(t => t.id === task.track_id);
+      track?.tasks.forEach(tk => { if (tk.parent_task_id === task.id) removedIds.add(tk.id); });
+      setCareerTracks(prev => prev.map(t => t.id === task.track_id ? { ...t, tasks: t.tasks.filter(tk => !removedIds.has(tk.id)) } : t));
+      setCareerCompletions(prev => prev.filter(c => !removedIds.has(c.task_id)));
+      setAllCareerCompletions(prev => prev.filter(c => !removedIds.has(c.task_id)));
     } catch (err) { console.error('deleteCareerTask failed:', err); }
     setTaskDeleteConfirm(null);
     setBuilderSaving(false);
   };
 
-  const addCareerTask = async (trackId: number) => {
+  // Admin: verify a teammate's completed task
+  const signOffCompletion = async (completionId: number) => {
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/complete', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completionId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCareerError(data.error || 'Sign-off failed.');
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const { completion } = await res.json();
+      setAllCareerCompletions(prev => prev.map(c => c.id === completion.id ? completion : c));
+      setCareerCompletions(prev => prev.map(c => c.id === completion.id ? completion : c));
+    } catch (err) { console.error('signOffCompletion failed:', err); }
+    setBuilderSaving(false);
+  };
+
+  // Admin: reject a pending completion — the user must redo the task
+  const rejectCompletion = async (completionId: number) => {
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/complete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completionId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAllCareerCompletions(prev => prev.filter(c => c.id !== completionId));
+      setCareerCompletions(prev => prev.filter(c => c.id !== completionId));
+    } catch (err) { console.error('rejectCompletion failed:', err); }
+    setBuilderSaving(false);
+  };
+
+  const addCareerTask = async (trackId: number, parentTaskId?: number) => {
     if (!newTaskTitle.trim()) return;
     const track = careerTracks.find(t => t.id === trackId);
     try {
@@ -723,6 +769,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trackId,
+          parentTaskId,
           title: newTaskTitle.trim(),
           description: newTaskDesc.trim(),
           imageUrls: newTaskImages.split('\n').map(s => s.trim()).filter(Boolean),
@@ -730,7 +777,11 @@ export default function App() {
           orderIndex: track ? track.tasks.length : 0,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCareerError(data.error || 'Failed to add task.');
+        throw new Error(`HTTP ${res.status}`);
+      }
       const { task } = await res.json();
       if (task) setCareerTracks(prev => prev.map(t => t.id === trackId ? { ...t, tasks: [...t.tasks, task] } : t));
     } catch (err) { console.error('addCareerTask failed:', err); }
@@ -739,6 +790,7 @@ export default function App() {
     setNewTaskImages('');
     setNewTaskSop('');
     setShowAddTask(null);
+    setShowAddSubtask(null);
   };
 
   const saveSOPToServer = async (sop: SOP): Promise<SOP | null> => {
@@ -2989,16 +3041,92 @@ export default function App() {
           {/* VIEW: CAREER LADDER — Employee */}
           {currentView === 'careerLadder' && currentUser && (() => {
             const assignedTrack = myAssignment ? careerTracks.find(t => t.id === myAssignment.track_id) : null;
-            const totalTasks = assignedTrack ? assignedTrack.tasks.length : 0;
-            const doneTasks = assignedTrack ? assignedTrack.tasks.filter(t => careerCompletions.some(c => c.task_id === t.id)).length : 0;
+            const verifiedIds = new Set(careerCompletions.filter(c => c.verified_by).map(c => c.task_id));
+            const pendingIds  = new Set(careerCompletions.filter(c => !c.verified_by).map(c => c.task_id));
+            const totalTasks   = assignedTrack ? assignedTrack.tasks.length : 0;
+            const doneTasks    = assignedTrack ? assignedTrack.tasks.filter(t => verifiedIds.has(t.id)).length : 0;
+            const pendingTasks = assignedTrack ? assignedTrack.tasks.filter(t => pendingIds.has(t.id)).length : 0;
             const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+            const topTasks = assignedTrack ? assignedTrack.tasks.filter(t => !t.parent_task_id) : [];
+            const subsOf = (id: number) => assignedTrack ? assignedTrack.tasks.filter(t => t.parent_task_id === id) : [];
+
+            const renderTaskRow = (task: CareerTask, isSub: boolean) => {
+              const completion = careerCompletions.find(c => c.task_id === task.id);
+              const isVerified = !!completion?.verified_by;
+              const isPending = !!completion && !isVerified;
+              const isTaskOpen = expandedTask === task.id;
+              const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
+              const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title);
+              return (
+                <div key={task.id} className={`px-4 py-3 ${isSub ? 'pl-11 bg-gray-50/50' : ''}`}>
+                  <div className="flex items-start gap-3">
+                    <button
+                      onClick={() => toggleTaskCompletion(task)}
+                      title={isVerified ? `Verified by ${completion?.verified_by}` : isPending ? 'Awaiting admin sign-off — tap to un-check' : 'Mark complete'}
+                      className={`flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 ${isSub ? 'w-5 h-5' : 'w-6 h-6'} ${
+                        isVerified ? 'bg-emerald-600 border-emerald-600 text-white cursor-default'
+                        : isPending ? 'bg-amber-400 border-amber-400 text-white'
+                        : 'border-gray-300'
+                      }`}
+                    >
+                      {(isVerified || isPending) && <CheckIcon />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
+                        <p className={`${isSub ? 'text-sm' : 'text-base'} font-semibold leading-snug ${isVerified ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
+                        {isVerified && completion && (
+                          <p className="text-sm text-emerald-600 mt-0.5 font-bold">
+                            ✓ Verified by {completion.verified_by}{completion.verified_at ? ` · ${new Date(completion.verified_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                          </p>
+                        )}
+                        {isPending && completion && (
+                          <p className="text-sm text-amber-600 mt-0.5 font-bold">
+                            ⏳ Done — awaiting admin sign-off
+                          </p>
+                        )}
+                      </button>
+                      {isTaskOpen && (
+                        <div className="mt-3 space-y-3">
+                          {task.description ? <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
+                          {task.image_urls && task.image_urls.length > 0 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {task.image_urls.map((url, i) => (
+                                <img key={i} src={url} alt={`Example ${i + 1}`} className="h-32 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
+                              ))}
+                            </div>
+                          )}
+                          {linkedSop && (
+                            <button onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left">
+                              <BookOpenIcon />
+                              <span className="text-sm font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
+                              <ChevronRightIcon />
+                            </button>
+                          )}
+                          {task.sop_title && !linkedSop && (
+                            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                              <BookOpenIcon />
+                              <span className="text-sm text-gray-400 truncate">SOP ref: {task.sop_title}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {hasDetail && (
+                      <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
+                        <ChevronRightIcon />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            };
             return (
               <div className="space-y-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
                     <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
-                    <p className="text-sm text-gray-400 mt-1">Check off skills as you master them.</p>
+                    <p className="text-sm text-gray-400 mt-1">Check off skills as you master them — an admin verifies each one.</p>
                   </div>
                   {currentUser.userType === 'admin' && (
                     <button
@@ -3052,73 +3180,22 @@ export default function App() {
                       <div className="mt-3 h-2 bg-emerald-100 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                       </div>
-                      <p className="text-sm text-emerald-700 mt-1">{doneTasks} of {totalTasks} tasks complete</p>
+                      <p className="text-sm text-emerald-700 mt-1">
+                        {doneTasks} of {totalTasks} verified{pendingTasks > 0 ? ` · ${pendingTasks} awaiting sign-off` : ''}
+                      </p>
                     </div>
 
-                    {/* Task list */}
+                    {/* Task list — top-level tasks with nested sub-tasks */}
                     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden divide-y divide-gray-50">
                       {assignedTrack.tasks.length === 0 && (
                         <p className="text-sm text-gray-400 px-4 py-6 text-center">No tasks added to this level yet.</p>
                       )}
-                      {assignedTrack.tasks.map(task => {
-                        const completion = careerCompletions.find(c => c.task_id === task.id);
-                        const isDone = !!completion;
-                        const isTaskOpen = expandedTask === task.id;
-                        const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
-                        const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title);
-                        return (
-                          <div key={task.id} className="px-4 py-3">
-                            <div className="flex items-start gap-3">
-                              <button
-                                onClick={() => toggleTaskCompletion(task)}
-                                className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 ${isDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-300'}`}
-                              >
-                                {isDone && <CheckIcon />}
-                              </button>
-                              <div className="flex-1 min-w-0">
-                                <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
-                                  <p className={`text-base font-semibold leading-snug ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
-                                  {isDone && completion && (
-                                    <p className="text-sm text-emerald-600 mt-0.5 font-medium">
-                                      Completed {new Date(completion.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-                                  )}
-                                </button>
-                                {isTaskOpen && (
-                                  <div className="mt-3 space-y-3">
-                                    {task.description ? <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
-                                    {task.image_urls && task.image_urls.length > 0 && (
-                                      <div className="flex gap-2 overflow-x-auto pb-1">
-                                        {task.image_urls.map((url, i) => (
-                                          <img key={i} src={url} alt={`Example ${i + 1}`} className="h-32 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
-                                        ))}
-                                      </div>
-                                    )}
-                                    {linkedSop && (
-                                      <button onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left">
-                                        <BookOpenIcon />
-                                        <span className="text-sm font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
-                                        <ChevronRightIcon />
-                                      </button>
-                                    )}
-                                    {task.sop_title && !linkedSop && (
-                                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                                        <BookOpenIcon />
-                                        <span className="text-sm text-gray-400 truncate">SOP ref: {task.sop_title}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                              {hasDetail && (
-                                <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
-                                  <ChevronRightIcon />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {topTasks.map(task => (
+                        <React.Fragment key={task.id}>
+                          {renderTaskRow(task, false)}
+                          {subsOf(task.id).map(sub => renderTaskRow(sub, true))}
+                        </React.Fragment>
+                      ))}
 
                       {/* Admin: add task inline */}
                       {currentUser.userType === 'admin' && (
@@ -3217,6 +3294,55 @@ export default function App() {
 
                   {careerTracks.filter(t => t.department === builderDept).map(track => {
                     const isOpen = expandedBuilderTrack === track.id;
+                    const builderTopTasks = track.tasks.filter(t => !t.parent_task_id);
+                    const builderSubsOf = (id: number) => track.tasks.filter(t => t.parent_task_id === id);
+
+                    const renderBuilderTask = (task: CareerTask, isSub: boolean) => (
+                      editingTask?.id === task.id ? (
+                        <div key={task.id} className={`px-4 py-3 space-y-2 bg-emerald-50/40 ${isSub ? 'pl-10' : ''}`}>
+                          <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">Edit {isSub ? 'Sub-task' : 'Milestone'}</p>
+                          <input value={editingTask.title} onChange={e => setEditingTask({ ...editingTask, title: e.target.value })} placeholder="Title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                          <textarea value={editingTask.description} onChange={e => setEditingTask({ ...editingTask, description: e.target.value })} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                          <textarea value={editingTask.imageUrls} onChange={e => setEditingTask({ ...editingTask, imageUrls: e.target.value })} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                          <input value={editingTask.sopTitle} onChange={e => setEditingTask({ ...editingTask, sopTitle: e.target.value })} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                          <div className="flex gap-2">
+                            <button onClick={updateCareerTask} disabled={builderSaving || !editingTask.title.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Save</button>
+                            <button onClick={() => setEditingTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={task.id} className={`py-2.5 flex items-center gap-2 ${isSub ? 'pl-10 pr-4 bg-gray-50/50' : 'px-4'}`}>
+                          <div className="flex-1 min-w-0">
+                            <p className={`${isSub ? 'text-sm' : 'text-base'} font-semibold text-gray-900 leading-snug`}>{isSub ? '↳ ' : ''}{task.title}</p>
+                            {(task.sop_title || task.description) && (
+                              <p className="text-sm text-gray-400 truncate">{task.sop_title ? `SOP: ${task.sop_title}` : task.description}</p>
+                            )}
+                          </div>
+                          {!isSub && (
+                            <button
+                              onClick={() => { setShowAddSubtask(showAddSubtask === task.id ? null : task.id); setShowAddTask(null); setTaskDeleteConfirm(null); }}
+                              className="h-7 px-2 text-sm font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-lg flex-shrink-0"
+                              title="Add a sub-task under this milestone"
+                            >
+                              + Sub
+                            </button>
+                          )}
+                          <button onClick={() => { setEditingTask({ id: task.id, track_id: task.track_id, title: task.title, description: task.description || '', imageUrls: (task.image_urls || []).join('\n'), sopTitle: task.sop_title || '' }); setTaskDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title={isSub ? 'Edit sub-task' : 'Edit milestone'}>
+                            <EditIcon />
+                          </button>
+                          {taskDeleteConfirm === task.id ? (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => deleteCareerTask(task)} disabled={builderSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
+                              <button onClick={() => setTaskDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setTaskDeleteConfirm(task.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title={isSub ? 'Delete sub-task' : 'Delete milestone (also removes its sub-tasks)'}>
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    );
                     return (
                       <div key={track.id} className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
                         {/* Level header / edit form */}
@@ -3259,42 +3385,23 @@ export default function App() {
                         {isOpen && (
                           <div className="border-t border-gray-50 divide-y divide-gray-50">
                             {track.tasks.length === 0 && <p className="text-sm text-gray-400 px-4 py-3 text-center">No milestones yet.</p>}
-                            {track.tasks.map(task => (
-                              editingTask?.id === task.id ? (
-                                <div key={task.id} className="px-4 py-3 space-y-2 bg-emerald-50/40">
-                                  <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">Edit Milestone</p>
-                                  <input value={editingTask.title} onChange={e => setEditingTask({ ...editingTask, title: e.target.value })} placeholder="Milestone title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
-                                  <textarea value={editingTask.description} onChange={e => setEditingTask({ ...editingTask, description: e.target.value })} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
-                                  <textarea value={editingTask.imageUrls} onChange={e => setEditingTask({ ...editingTask, imageUrls: e.target.value })} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
-                                  <input value={editingTask.sopTitle} onChange={e => setEditingTask({ ...editingTask, sopTitle: e.target.value })} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
-                                  <div className="flex gap-2">
-                                    <button onClick={updateCareerTask} disabled={builderSaving || !editingTask.title.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Save</button>
-                                    <button onClick={() => setEditingTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div key={task.id} className="px-4 py-2.5 flex items-center gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-base font-semibold text-gray-900 leading-snug">{task.title}</p>
-                                    {(task.sop_title || task.description) && (
-                                      <p className="text-sm text-gray-400 truncate">{task.sop_title ? `SOP: ${task.sop_title}` : task.description}</p>
-                                    )}
-                                  </div>
-                                  <button onClick={() => { setEditingTask({ id: task.id, track_id: task.track_id, title: task.title, description: task.description || '', imageUrls: (task.image_urls || []).join('\n'), sopTitle: task.sop_title || '' }); setTaskDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit milestone">
-                                    <EditIcon />
-                                  </button>
-                                  {taskDeleteConfirm === task.id ? (
-                                    <div className="flex items-center gap-1">
-                                      <button onClick={() => deleteCareerTask(task)} disabled={builderSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
-                                      <button onClick={() => setTaskDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                            {builderTopTasks.map(task => (
+                              <React.Fragment key={task.id}>
+                                {renderBuilderTask(task, false)}
+                                {builderSubsOf(task.id).map(sub => renderBuilderTask(sub, true))}
+                                {showAddSubtask === task.id && (
+                                  <div className="pl-10 pr-4 py-3 bg-gray-50/50 space-y-2">
+                                    <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">New Sub-task under &ldquo;{task.title}&rdquo;</p>
+                                    <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Sub-task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                                    <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (optional)" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                                    <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                                    <div className="flex gap-2">
+                                      <button onClick={() => addCareerTask(track.id, task.id)} disabled={!newTaskTitle.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Add Sub-task</button>
+                                      <button onClick={() => setShowAddSubtask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
                                     </div>
-                                  ) : (
-                                    <button onClick={() => setTaskDeleteConfirm(task.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete milestone">
-                                      <TrashIcon />
-                                    </button>
-                                  )}
-                                </div>
-                              )
+                                  </div>
+                                )}
+                              </React.Fragment>
                             ))}
 
                             {/* Add milestone */}
@@ -3311,7 +3418,7 @@ export default function App() {
                                   </div>
                                 </div>
                               ) : (
-                                <button onClick={() => setShowAddTask(track.id)} className="flex items-center gap-1.5 text-sm text-emerald-700 font-bold">
+                                <button onClick={() => { setShowAddTask(track.id); setShowAddSubtask(null); }} className="flex items-center gap-1.5 text-sm text-emerald-700 font-bold">
                                   <PlusIcon /> Add Milestone
                                 </button>
                               )}
@@ -3350,8 +3457,11 @@ export default function App() {
                     const assignment = allAssignments.find(a => a.user_name === account.name);
                     const assignedTrack = assignment ? careerTracks.find(t => t.id === assignment.track_id) : null;
                     const userCompletions = allCareerCompletions.filter(c => c.user_name === account.name);
+                    const userVerifiedIds = new Set(userCompletions.filter(c => c.verified_by).map(c => c.task_id));
+                    const pendingSignOffs = userCompletions.filter(c => !c.verified_by);
+                    const allTasksById = new Map(careerTracks.flatMap(t => t.tasks).map(t => [t.id, t]));
                     const totalTasks = assignedTrack ? assignedTrack.tasks.length : 0;
-                    const doneTasks = assignedTrack ? assignedTrack.tasks.filter(t => userCompletions.some(c => c.task_id === t.id)).length : 0;
+                    const doneTasks = assignedTrack ? assignedTrack.tasks.filter(t => userVerifiedIds.has(t.id)).length : 0;
                     const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
                     const sorted = [...userCompletions].sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
                     const lastActivity = sorted[0];
@@ -3404,6 +3514,42 @@ export default function App() {
                           </div>
                         )}
 
+                        {/* Pending sign-offs — the admin verification queue */}
+                        {pendingSignOffs.length > 0 && (
+                          <div className="space-y-2 bg-amber-50/70 border border-amber-100 rounded-xl p-3">
+                            <p className="text-sm font-black text-amber-700 uppercase tracking-wider">⏳ Awaiting Sign-off ({pendingSignOffs.length})</p>
+                            {pendingSignOffs.map(c => {
+                              const pendingTask = allTasksById.get(c.task_id);
+                              return (
+                                <div key={c.id} className="flex items-center gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-gray-800 leading-snug">
+                                      {pendingTask?.parent_task_id ? '↳ ' : ''}{pendingTask?.title ?? `Task #${c.task_id}`}
+                                    </p>
+                                    <p className="text-sm text-gray-400">Completed {new Date(c.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => signOffCompletion(c.id)}
+                                    disabled={builderSaving}
+                                    className="h-8 px-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-sm font-black flex-shrink-0 disabled:opacity-40"
+                                    title="Verify this task is complete"
+                                  >
+                                    Sign Off
+                                  </button>
+                                  <button
+                                    onClick={() => rejectCompletion(c.id)}
+                                    disabled={builderSaving}
+                                    className="h-8 px-2 bg-white border border-red-100 text-red-500 hover:bg-red-50 rounded-lg text-sm font-black flex-shrink-0 disabled:opacity-40"
+                                    title="Reject — the teammate must redo this task"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
                         {/* Current path & progress */}
                         {assignedTrack ? (
                           <>
@@ -3418,7 +3564,7 @@ export default function App() {
                               <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                             </div>
                             <div className="flex items-center justify-between text-sm text-gray-400">
-                              <span>{doneTasks} of {totalTasks} tasks complete</span>
+                              <span>{doneTasks} of {totalTasks} verified</span>
                               {lastActivity && <span>Last: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
                             </div>
                           </>
