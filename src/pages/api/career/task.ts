@@ -11,6 +11,11 @@ function cleanImageUrls(input: unknown): string[] {
     : [];
 }
 
+async function trainingModuleExists(db: ReturnType<typeof getSupabase>, id: number): Promise<boolean> {
+  const { data } = await db.from('training_modules').select('id').eq('id', id).maybeSingle();
+  return !!data;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!checkIpRateLimit(req)) return res.status(429).json({ error: 'Too many requests.' });
 
@@ -48,6 +53,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (parent.parent_task_id) return res.status(400).json({ error: 'Sub-tasks cannot have their own sub-tasks.' });
       row.parent_task_id = parentTaskId;
     }
+    if (typeof body.trainingModuleId === 'number') {
+      if (!(await trainingModuleExists(db, body.trainingModuleId))) return res.status(400).json({ error: 'Training module not found.' });
+      row.training_module_id = body.trainingModuleId;
+    }
 
     const { data, error } = await db.from('career_tasks').insert(row).select().single();
 
@@ -72,6 +81,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sop_title:   sanitize(String(sopTitle ?? ''), 'title'),
     };
     if (typeof orderIndex === 'number') updates.order_index = orderIndex;
+    if (body.trainingModuleId !== undefined) {
+      if (typeof body.trainingModuleId === 'number') {
+        if (!(await trainingModuleExists(db, body.trainingModuleId))) return res.status(400).json({ error: 'Training module not found.' });
+        updates.training_module_id = body.trainingModuleId;
+      } else {
+        updates.training_module_id = null;
+      }
+    }
 
     const { data, error } = await db
       .from('career_tasks')
@@ -82,6 +99,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (error) {
       logError('career/task PUT', error);
       return res.status(500).json({ error: 'Update failed.' });
+    }
+    return res.status(200).json({ task: data });
+  }
+
+  // PATCH — link/unlink a milestone to a training module
+  if (req.method === 'PATCH') {
+    const { taskId, trainingModuleId } = body;
+    if (typeof taskId !== 'number') return res.status(400).json({ error: 'taskId required.' });
+    if (trainingModuleId !== null && typeof trainingModuleId !== 'number') {
+      return res.status(400).json({ error: 'trainingModuleId must be a number or null.' });
+    }
+    if (typeof trainingModuleId === 'number' && !(await trainingModuleExists(db, trainingModuleId))) {
+      return res.status(400).json({ error: 'Training module not found.' });
+    }
+
+    const { data, error } = await db
+      .from('career_tasks')
+      .update({ training_module_id: trainingModuleId })
+      .eq('id', taskId)
+      .select().single();
+
+    if (error) {
+      logError('career/task PATCH', error);
+      return res.status(500).json({ error: 'Link failed. Make sure db/training_modules.sql has been run in Supabase.' });
     }
     return res.status(200).json({ task: data });
   }

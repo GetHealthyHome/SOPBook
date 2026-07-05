@@ -29,3 +29,8 @@ create table if not exists training_steps (
 );
 
 create index if not exists training_steps_module_idx on training_steps(module_id);
+
+-- Link career ladder milestones to training modules (works both ways in
+-- the app: milestones show their training, modules list their milestones).
+alter table career_tasks
+  add column if not exists training_module_id bigint references training_modules(id) on delete set null;

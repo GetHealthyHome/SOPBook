@@ -92,6 +92,7 @@ interface CareerTask {
   sop_title: string;
   order_index: number;
   parent_task_id?: number | null; // set on sub-tasks
+  training_module_id?: number | null; // linked training module
 }
 
 interface CareerTrack {
@@ -373,11 +374,12 @@ export default function App() {
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskImages, setNewTaskImages] = useState('');
   const [newTaskSop, setNewTaskSop] = useState('');
+  const [newTaskTraining, setNewTaskTraining] = useState<number | ''>('');
   // Ladder builder (careerAdmin) state
   const [builderDept, setBuilderDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   const [expandedBuilderTrack, setExpandedBuilderTrack] = useState<number | null>(null);
   const [editingTrack, setEditingTrack] = useState<{ id: number; name: string; description: string } | null>(null);
-  const [editingTask, setEditingTask] = useState<{ id: number; track_id: number; title: string; description: string; imageUrls: string; sopTitle: string } | null>(null);
+  const [editingTask, setEditingTask] = useState<{ id: number; track_id: number; title: string; description: string; imageUrls: string; sopTitle: string; trainingModuleId: number | '' } | null>(null);
   const [trackDeleteConfirm, setTrackDeleteConfirm] = useState<number | null>(null);
   const [taskDeleteConfirm, setTaskDeleteConfirm] = useState<number | null>(null);
   const [builderSaving, setBuilderSaving] = useState(false);
@@ -635,15 +637,18 @@ export default function App() {
     setAssigningUser(null);
   };
 
+  // Career data is also needed in training views (to show which
+  // milestones a module counts toward), and training data in career
+  // views (to show a milestone's linked training).
   useEffect(() => {
-    if ((currentView === 'careerLadder' || currentView === 'careerAdmin') && currentUser && careerTracks.length === 0 && !careerLoading) {
+    if ((currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'training' || currentView === 'trainingAdmin') && currentUser && careerTracks.length === 0 && !careerLoading) {
       loadCareerData();
     }
-  }, [currentView]);
+  }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load training modules on first visit to a training view
+  // Load training modules on first visit to a training or career view
   useEffect(() => {
-    if ((currentView === 'training' || currentView === 'trainingAdmin') && currentUser && !trainingLoaded && !trainingLoading) {
+    if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin') && currentUser && !trainingLoaded && !trainingLoading) {
       loadTraining();
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -749,6 +754,7 @@ export default function App() {
           description: editingTask.description.trim(),
           imageUrls: editingTask.imageUrls.split('\n').map(s => s.trim()).filter(Boolean),
           sopTitle: editingTask.sopTitle.trim(),
+          trainingModuleId: editingTask.trainingModuleId === '' ? null : editingTask.trainingModuleId,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -778,6 +784,27 @@ export default function App() {
     } catch (err) { console.error('deleteCareerTask failed:', err); }
     setTaskDeleteConfirm(null);
     setBuilderSaving(false);
+  };
+
+  // Admin: link or unlink a career milestone and a training module
+  const linkTaskToTraining = async (task: CareerTask, moduleId: number | null) => {
+    try {
+      const res = await fetch('/api/career/task', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id, trainingModuleId: moduleId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTrainingFormError(data.error || 'Linking failed.');
+        return;
+      }
+      setCareerTracks(prev => prev.map(t => t.id === task.track_id
+        ? { ...t, tasks: t.tasks.map(tk => tk.id === task.id ? { ...tk, training_module_id: moduleId } : tk) }
+        : t));
+    } catch {
+      setTrainingFormError('Linking failed. Check your connection.');
+    }
   };
 
   // Admin: verify a teammate's completed task
@@ -832,6 +859,7 @@ export default function App() {
           imageUrls: newTaskImages.split('\n').map(s => s.trim()).filter(Boolean),
           sopTitle: newTaskSop.trim(),
           orderIndex: track ? track.tasks.length : 0,
+          trainingModuleId: newTaskTraining === '' ? undefined : newTaskTraining,
         }),
       });
       if (!res.ok) {
@@ -846,6 +874,7 @@ export default function App() {
     setNewTaskDesc('');
     setNewTaskImages('');
     setNewTaskSop('');
+    setNewTaskTraining('');
     setShowAddTask(null);
     setShowAddSubtask(null);
   };
@@ -946,6 +975,11 @@ export default function App() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setTrainingModules(prev => prev.filter(m => m.id !== id));
+      // Clear any career milestones that pointed at this module
+      setCareerTracks(prev => prev.map(t => ({
+        ...t,
+        tasks: t.tasks.map(tk => tk.training_module_id === id ? { ...tk, training_module_id: null } : tk),
+      })));
     } catch (err) { console.error('deleteTrainingModule failed:', err); }
     setTrainingDeleteConfirm(null);
     setTrainingSaving(false);
@@ -3261,7 +3295,8 @@ export default function App() {
               const isPending = !!completion && !isVerified;
               const isTaskOpen = expandedTask === task.id;
               const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
-              const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title);
+              const linkedTraining = task.training_module_id ? trainingModules.find(m => m.id === task.training_module_id) : null;
+              const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title || linkedTraining);
               return (
                 <div key={task.id} className={`px-4 py-3 ${isSub ? 'pl-11 bg-gray-50/50' : ''}`}>
                   <div className="flex items-start gap-3">
@@ -3312,6 +3347,16 @@ export default function App() {
                               <BookOpenIcon />
                               <span className="text-sm text-gray-400 truncate">SOP ref: {task.sop_title}</span>
                             </div>
+                          )}
+                          {linkedTraining && (
+                            <button
+                              onClick={() => { setOpenTraining(linkedTraining); setCurrentView('training'); }}
+                              className="flex items-center gap-2 bg-blue-50 border border-blue-100 hover:bg-blue-100 rounded-xl px-3 py-2 w-full text-left transition-colors"
+                            >
+                              <TrainingIcon />
+                              <span className="text-sm font-bold text-blue-700 truncate flex-1">Training: {linkedTraining.title}</span>
+                              <ChevronRightIcon />
+                            </button>
                           )}
                         </div>
                       )}
@@ -3510,6 +3555,14 @@ export default function App() {
                           <textarea value={editingTask.description} onChange={e => setEditingTask({ ...editingTask, description: e.target.value })} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
                           <textarea value={editingTask.imageUrls} onChange={e => setEditingTask({ ...editingTask, imageUrls: e.target.value })} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
                           <input value={editingTask.sopTitle} onChange={e => setEditingTask({ ...editingTask, sopTitle: e.target.value })} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                          <select
+                            value={editingTask.trainingModuleId}
+                            onChange={e => setEditingTask({ ...editingTask, trainingModuleId: e.target.value ? Number(e.target.value) : '' })}
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                          >
+                            <option value="">No linked training module</option>
+                            {trainingModules.map(m => <option key={m.id} value={m.id}>{m.category}: {m.title}</option>)}
+                          </select>
                           <div className="flex gap-2">
                             <button onClick={updateCareerTask} disabled={builderSaving || !editingTask.title.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Save</button>
                             <button onClick={() => setEditingTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
@@ -3532,7 +3585,7 @@ export default function App() {
                               + Sub
                             </button>
                           )}
-                          <button onClick={() => { setEditingTask({ id: task.id, track_id: task.track_id, title: task.title, description: task.description || '', imageUrls: (task.image_urls || []).join('\n'), sopTitle: task.sop_title || '' }); setTaskDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title={isSub ? 'Edit sub-task' : 'Edit milestone'}>
+                          <button onClick={() => { setEditingTask({ id: task.id, track_id: task.track_id, title: task.title, description: task.description || '', imageUrls: (task.image_urls || []).join('\n'), sopTitle: task.sop_title || '', trainingModuleId: task.training_module_id ?? '' }); setTaskDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title={isSub ? 'Edit sub-task' : 'Edit milestone'}>
                             <EditIcon />
                           </button>
                           {taskDeleteConfirm === task.id ? (
@@ -3600,6 +3653,14 @@ export default function App() {
                                     <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Sub-task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
                                     <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (optional)" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
                                     <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                                    <select
+                                      value={newTaskTraining}
+                                      onChange={e => setNewTaskTraining(e.target.value ? Number(e.target.value) : '')}
+                                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                                    >
+                                      <option value="">No linked training module</option>
+                                      {trainingModules.map(m => <option key={m.id} value={m.id}>{m.category}: {m.title}</option>)}
+                                    </select>
                                     <div className="flex gap-2">
                                       <button onClick={() => addCareerTask(track.id, task.id)} disabled={!newTaskTitle.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Add Sub-task</button>
                                       <button onClick={() => setShowAddSubtask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
@@ -3617,6 +3678,14 @@ export default function App() {
                                   <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
                                   <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
                                   <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                                  <select
+                                    value={newTaskTraining}
+                                    onChange={e => setNewTaskTraining(e.target.value ? Number(e.target.value) : '')}
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                                  >
+                                    <option value="">No linked training module</option>
+                                    {trainingModules.map(m => <option key={m.id} value={m.id}>{m.category}: {m.title}</option>)}
+                                  </select>
                                   <div className="flex gap-2">
                                     <button onClick={() => addCareerTask(track.id)} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Add Milestone</button>
                                     <button onClick={() => setShowAddTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
@@ -3810,6 +3879,33 @@ export default function App() {
                     </div>
                   )}
                   {openTraining.description && <p className="text-sm text-gray-500 leading-relaxed">{openTraining.description}</p>}
+
+                  {/* Career milestones this training counts toward */}
+                  {(() => {
+                    const linkedTasks = careerTracks.flatMap(t =>
+                      t.tasks.filter(tk => tk.training_module_id === openTraining.id).map(tk => ({ track: t, task: tk }))
+                    );
+                    if (!linkedTasks.length) return null;
+                    return (
+                      <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3.5 space-y-1.5">
+                        <p className="text-sm font-black text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                          <CareerIcon /> Counts toward the Career Ladder
+                        </p>
+                        {linkedTasks.map(({ track, task }) => (
+                          <button
+                            key={task.id}
+                            onClick={() => { setOpenTraining(null); setCurrentView('careerLadder'); }}
+                            className="flex items-center gap-2 w-full text-left bg-white border border-emerald-100 hover:border-emerald-200 rounded-xl px-3 py-2 transition-colors"
+                          >
+                            <span className="text-sm font-bold text-gray-800 truncate flex-1">
+                              {track.name}: {task.parent_task_id ? '↳ ' : ''}{task.title}
+                            </span>
+                            <ChevronRightIcon />
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
 
                   <div className="relative border-l-2 border-gray-100 pl-6 ml-3 py-1 space-y-6">
                     {openTraining.steps.map((step, i) => (
@@ -4083,6 +4179,46 @@ export default function App() {
                       <PlusIcon /> Add Step
                     </button>
                   </div>
+
+                  {/* Link career milestones to this module (existing modules only) */}
+                  {trainingDraft.id !== null && (
+                    <div className="border-t border-gray-100 pt-4 space-y-2">
+                      <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
+                        <CareerIcon /> Linked Career Milestones
+                      </h3>
+                      <p className="text-sm text-gray-400 leading-snug">
+                        Tick the milestones this training prepares a teammate for. Linked milestones show an &ldquo;Open Training&rdquo; button in the career ladder, and changes save instantly.
+                      </p>
+                      {careerTracks.filter(t => t.tasks.length > 0).length === 0 && (
+                        <p className="text-sm text-gray-400">No career milestones exist yet — add some in the Career Ladder Manager.</p>
+                      )}
+                      {careerTracks.filter(t => t.tasks.length > 0).map(track => (
+                        <div key={track.id} className="space-y-1">
+                          <p className="text-sm font-black text-gray-400 uppercase tracking-wider pt-1">{track.department} — {track.name}</p>
+                          {track.tasks.map(task => {
+                            const linked = task.training_module_id === trainingDraft.id;
+                            return (
+                              <label key={task.id} className={`flex items-center gap-2 text-sm rounded-lg px-2.5 py-1.5 cursor-pointer border transition-colors ${linked ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-bold' : 'bg-white border-gray-100 text-gray-700'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={linked}
+                                  onChange={() => linkTaskToTraining(task, linked ? null : trainingDraft.id)}
+                                  className="accent-emerald-700"
+                                />
+                                <span className="truncate">{task.parent_task_id ? '↳ ' : ''}{task.title}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {trainingDraft.id === null && (
+                    <p className="text-sm text-gray-400 border-t border-gray-100 pt-3">
+                      💡 After publishing, reopen this module to link it to career ladder milestones (or pick the module from a milestone&apos;s editor in the Career Ladder Manager).
+                    </p>
+                  )}
 
                   <div className="pt-2 flex items-center justify-between gap-3">
                     <button onClick={() => setTrainingDraft(null)} className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-50 shadow-xs">
