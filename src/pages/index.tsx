@@ -378,6 +378,11 @@ export default function App() {
   const [editingSopId, setEditingSopId] = useState<string | null>(null);
   const [editChangeNote, setEditChangeNote] = useState('');
 
+  // Import existing SOP documents (docx/pdf/txt/md) into the creator form
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importNotice, setImportNotice] = useState('');
+
   // Custom interactive mock upload states
   const [uploadTargetIdx, setUploadTargetIdx] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState<Record<number, boolean>>({});
@@ -913,6 +918,40 @@ export default function App() {
     setFormError('');
     setEditingSopId(null);
     setEditChangeNote('');
+    setImportBusy(false);
+    setImportError('');
+    setImportNotice('');
+  };
+
+  // Upload an existing SOP document; the server extracts and parses it,
+  // and the creator form is pre-filled for review before publishing.
+  const importSopFile = async (file: File) => {
+    setImportBusy(true);
+    setImportError('');
+    setImportNotice('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/sops/import', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.draft) {
+        setImportError(data.error || 'Import failed. Please try again.');
+        return;
+      }
+      const d = data.draft;
+      if (d.category) setNewCategory(d.category);
+      setNewTitle(d.title || '');
+      setNewSummary(d.summary || '');
+      setNewTools(d.tools || '');
+      setNewMaterials(d.materials || '');
+      setNewSteps(d.steps?.length ? d.steps : [{ title: '', summary: '', body: '', imageUrl: '' }]);
+      setFormError('');
+      setImportNotice(`Imported ${d.steps?.length ?? 0} step${d.steps?.length === 1 ? '' : 's'} from “${file.name}” — review below, then publish.`);
+    } catch {
+      setImportError('Import failed. Check your connection and try again.');
+    } finally {
+      setImportBusy(false);
+    }
   };
 
   // Pre-fill the creator form with an existing SOP for in-place editing
@@ -1531,6 +1570,34 @@ export default function App() {
                   )}
                 </div>
               </div>
+
+              {/* Import an existing SOP document (new drafts only) */}
+              {!editingSopId && (
+                <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3.5 space-y-2 shadow-xs">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-blue-900 flex items-center gap-1.5">
+                        <CloudUploadIcon /> Import Existing SOP
+                      </p>
+                      <p className="text-base text-blue-800/70 font-medium leading-snug mt-0.5">
+                        Have this SOP as a Word, PDF, text, or Markdown file? Upload it and the form fills itself in for review.
+                      </p>
+                    </div>
+                    <label className={`h-9 px-3.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-black flex items-center cursor-pointer flex-shrink-0 transition-colors ${importBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+                      {importBusy ? 'Importing…' : 'Choose File'}
+                      <input
+                        type="file"
+                        accept=".txt,.md,.markdown,.docx,.pdf"
+                        className="hidden"
+                        disabled={importBusy}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) importSopFile(f); e.target.value = ''; }}
+                      />
+                    </label>
+                  </div>
+                  {importNotice && <p className="text-sm font-bold text-emerald-700">✓ {importNotice}</p>}
+                  {importError && <p className="text-sm font-bold text-red-600">⚠️ {importError}</p>}
+                </div>
+              )}
 
               {formError && (
                 <div className="bg-red-50 border border-red-100 text-red-800 rounded-2xl p-3 text-sm font-semibold">
