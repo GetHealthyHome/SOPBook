@@ -36,6 +36,8 @@ const CalendarIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentC
 const CloudUploadIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>;
 const BellIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>;
 const EditIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>;
+const TrainingIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-6 4v-3.5"/></svg>;
+const LinkIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5m7.328-1.672a4 4 0 000-5.656 4 4 0 00-5.656 0l-3 3"/></svg>;
 
 interface Step {
   title: string;
@@ -118,6 +120,40 @@ interface CareerAssignment {
   track_id: number;
   assigned_by: string;
   assigned_at: string;
+}
+
+interface TrainingStep {
+  id?: number;
+  module_id?: number;
+  title: string;
+  body: string;
+  image_urls: string[];
+  link_url: string;
+  link_label: string;
+  order_index: number;
+}
+
+interface TrainingModule {
+  id: number;
+  title: string;
+  description: string;
+  category: string; // Home Performance | HVAC
+  cover_url: string;
+  order_index: number;
+  created_by: string;
+  created_at: string;
+  steps: TrainingStep[];
+}
+
+// Draft used by the admin Training Builder form
+interface TrainingDraftStep { title: string; body: string; images: string; linkUrl: string; linkLabel: string }
+interface TrainingDraft {
+  id: number | null;
+  title: string;
+  description: string;
+  category: 'Home Performance' | 'HVAC';
+  coverUrl: string;
+  steps: TrainingDraftStep[];
 }
 
 interface Notification {
@@ -279,7 +315,7 @@ export default function App() {
   const [mounted, setMounted] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
-  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications'>('login');
+  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training' | 'trainingAdmin'>('login');
 
   // Account authorization state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -349,6 +385,20 @@ export default function App() {
   const [assigningUser, setAssigningUser] = useState<string | null>(null);
   const [assignDept, setAssignDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   const [assignTrackId, setAssignTrackId] = useState<number | null>(null);
+
+  // Training modules state
+  const [trainingModules, setTrainingModules] = useState<TrainingModule[]>([]);
+  const [trainingLoaded, setTrainingLoaded] = useState(false);
+  const [trainingLoading, setTrainingLoading] = useState(false);
+  const [trainingError, setTrainingError] = useState('');
+  const [trainingCategory, setTrainingCategory] = useState<'Home Performance' | 'HVAC'>('Home Performance');
+  const [openTraining, setOpenTraining] = useState<TrainingModule | null>(null);
+  // Admin Training Builder
+  const [trainingDraft, setTrainingDraft] = useState<TrainingDraft | null>(null);
+  const [trainingSaving, setTrainingSaving] = useState(false);
+  const [trainingFormError, setTrainingFormError] = useState('');
+  const [trainingDeleteConfirm, setTrainingDeleteConfirm] = useState<number | null>(null);
+  const [trainingUploading, setTrainingUploading] = useState<string | null>(null); // 'cover' | step index
 
   const [allBadges, setAllBadges] = useState<UserBadge[]>([]);
   const [badgesLoaded, setBadgesLoaded] = useState(false);
@@ -591,6 +641,13 @@ export default function App() {
     }
   }, [currentView]);
 
+  // Load training modules on first visit to a training view
+  useEffect(() => {
+    if ((currentView === 'training' || currentView === 'trainingAdmin') && currentUser && !trainingLoaded && !trainingLoading) {
+      loadTraining();
+    }
+  }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggleTaskCompletion = async (task: CareerTask) => {
     if (!currentUser) return;
     const existing = careerCompletions.find(c => c.task_id === task.id);
@@ -793,6 +850,134 @@ export default function App() {
     setShowAddSubtask(null);
   };
 
+  // ------------------------- Training modules -------------------------
+
+  const loadTraining = async () => {
+    setTrainingLoading(true);
+    setTrainingError('');
+    try {
+      const res = await fetch('/api/training');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setTrainingModules(data.modules ?? []);
+      setTrainingLoaded(true);
+    } catch (err) {
+      setTrainingError(err instanceof Error ? err.message : 'Could not load training.');
+    } finally {
+      setTrainingLoading(false);
+    }
+  };
+
+  const blankTrainingDraft = (): TrainingDraft => ({
+    id: null,
+    title: '',
+    description: '',
+    category: 'Home Performance',
+    coverUrl: '',
+    steps: [{ title: '', body: '', images: '', linkUrl: '', linkLabel: '' }],
+  });
+
+  const startEditTraining = (mod: TrainingModule) => {
+    setTrainingFormError('');
+    setTrainingDraft({
+      id: mod.id,
+      title: mod.title,
+      description: mod.description || '',
+      category: (mod.category === 'HVAC' ? 'HVAC' : 'Home Performance'),
+      coverUrl: mod.cover_url || '',
+      steps: mod.steps.length
+        ? mod.steps.map(s => ({
+            title: s.title,
+            body: s.body || '',
+            images: (s.image_urls || []).join('\n'),
+            linkUrl: s.link_url || '',
+            linkLabel: s.link_label || '',
+          }))
+        : [{ title: '', body: '', images: '', linkUrl: '', linkLabel: '' }],
+    });
+  };
+
+  const saveTrainingDraft = async () => {
+    if (!trainingDraft) return;
+    if (!trainingDraft.title.trim()) { setTrainingFormError('Module title is required.'); return; }
+    if (trainingDraft.steps.some(s => !s.title.trim())) { setTrainingFormError('Every step needs a title.'); return; }
+    setTrainingSaving(true);
+    setTrainingFormError('');
+    try {
+      const res = await fetch('/api/training', {
+        method: trainingDraft.id === null ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: trainingDraft.id ?? undefined,
+          title: trainingDraft.title.trim(),
+          description: trainingDraft.description.trim(),
+          category: trainingDraft.category,
+          coverUrl: trainingDraft.coverUrl.trim(),
+          steps: trainingDraft.steps.map(s => ({
+            title: s.title.trim(),
+            body: s.body.trim(),
+            imageUrls: s.images.split('\n').map(u => u.trim()).filter(Boolean),
+            linkUrl: s.linkUrl.trim(),
+            linkLabel: s.linkLabel.trim(),
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.module) throw new Error(data.error || 'Save failed.');
+      setTrainingModules(prev => {
+        const exists = prev.some(m => m.id === data.module.id);
+        return exists ? prev.map(m => m.id === data.module.id ? data.module : m) : [...prev, data.module];
+      });
+      setTrainingDraft(null);
+    } catch (err) {
+      setTrainingFormError(err instanceof Error ? err.message : 'Save failed.');
+    } finally {
+      setTrainingSaving(false);
+    }
+  };
+
+  const deleteTrainingModule = async (id: number) => {
+    setTrainingSaving(true);
+    try {
+      const res = await fetch('/api/training', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setTrainingModules(prev => prev.filter(m => m.id !== id));
+    } catch (err) { console.error('deleteTrainingModule failed:', err); }
+    setTrainingDeleteConfirm(null);
+    setTrainingSaving(false);
+  };
+
+  // Upload a photo for the training builder; target is 'cover' or a step index
+  const uploadTrainingImage = async (file: File, target: 'cover' | number) => {
+    if (!trainingDraft) return;
+    setTrainingUploading(String(target));
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        setTrainingFormError(data.error || 'Photo upload failed.');
+        return;
+      }
+      setTrainingDraft(prev => {
+        if (!prev) return prev;
+        if (target === 'cover') return { ...prev, coverUrl: data.url };
+        const steps = [...prev.steps];
+        steps[target] = { ...steps[target], images: steps[target].images ? `${steps[target].images}\n${data.url}` : data.url };
+        return { ...prev, steps };
+      });
+    } catch {
+      setTrainingFormError('Photo upload failed. Check your connection.');
+    } finally {
+      setTrainingUploading(null);
+    }
+  };
+
   const saveSOPToServer = async (sop: SOP): Promise<SOP | null> => {
     const res = await fetch(`/api/sops/${sop.id}`, {
       method: 'PUT',
@@ -902,6 +1087,10 @@ export default function App() {
     setCurrentUser(null);
     setAllBadges([]);
     setBadgesLoaded(false);
+    setTrainingModules([]);
+    setTrainingLoaded(false);
+    setOpenTraining(null);
+    setTrainingDraft(null);
     setTeamUsers([]);
     setTeamUsersLoaded(false);
     setNotifications([]);
@@ -1289,6 +1478,7 @@ export default function App() {
               { view: 'dashboard', label: 'SOPs', icon: <FolderIcon />, match: ['dashboard','document','addRevision'] },
               { view: 'handbook', label: 'Handbook', icon: <HandbookIcon />, match: ['handbook'] },
               { view: 'careerLadder', label: 'Career', icon: <CareerIcon />, match: ['careerLadder','careerAdmin'] },
+              { view: 'training', label: 'Training', icon: <TrainingIcon />, match: ['training','trainingAdmin'] },
               { view: 'userNotifications', label: 'Notifications', icon: <BellIcon />, match: ['userNotifications'] },
               ...(currentUser.userType === 'admin' ? [
                 { view: 'new', label: 'Draft SOP', icon: <PlusIcon />, match: ['new'] },
@@ -2463,6 +2653,21 @@ export default function App() {
                 <ChevronRightIcon />
               </button>
 
+              {/* Training builder shortcut */}
+              <button
+                onClick={() => { setTrainingDraft(null); setCurrentView('trainingAdmin'); }}
+                className="w-full bg-white border border-gray-100 hover:border-emerald-200 hover:shadow-xs rounded-2xl p-4 flex items-center justify-between transition-all shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-50 text-blue-700 rounded-xl"><TrainingIcon /></div>
+                  <div className="text-left">
+                    <p className="text-sm font-black text-gray-900">Training Builder</p>
+                    <p className="text-base text-gray-400 font-medium">Create multi-step training with photos &amp; resource links.</p>
+                  </div>
+                </div>
+                <ChevronRightIcon />
+              </button>
+
               {/* Panels grid — single column on mobile, two columns on desktop */}
               <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-5 lg:space-y-0">
 
@@ -3579,6 +3784,319 @@ export default function App() {
             </div>
           )}
 
+          {/* VIEW: TRAINING — employee library & module viewer */}
+          {currentView === 'training' && currentUser && (
+            <div className="space-y-5">
+              {openTraining ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 -ml-1">
+                    <button onClick={() => setOpenTraining(null)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
+                      <ArrowLeftIcon />
+                    </button>
+                    <div>
+                      <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">{openTraining.category} Training</span>
+                      <h1 className="text-lg font-black text-gray-950 leading-tight">{openTraining.title}</h1>
+                    </div>
+                  </div>
+
+                  {openTraining.cover_url && (
+                    <div className="w-full h-44 rounded-2xl overflow-hidden bg-gray-100">
+                      <img
+                        src={openTraining.cover_url}
+                        alt={openTraining.title}
+                        className="object-cover w-full h-full"
+                        onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                  {openTraining.description && <p className="text-sm text-gray-500 leading-relaxed">{openTraining.description}</p>}
+
+                  <div className="relative border-l-2 border-gray-100 pl-6 ml-3 py-1 space-y-6">
+                    {openTraining.steps.map((step, i) => (
+                      <div key={step.id ?? i} className="relative">
+                        <span className="absolute -left-[35px] top-1 rounded-full w-6 h-6 flex items-center justify-center text-sm font-black border-4 border-white bg-emerald-800 text-white shadow-xs">
+                          {i + 1}
+                        </span>
+                        <article className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs space-y-3">
+                          <h3 className="text-sm font-black text-gray-900 leading-snug">{step.title}</h3>
+                          {step.body && <p className="text-base text-gray-600 leading-relaxed whitespace-pre-line">{step.body}</p>}
+                          {step.image_urls && step.image_urls.length > 0 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {step.image_urls.map((url, j) => (
+                                <img key={j} src={url} alt={`${step.title} — photo ${j + 1}`} className="h-36 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
+                              ))}
+                            </div>
+                          )}
+                          {step.link_url && (
+                            <a
+                              href={step.link_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 bg-blue-50 border border-blue-100 hover:bg-blue-100 rounded-xl px-3 py-2 text-sm font-bold text-blue-700 transition-colors"
+                            >
+                              <LinkIcon />
+                              <span className="truncate flex-1">{step.link_label || step.link_url}</span>
+                              <span>↗</span>
+                            </a>
+                          )}
+                        </article>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Learn & Grow</span>
+                      <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Training</h1>
+                      <p className="text-sm text-gray-400 mt-1">Step-by-step training for your trade.</p>
+                    </div>
+                    {currentUser.userType === 'admin' && (
+                      <button
+                        onClick={() => { setTrainingDraft(null); setCurrentView('trainingAdmin'); }}
+                        className="flex items-center gap-1.5 bg-emerald-800 text-white text-sm font-black uppercase tracking-wider px-3 py-2 rounded-xl"
+                      >
+                        <EditIcon /> Builder
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Category tabs */}
+                  <div className="flex gap-2">
+                    {(['Home Performance', 'HVAC'] as const).map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setTrainingCategory(cat)}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${trainingCategory === cat ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {trainingLoading && (
+                    <div className="flex items-center justify-center py-16">
+                      <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+
+                  {trainingError && !trainingLoading && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
+                      <p className="text-sm text-amber-800 font-bold">{trainingError}</p>
+                      <button onClick={loadTraining} className="text-sm font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
+                    </div>
+                  )}
+
+                  {!trainingLoading && !trainingError && trainingModules.filter(m => m.category === trainingCategory).length === 0 && (
+                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-8 text-center space-y-2">
+                      <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto"><TrainingIcon /></div>
+                      <p className="text-base font-black text-gray-900">No {trainingCategory} training yet</p>
+                      <p className="text-sm text-gray-400 max-w-[240px] mx-auto leading-relaxed">Training modules published by your admins will appear here.</p>
+                    </div>
+                  )}
+
+                  <div className="grid gap-3">
+                    {trainingModules.filter(m => m.category === trainingCategory).map(mod => (
+                      <button
+                        key={mod.id}
+                        onClick={() => setOpenTraining(mod)}
+                        className="bg-white border border-gray-100 hover:border-emerald-100 hover:shadow-xs rounded-2xl overflow-hidden text-left transition-all group"
+                      >
+                        {mod.cover_url && (
+                          <div className="w-full h-32 bg-gray-100 overflow-hidden">
+                            <img
+                              src={mod.cover_url}
+                              alt={mod.title}
+                              className="object-cover w-full h-full group-hover:scale-[1.02] transition-transform"
+                              onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }}
+                            />
+                          </div>
+                        )}
+                        <div className="p-4 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-black text-gray-900 leading-snug group-hover:text-emerald-800 transition-colors">{mod.title}</h4>
+                            {mod.description && <p className="text-base text-gray-400 font-medium leading-relaxed line-clamp-2 mt-0.5">{mod.description}</p>}
+                            <p className="text-sm text-gray-400 font-bold mt-1">{mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}</p>
+                          </div>
+                          <ChevronRightIcon />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* VIEW: TRAINING BUILDER (ADMIN-ONLY) */}
+          {currentView === 'trainingAdmin' && currentUser && currentUser.userType === 'admin' && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-2 -ml-1">
+                <button
+                  onClick={() => { if (trainingDraft) { setTrainingDraft(null); } else { setCurrentView('training'); } }}
+                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                >
+                  <ArrowLeftIcon />
+                </button>
+                <div>
+                  <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Admin</span>
+                  <h1 className="text-lg font-black text-gray-950 leading-tight">{trainingDraft ? (trainingDraft.id === null ? 'New Training Module' : 'Edit Training Module') : 'Training Builder'}</h1>
+                </div>
+              </div>
+
+              {!trainingDraft && (
+                <>
+                  <button
+                    onClick={() => { setTrainingFormError(''); setTrainingDraft(blankTrainingDraft()); }}
+                    className="w-full h-11 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-emerald-800 font-black text-sm flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <PlusIcon /> New Training Module
+                  </button>
+
+                  {trainingLoading && (
+                    <div className="flex items-center justify-center py-10">
+                      <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+
+                  {(['Home Performance', 'HVAC'] as const).map(cat => (
+                    <div key={cat} className="space-y-2">
+                      <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">{cat} ({trainingModules.filter(m => m.category === cat).length})</h3>
+                      {trainingModules.filter(m => m.category === cat).length === 0 && (
+                        <p className="text-sm text-gray-400 px-1">No modules yet.</p>
+                      )}
+                      {trainingModules.filter(m => m.category === cat).map(mod => (
+                        <div key={mod.id} className="bg-white border border-gray-100 rounded-2xl p-3.5 flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-base font-black text-gray-900 leading-snug">{mod.title}</p>
+                            <p className="text-sm text-gray-400 mt-0.5">{mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}{mod.created_by ? ` — by ${mod.created_by}` : ''}</p>
+                          </div>
+                          <button onClick={() => startEditTraining(mod)} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit module">
+                            <EditIcon />
+                          </button>
+                          {trainingDeleteConfirm === mod.id ? (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => deleteTrainingModule(mod.id)} disabled={trainingSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
+                              <button onClick={() => setTrainingDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setTrainingDeleteConfirm(mod.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete module">
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {trainingDraft && (
+                <div className="space-y-4">
+                  {trainingFormError && (
+                    <div className="bg-red-50 border border-red-100 text-red-800 rounded-2xl p-3 text-sm font-semibold">⚠️ {trainingFormError}</div>
+                  )}
+
+                  {/* Category */}
+                  <div className="flex gap-2">
+                    {(['Home Performance', 'HVAC'] as const).map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setTrainingDraft({ ...trainingDraft, category: cat })}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${trainingDraft.category === cat ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Module Title</label>
+                    <input value={trainingDraft.title} onChange={e => setTrainingDraft({ ...trainingDraft, title: e.target.value })} placeholder="e.g., Blower Door Setup & Testing" className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Description</label>
+                    <textarea value={trainingDraft.description} onChange={e => setTrainingDraft({ ...trainingDraft, description: e.target.value })} rows={2} placeholder="What this training covers and who it's for..." className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-800 shadow-xs" />
+                  </div>
+
+                  {/* Cover photo */}
+                  <div className="bg-white border border-gray-100 p-3 rounded-xl space-y-2 shadow-xs">
+                    <div className="flex justify-between items-center">
+                      <label className="text-sm font-black text-gray-500 uppercase tracking-wider">Cover Photo</label>
+                      <label className={`h-8 px-3 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-sm font-extrabold text-emerald-800 flex items-center gap-1 cursor-pointer transition-colors ${trainingUploading === 'cover' ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {trainingUploading === 'cover' ? 'Uploading…' : <><CloudUploadIcon /> Upload</>}
+                        <input type="file" accept="image/*" className="hidden" disabled={trainingUploading === 'cover'} onChange={e => { const f = e.target.files?.[0]; if (f) uploadTrainingImage(f, 'cover'); e.target.value = ''; }} />
+                      </label>
+                    </div>
+                    <input value={trainingDraft.coverUrl} onChange={e => setTrainingDraft({ ...trainingDraft, coverUrl: e.target.value })} placeholder="Or paste an https image URL..." className="w-full h-9 px-2.5 border border-gray-100 bg-gray-50 text-sm focus:outline-none rounded-lg text-gray-500 font-mono" />
+                    {trainingDraft.coverUrl && (
+                      <div className="w-full h-32 rounded-xl overflow-hidden bg-gray-100">
+                        <img src={trainingDraft.coverUrl} alt="Cover preview" className="object-cover w-full h-full" onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Steps */}
+                  <div className="border-t border-gray-100 pt-4 space-y-3">
+                    <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
+                      <BookOpenIcon /> Training Steps ({trainingDraft.steps.length})
+                    </h3>
+                    {trainingDraft.steps.map((step, i) => (
+                      <div key={i} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-base font-black text-gray-400 tracking-wider">STEP {i + 1}</span>
+                          {trainingDraft.steps.length > 1 && (
+                            <button onClick={() => setTrainingDraft({ ...trainingDraft, steps: trainingDraft.steps.filter((_, j) => j !== i) })} className="text-gray-400 hover:text-red-500 p-1 bg-white border border-gray-100 rounded-lg transition-colors">
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </div>
+                        <input value={step.title} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], title: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} placeholder="Step title*" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs" />
+                        <textarea value={step.body} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], body: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} rows={3} placeholder="What to teach / demonstrate in this step..." className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed shadow-xs" />
+
+                        {/* Step photos */}
+                        <div className="bg-white border border-gray-100 p-2.5 rounded-xl space-y-2 shadow-xs">
+                          <div className="flex justify-between items-center text-base font-bold text-gray-400 uppercase tracking-wide">
+                            <span>Step Photos</span>
+                            <label className={`h-7 px-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-sm font-extrabold text-emerald-800 flex items-center gap-1 cursor-pointer transition-colors ${trainingUploading === String(i) ? 'opacity-50 pointer-events-none' : ''}`}>
+                              {trainingUploading === String(i) ? 'Uploading…' : <><CloudUploadIcon /> Add Photo</>}
+                              <input type="file" accept="image/*" className="hidden" disabled={trainingUploading === String(i)} onChange={e => { const f = e.target.files?.[0]; if (f) uploadTrainingImage(f, i); e.target.value = ''; }} />
+                            </label>
+                          </div>
+                          <textarea value={step.images} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], images: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} rows={2} placeholder="Photo URLs — one per line (uploads are added automatically)" className="w-full p-2 border border-gray-100 bg-gray-50 text-sm focus:outline-none rounded-lg text-gray-500 font-mono" />
+                        </div>
+
+                        {/* Resource link */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={step.linkUrl} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], linkUrl: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} placeholder="Resource link URL (https://...)" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 shadow-xs" />
+                          <input value={step.linkLabel} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], linkLabel: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} placeholder="Link label (e.g. Watch video)" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 shadow-xs" />
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={() => setTrainingDraft({ ...trainingDraft, steps: [...trainingDraft.steps, { title: '', body: '', images: '', linkUrl: '', linkLabel: '' }] })}
+                      className="w-full h-11 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-emerald-800 font-black text-sm flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <PlusIcon /> Add Step
+                    </button>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between gap-3">
+                    <button onClick={() => setTrainingDraft(null)} className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-50 shadow-xs">
+                      Cancel
+                    </button>
+                    <button onClick={saveTrainingDraft} disabled={trainingSaving} className="flex-1 h-11 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-emerald-100 disabled:opacity-50">
+                      {trainingSaving ? 'Saving…' : trainingDraft.id === null ? 'Publish Module' : 'Save Changes'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
 
         {/* Unified Mobile Bottom Navigation Drawer — hidden on desktop (sidebar used instead) */}
@@ -3612,6 +4130,16 @@ export default function App() {
             >
               <CareerIcon />
               <span className="text-base font-black tracking-wider uppercase">Career</span>
+            </button>
+
+            <button
+              onClick={() => { setOpenTraining(null); setCurrentView('training'); }}
+              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+                currentView === 'training' || currentView === 'trainingAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <TrainingIcon />
+              <span className="text-base font-black tracking-wider uppercase">Training</span>
             </button>
 
             <button

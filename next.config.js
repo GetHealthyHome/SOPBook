@@ -34,8 +34,10 @@ const securityHeaders = [
       // unsafe-eval is only needed by the dev-mode bundler
       `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
       "style-src 'self' 'unsafe-inline'",
-      // Uploaded SOP photos are served from Supabase storage
-      "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com",
+      // Uploaded photos live on Supabase storage; admins may also link
+      // photos hosted elsewhere — any https image host is allowed
+      // (images render only, they cannot run script)
+      "img-src 'self' data: blob: https:",
       "connect-src 'self'",
       "font-src 'self'",
       "frame-ancestors 'none'",
