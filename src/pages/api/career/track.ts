@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
+import { logError } from '@/lib/log';
 import { sanitize } from '@/lib/security';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -28,6 +29,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
     .select().single();
 
-  if (error) return res.status(500).json({ error: 'Insert failed.' });
+  if (error) {
+    logError('career/track POST', error);
+    return res.status(500).json({ error: 'Insert failed.' });
+  }
   return res.status(201).json({ track: data });
 }

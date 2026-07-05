@@ -1,7 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
+import { logError } from '@/lib/log';
 import { sanitize } from '@/lib/security';
+import { isSafeImageUrl } from '@/lib/sopSanitize';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -17,7 +19,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!cleanTitle) return res.status(400).json({ error: 'Task title required.' });
 
   const safeUrls = Array.isArray(imageUrls)
-    ? imageUrls.map((u: unknown) => sanitize(String(u), 'default')).filter(Boolean)
+    ? imageUrls.slice(0, 20).map((u: unknown) => String(u).trim()).filter(isSafeImageUrl)
     : [];
 
   const { data, error } = await getSupabase()
@@ -32,6 +34,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
     .select().single();
 
-  if (error) return res.status(500).json({ error: 'Insert failed.' });
+  if (error) {
+    logError('career/task POST', error);
+    return res.status(500).json({ error: 'Insert failed.' });
+  }
   return res.status(201).json({ task: data });
 }

@@ -1,4 +1,5 @@
 import { getSupabase } from './supabaseServer';
+import { logError } from './log';
 
 export async function fanOutNotification(opts: {
   type: 'sop' | 'handbook';
@@ -9,15 +10,20 @@ export async function fanOutNotification(opts: {
   const db = getSupabase();
 
   // Check global toggle
-  const { data: setting } = await db
+  const { data: setting, error: settingErr } = await db
     .from('app_settings')
     .select('value')
     .eq('key', 'notifications_enabled')
-    .single();
+    .maybeSingle();
+  if (settingErr) logError('fanOut settings', settingErr);
   if (setting?.value !== 'true') return;
 
   // Get all users
-  const { data: users } = await db.from('app_users').select('name');
+  const { data: users, error: usersErr } = await db.from('app_users').select('name');
+  if (usersErr) {
+    logError('fanOut users', usersErr);
+    return;
+  }
   if (!users?.length) return;
 
   const rows = users
@@ -30,6 +36,7 @@ export async function fanOutNotification(opts: {
     }));
 
   if (rows.length) {
-    await db.from('user_notifications').insert(rows);
+    const { error } = await db.from('user_notifications').insert(rows);
+    if (error) logError('fanOut insert', error);
   }
 }

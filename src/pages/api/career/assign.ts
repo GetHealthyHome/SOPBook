@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
+import { logError } from '@/lib/log';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -11,7 +12,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
 
   const { userName, userRole, trackId, existingId } = req.body ?? {};
-  if (!userName || !userRole || typeof trackId !== 'number') {
+  if (typeof userName !== 'string' || !userName || userName.length > 80 ||
+      typeof userRole !== 'string' || !userRole || userRole.length > 80 ||
+      typeof trackId !== 'number') {
     return res.status(400).json({ error: 'userName, userRole, trackId required.' });
   }
 
@@ -23,7 +26,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .update({ track_id: trackId, assigned_by: session.name, assigned_at: new Date().toISOString() })
       .eq('id', existingId)
       .select().single();
-    if (error) return res.status(500).json({ error: 'Update failed.' });
+    if (error) {
+      logError('career/assign update', error);
+      return res.status(500).json({ error: 'Update failed.' });
+    }
     return res.status(200).json({ assignment: data });
   }
 
@@ -31,6 +37,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .from('career_assignments')
     .insert({ user_name: userName, user_role: userRole, track_id: trackId, assigned_by: session.name })
     .select().single();
-  if (error) return res.status(500).json({ error: 'Insert failed.' });
+  if (error) {
+    logError('career/assign insert', error);
+    return res.status(500).json({ error: 'Insert failed.' });
+  }
   return res.status(201).json({ assignment: data });
 }
