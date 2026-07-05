@@ -35,6 +35,7 @@ const CareerIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentCol
 const CalendarIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
 const CloudUploadIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>;
 const BellIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>;
+const EditIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>;
 
 interface Step {
   title: string;
@@ -364,7 +365,11 @@ export default function App() {
     { title: '', summary: '', body: '', imageUrl: '' }
   ]);
   const [formError, setFormError] = useState('');
-  
+
+  // In-place SOP editing (admin) — when set, the creator form edits this SOP
+  const [editingSopId, setEditingSopId] = useState<string | null>(null);
+  const [editChangeNote, setEditChangeNote] = useState('');
+
   // Custom interactive mock upload states
   const [uploadTargetIdx, setUploadTargetIdx] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState<Record<number, boolean>>({});
@@ -815,6 +820,32 @@ export default function App() {
     setNewSteps(updated);
   };
 
+  const resetSopForm = () => {
+    setNewCategory('HVAC');
+    setNewTitle('');
+    setNewSummary('');
+    setNewTools('');
+    setNewMaterials('');
+    setNewSteps([{ title: '', summary: '', body: '', imageUrl: '' }]);
+    setFormError('');
+    setEditingSopId(null);
+    setEditChangeNote('');
+  };
+
+  // Pre-fill the creator form with an existing SOP for in-place editing
+  const startEditSop = (doc: SOP) => {
+    setNewCategory(doc.category || 'HVAC');
+    setNewTitle(doc.title);
+    setNewSummary(doc.summary);
+    setNewTools(doc.tools || '');
+    setNewMaterials(doc.materials || '');
+    setNewSteps(doc.steps?.length ? doc.steps.map(s => ({ ...s })) : [{ title: '', summary: '', body: '', imageUrl: '' }]);
+    setFormError('');
+    setEditingSopId(doc.id);
+    setEditChangeNote('');
+    setCurrentView('new');
+  };
+
   const handlePublishSOP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.userType !== 'admin') return;
@@ -833,6 +864,56 @@ export default function App() {
     }
 
     const todayString = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+
+    // Editing an existing SOP: bump the version, log the change note in the
+    // revision history, and save — the server notifies every teammate.
+    if (editingSopId) {
+      const original = documents.find(d => d.id === editingSopId);
+      if (!original) {
+        setFormError('Original SOP could not be found. Please go back and retry.');
+        return;
+      }
+      const cleanNote = sanitize(editChangeNote, 'notes');
+      if (!cleanNote) {
+        setFormError('Please describe what changed — it is logged in the version history for the team.');
+        return;
+      }
+      const latestVer = original.revisionHistory[0]?.version;
+      let nextVer = 'v1.1';
+      if (latestVer) {
+        const [major, minor] = latestVer.replace('v', '').split('.').map(Number);
+        nextVer = `v${major}.${(minor ?? 0) + 1}`;
+      }
+      const updatedDoc: SOP = {
+        ...original,
+        category: newCategory,
+        title: cleanTitle,
+        summary: cleanSummary,
+        tools: sanitize(newTools, 'notes'),
+        materials: sanitize(newMaterials, 'notes'),
+        steps: newSteps,
+        lastUpdated: todayString,
+        lastUpdatedBy: currentUser.name,
+        lastUpdatedByRole: currentUser.role,
+        revisionHistory: [
+          { version: nextVer, date: todayString, updatedBy: currentUser.name, userRole: currentUser.role, notes: cleanNote },
+          ...original.revisionHistory,
+        ],
+      };
+      const saved = await saveSOPToServer(updatedDoc);
+      if (!saved) {
+        setFormError('Failed to save changes. Please try again.');
+        return;
+      }
+      setDocuments(prev => prev.map(d => d.id === saved.id ? saved : d));
+      setSelectedDoc(saved);
+      setCompletedSteps({}); // new version — checklist starts fresh
+      resetSopForm();
+      setCurrentView('document');
+      return;
+    }
+
+    // Creating a brand new SOP
     const nextReview = new Date();
     nextReview.setMonth(nextReview.getMonth() + 6);
     const reviewString = nextReview.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
@@ -867,13 +948,7 @@ export default function App() {
       return;
     }
 
-    setNewTitle('');
-    setNewSummary('');
-    setNewTools('');
-    setNewMaterials('');
-    setNewCategory('HVAC');
-    setNewSteps([{ title: '', summary: '', body: '', imageUrl: '' }]);
-    setFormError('');
+    resetSopForm();
     setCurrentView('dashboard');
   };
 
@@ -1048,7 +1123,10 @@ export default function App() {
             ].map(({ view, label, icon, match }) => (
               <button
                 key={view}
-                onClick={() => setCurrentView(view as typeof currentView)}
+                onClick={() => {
+                  if (view === 'new') resetSopForm(); // sidebar always starts a blank draft
+                  setCurrentView(view as typeof currentView);
+                }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   match.includes(currentView)
                     ? 'bg-emerald-50 text-emerald-800'
@@ -1240,7 +1318,7 @@ export default function App() {
                 
                 {currentUser.userType === 'admin' && (
                   <button
-                    onClick={() => setCurrentView('new')}
+                    onClick={() => { resetSopForm(); setCurrentView('new'); }}
                     className="w-10 h-10 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl flex items-center justify-center shadow-md shadow-emerald-100 transition-all active:scale-95"
                     title="Publish New SOP"
                   >
@@ -1358,13 +1436,16 @@ export default function App() {
               <div className="flex items-center gap-2 -ml-1">
                 <button
                   type="button"
-                  onClick={() => setCurrentView('dashboard')}
+                  onClick={() => { const backTo = editingSopId ? 'document' : 'dashboard'; resetSopForm(); setCurrentView(backTo); }}
                   className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
                 >
                   <ArrowLeftIcon />
                 </button>
                 <div>
-                  <h1 className="text-lg font-black text-gray-950 leading-tight">Draft New SOP</h1>
+                  <h1 className="text-lg font-black text-gray-950 leading-tight">{editingSopId ? 'Edit SOP' : 'Draft New SOP'}</h1>
+                  {editingSopId && (
+                    <p className="text-base text-gray-400 font-bold leading-tight">Changes are version-logged and announced to the whole team.</p>
+                  )}
                 </div>
               </div>
 
@@ -1452,18 +1533,9 @@ export default function App() {
 
                 {/* Steps constructor list */}
                 <div className="border-t border-gray-100 pt-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
-                      <BookOpenIcon /> Checklist Action Steps ({newSteps.length})
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={handleAddCreatorStep}
-                      className="h-7 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-sm flex items-center gap-1 transition-colors"
-                    >
-                      <PlusIcon /> Add Step
-                    </button>
-                  </div>
+                  <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
+                    <BookOpenIcon /> Checklist Action Steps ({newSteps.length})
+                  </h3>
 
                   <div className="space-y-4">
                     {newSteps.map((step, index) => (
@@ -1558,13 +1630,40 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Add Step — kept at the bottom so it sits right after the last step */}
+                  <button
+                    type="button"
+                    onClick={handleAddCreatorStep}
+                    className="w-full h-11 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-emerald-800 font-black text-sm flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <PlusIcon /> Add Step
+                  </button>
                 </div>
+
+                {/* Revision note — required when editing an existing SOP */}
+                {editingSopId && (
+                  <div className="bg-emerald-50/50 border border-emerald-100/50 rounded-2xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-sm font-black text-emerald-900 uppercase tracking-wider">What changed? (Revision Note)</label>
+                    <p className="text-base text-emerald-800 font-medium leading-snug">
+                      Saved to the version changelog and pushed as a notification to every teammate.
+                    </p>
+                    <textarea
+                      rows={3}
+                      required
+                      placeholder="e.g., Updated Step 2 torque calibration values for the new equipment model..."
+                      value={editChangeNote}
+                      onChange={(e) => setEditChangeNote(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-800 leading-relaxed font-semibold shadow-xs"
+                    />
+                  </div>
+                )}
 
                 {/* Submitting handles */}
                 <div className="pt-4 flex items-center justify-between gap-3">
                   <button
                     type="button"
-                    onClick={() => setCurrentView('dashboard')}
+                    onClick={() => { const backTo = editingSopId ? 'document' : 'dashboard'; resetSopForm(); setCurrentView(backTo); }}
                     className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-50 shadow-xs"
                   >
                     Cancel
@@ -1573,7 +1672,7 @@ export default function App() {
                     type="submit"
                     className="flex-1 h-11 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-emerald-100"
                   >
-                    Publish SOP Manual
+                    {editingSopId ? 'Save & Publish Update' : 'Publish SOP Manual'}
                   </button>
                 </div>
               </form>
@@ -1604,8 +1703,16 @@ export default function App() {
                 {currentUser.userType === 'admin' && (
                   <div className="flex items-center gap-1.5">
                     <button
+                      onClick={() => startEditSop(selectedDoc)}
+                      className="h-8 px-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-sm font-black transition-all flex items-center gap-1 flex-shrink-0"
+                      title="Edit this SOP — changes are version-logged and announced to the team"
+                    >
+                      <EditIcon /> Edit
+                    </button>
+                    <button
                       onClick={() => { setRevisionNotes(''); setRevisionError(''); setCurrentView('addRevision'); }}
                       className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-sm font-black transition-all flex items-center gap-1 flex-shrink-0"
+                      title="Log a changelog note without editing content"
                     >
                       <HistoryIcon /> Revise
                     </button>
