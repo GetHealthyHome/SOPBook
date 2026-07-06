@@ -2,7 +2,9 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
+import { sanitizeSteps, sanitizeRevisions, sanitizeReadLogs, SOP_ID_RE, MAX_READ_LOGS } from '@/lib/sopSanitize';
 import { fanOutNotification } from '@/lib/fanOutNotification';
+import { logError } from '@/lib/log';
 
 function toClient(row: Record<string, unknown>) {
   return {
@@ -28,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!session) return res.status(401).json({ error: 'Not authenticated.' });
 
   const { id } = req.query;
-  if (typeof id !== 'string') return res.status(400).json({ error: 'Invalid id.' });
+  if (typeof id !== 'string' || !SOP_ID_RE.test(id)) return res.status(400).json({ error: 'Invalid id.' });
 
   const db = getSupabase();
 
@@ -36,50 +38,73 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'PUT') {
     const body = req.body ?? {};
 
-    // Read-log update: any authenticated user can add their own read log
+    // Read-log update: any authenticated user can add their own read log.
+    // The log entry is built server-side from the verified session so a
+    // user can never write a read log under someone else's name.
     if (body.readLogOnly) {
-      const { data: current, error: fetchErr } = await db.from('sops').select('read_logs').eq('id', id).single();
+      const { data: current, error: fetchErr } = await db.from('sops').select('*').eq('id', id).single();
       if (fetchErr || !current) return res.status(404).json({ error: 'SOP not found.' });
 
-      const existing: unknown[] = current.read_logs ?? [];
-      const newLog = body.newLog;
-      const updated = [newLog, ...existing];
+      const versionRead = sanitize(String(body.newLog?.versionRead ?? ''), 'default').slice(0, 20) || 'v1.0';
+      const existing: { userName?: string; versionRead?: string }[] = Array.isArray(current.read_logs) ? current.read_logs : [];
+
+      // Idempotent: one sign-off per user per version
+      if (existing.some(l => l?.userName === session.name && l?.versionRead === versionRead)) {
+        return res.status(200).json({ sop: toClient(current) });
+      }
+
+      const newLog = {
+        userName:    session.name,
+        userRole:    session.role,
+        timestamp:   new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }),
+        versionRead,
+      };
+      const updated = [newLog, ...existing].slice(0, MAX_READ_LOGS);
 
       const { data, error } = await db.from('sops').update({ read_logs: updated }).eq('id', id).select().single();
-      if (error) return res.status(500).json({ error: 'Failed to update read log.' });
+      if (error) {
+        logError('sops/[id] read-log', error);
+        return res.status(500).json({ error: 'Failed to update read log.' });
+      }
       return res.status(200).json({ sop: toClient(data) });
     }
 
     // Full update: admin only
     if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
 
-    const { category, title, summary, lastUpdated, lastUpdatedBy, lastUpdatedByRole,
-            nextReviewDate, tools, materials, steps, revisionHistory, readLogs } = body;
+    const { category, title, summary, lastUpdated, nextReviewDate,
+            tools, materials, steps, revisionHistory, readLogs } = body;
+
+    const cleanTitle = sanitize(String(title ?? ''), 'title');
 
     const { data, error } = await db.from('sops').update({
       category:             sanitize(String(category ?? ''), 'title'),
-      title:                sanitize(String(title ?? ''), 'title'),
+      title:                cleanTitle,
       summary:              sanitize(String(summary ?? ''), 'summary'),
-      last_updated:         String(lastUpdated ?? ''),
-      last_updated_by:      String(lastUpdatedBy ?? ''),
-      last_updated_by_role: String(lastUpdatedByRole ?? ''),
-      next_review_date:     String(nextReviewDate ?? ''),
+      last_updated:         sanitize(String(lastUpdated ?? ''), 'default').slice(0, 40),
+      // Authorship comes from the verified session, never the request body
+      last_updated_by:      session.name,
+      last_updated_by_role: session.role,
+      next_review_date:     sanitize(String(nextReviewDate ?? ''), 'default').slice(0, 40),
       tools:                sanitize(String(tools ?? ''), 'notes'),
       materials:            sanitize(String(materials ?? ''), 'notes'),
-      steps:                steps ?? [],
-      revision_history:     revisionHistory ?? [],
-      read_logs:            readLogs ?? [],
+      steps:                sanitizeSteps(steps),
+      revision_history:     sanitizeRevisions(revisionHistory),
+      read_logs:            sanitizeReadLogs(readLogs),
     }).eq('id', id).select().single();
 
-    if (error) return res.status(500).json({ error: 'Failed to update SOP.' });
+    if (error) {
+      logError('sops/[id] PUT', error);
+      return res.status(500).json({ error: 'Failed to update SOP.' });
+    }
 
     // Fan out notification to all users about SOP update
     fanOutNotification({
       type: 'sop',
-      title: `SOP Updated: ${sanitize(String(title ?? ''), 'title')}`,
-      message: `${lastUpdatedBy} updated the SOP "${sanitize(String(title ?? ''), 'title')}". Review the latest revision.`,
+      title: `SOP Updated: ${cleanTitle}`,
+      message: `${session.name} updated the SOP "${cleanTitle}". Review the latest revision.`,
       excludeUser: session.name,
-    }).catch(() => {});
+    }).catch(err => logError('sops/[id] fan-out', err));
 
     return res.status(200).json({ sop: toClient(data) });
   }
@@ -88,7 +113,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'DELETE') {
     if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
     const { error } = await db.from('sops').delete().eq('id', id);
-    if (error) return res.status(500).json({ error: 'Failed to delete SOP.' });
+    if (error) {
+      logError('sops/[id] DELETE', error);
+      return res.status(500).json({ error: 'Failed to delete SOP.' });
+    }
     return res.status(200).json({ ok: true });
   }
 

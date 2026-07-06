@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
+import { logError } from '@/lib/log';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!checkIpRateLimit(req)) return res.status(429).json({ error: 'Too many requests.' });
@@ -17,7 +18,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq('user_name', session.name)
       .order('created_at', { ascending: false })
       .limit(50);
-    if (error) return res.status(500).json({ error: 'Failed to load notifications.' });
+    if (error) {
+      logError('user-notifications GET', error);
+      return res.status(500).json({ error: 'Failed to load notifications.' });
+    }
     return res.status(200).json({ notifications: data ?? [] });
   }
 
@@ -28,7 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .update({ read_at: new Date().toISOString() })
       .eq('user_name', session.name)
       .is('read_at', null);
-    if (error) return res.status(500).json({ error: 'Failed to mark as read.' });
+    if (error) {
+      logError('user-notifications PATCH', error);
+      return res.status(500).json({ error: 'Failed to mark as read.' });
+    }
     return res.status(200).json({ ok: true });
   }
 
@@ -41,7 +48,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .delete()
       .eq('id', id)
       .eq('user_name', session.name);
-    if (error) return res.status(500).json({ error: 'Failed to dismiss notification.' });
+    if (error) {
+      logError('user-notifications DELETE', error);
+      return res.status(500).json({ error: 'Failed to dismiss notification.' });
+    }
     return res.status(200).json({ ok: true });
   }
 

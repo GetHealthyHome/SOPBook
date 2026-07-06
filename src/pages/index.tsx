@@ -35,6 +35,9 @@ const CareerIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentCol
 const CalendarIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
 const CloudUploadIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>;
 const BellIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>;
+const EditIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>;
+const TrainingIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-6 4v-3.5"/></svg>;
+const LinkIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5m7.328-1.672a4 4 0 000-5.656 4 4 0 00-5.656 0l-3 3"/></svg>;
 
 interface Step {
   title: string;
@@ -88,6 +91,8 @@ interface CareerTask {
   image_urls: string[];
   sop_title: string;
   order_index: number;
+  parent_task_id?: number | null; // set on sub-tasks
+  training_module_id?: number | null; // linked training module
 }
 
 interface CareerTrack {
@@ -105,6 +110,8 @@ interface CareerCompletion {
   user_name: string;
   user_role: string;
   completed_at: string;
+  verified_by?: string | null; // admin who signed off; null = pending
+  verified_at?: string | null;
 }
 
 interface CareerAssignment {
@@ -114,6 +121,40 @@ interface CareerAssignment {
   track_id: number;
   assigned_by: string;
   assigned_at: string;
+}
+
+interface TrainingStep {
+  id?: number;
+  module_id?: number;
+  title: string;
+  body: string;
+  image_urls: string[];
+  link_url: string;
+  link_label: string;
+  order_index: number;
+}
+
+interface TrainingModule {
+  id: number;
+  title: string;
+  description: string;
+  category: string; // Home Performance | HVAC
+  cover_url: string;
+  order_index: number;
+  created_by: string;
+  created_at: string;
+  steps: TrainingStep[];
+}
+
+// Draft used by the admin Training Builder form
+interface TrainingDraftStep { title: string; body: string; images: string; linkUrl: string; linkLabel: string }
+interface TrainingDraft {
+  id: number | null;
+  title: string;
+  description: string;
+  category: 'Home Performance' | 'HVAC';
+  coverUrl: string;
+  steps: TrainingDraftStep[];
 }
 
 interface Notification {
@@ -275,7 +316,7 @@ export default function App() {
   const [mounted, setMounted] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
-  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications'>('login');
+  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training' | 'trainingAdmin'>('login');
 
   // Account authorization state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -325,6 +366,7 @@ export default function App() {
   // Admin task/track creation state
   const [showAddTrack, setShowAddTrack] = useState(false);
   const [showAddTask, setShowAddTask] = useState<number | null>(null);
+  const [showAddSubtask, setShowAddSubtask] = useState<number | null>(null); // parent task id
   const [newTrackName, setNewTrackName] = useState('');
   const [newTrackDesc, setNewTrackDesc] = useState('');
   const [newTrackDept, setNewTrackDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
@@ -332,10 +374,33 @@ export default function App() {
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [newTaskImages, setNewTaskImages] = useState('');
   const [newTaskSop, setNewTaskSop] = useState('');
+  const [newTaskTraining, setNewTaskTraining] = useState<number | ''>('');
+  // Ladder builder (careerAdmin) state
+  const [builderDept, setBuilderDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
+  const [expandedBuilderTrack, setExpandedBuilderTrack] = useState<number | null>(null);
+  const [editingTrack, setEditingTrack] = useState<{ id: number; name: string; description: string } | null>(null);
+  const [editingTask, setEditingTask] = useState<{ id: number; track_id: number; title: string; description: string; imageUrls: string; sopTitle: string; trainingModuleId: number | '' } | null>(null);
+  const [trackDeleteConfirm, setTrackDeleteConfirm] = useState<number | null>(null);
+  const [taskDeleteConfirm, setTaskDeleteConfirm] = useState<number | null>(null);
+  const [builderSaving, setBuilderSaving] = useState(false);
   // Admin assignment state
   const [assigningUser, setAssigningUser] = useState<string | null>(null);
   const [assignDept, setAssignDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   const [assignTrackId, setAssignTrackId] = useState<number | null>(null);
+
+  // Training modules state
+  const [trainingModules, setTrainingModules] = useState<TrainingModule[]>([]);
+  const [trainingLoaded, setTrainingLoaded] = useState(false);
+  const [trainingLoading, setTrainingLoading] = useState(false);
+  const [trainingError, setTrainingError] = useState('');
+  const [trainingCategory, setTrainingCategory] = useState<'Home Performance' | 'HVAC'>('Home Performance');
+  const [openTraining, setOpenTraining] = useState<TrainingModule | null>(null);
+  // Admin Training Builder
+  const [trainingDraft, setTrainingDraft] = useState<TrainingDraft | null>(null);
+  const [trainingSaving, setTrainingSaving] = useState(false);
+  const [trainingFormError, setTrainingFormError] = useState('');
+  const [trainingDeleteConfirm, setTrainingDeleteConfirm] = useState<number | null>(null);
+  const [trainingUploading, setTrainingUploading] = useState<string | null>(null); // 'cover' | step index
 
   const [allBadges, setAllBadges] = useState<UserBadge[]>([]);
   const [badgesLoaded, setBadgesLoaded] = useState(false);
@@ -364,7 +429,16 @@ export default function App() {
     { title: '', summary: '', body: '', imageUrl: '' }
   ]);
   const [formError, setFormError] = useState('');
-  
+
+  // In-place SOP editing (admin) — when set, the creator form edits this SOP
+  const [editingSopId, setEditingSopId] = useState<string | null>(null);
+  const [editChangeNote, setEditChangeNote] = useState('');
+
+  // Import existing SOP documents (docx/pdf/txt/md) into the creator form
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importNotice, setImportNotice] = useState('');
+
   // Custom interactive mock upload states
   const [uploadTargetIdx, setUploadTargetIdx] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState<Record<number, boolean>>({});
@@ -563,15 +637,26 @@ export default function App() {
     setAssigningUser(null);
   };
 
+  // Career data is also needed in training views (to show which
+  // milestones a module counts toward), and training data in career
+  // views (to show a milestone's linked training).
   useEffect(() => {
-    if ((currentView === 'careerLadder' || currentView === 'careerAdmin') && currentUser && careerTracks.length === 0 && !careerLoading) {
+    if ((currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'training' || currentView === 'trainingAdmin') && currentUser && careerTracks.length === 0 && !careerLoading) {
       loadCareerData();
     }
-  }, [currentView]);
+  }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load training modules on first visit to a training or career view
+  useEffect(() => {
+    if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin') && currentUser && !trainingLoaded && !trainingLoading) {
+      loadTraining();
+    }
+  }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleTaskCompletion = async (task: CareerTask) => {
     if (!currentUser) return;
     const existing = careerCompletions.find(c => c.task_id === task.id);
+    if (existing?.verified_by) return; // verified by an admin — locked
     if (existing) {
       // Optimistic remove
       setCareerCompletions(prev => prev.filter(c => c.id !== existing.id));
@@ -603,14 +688,15 @@ export default function App() {
     }
   };
 
-  const addCareerTrack = async () => {
+  const addCareerTrack = async (dept?: 'Home Performance' | 'HVAC') => {
     if (!newTrackName.trim()) return;
-    const deptTracks = careerTracks.filter(t => t.department === newTrackDept);
+    const department = dept ?? newTrackDept;
+    const deptTracks = careerTracks.filter(t => t.department === department);
     try {
       const res = await fetch('/api/career/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newTrackName.trim(), description: newTrackDesc.trim(), department: newTrackDept, orderIndex: deptTracks.length }),
+        body: JSON.stringify({ name: newTrackName.trim(), description: newTrackDesc.trim(), department, orderIndex: deptTracks.length }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { track } = await res.json();
@@ -621,7 +707,144 @@ export default function App() {
     setShowAddTrack(false);
   };
 
-  const addCareerTask = async (trackId: number) => {
+  const updateCareerTrack = async () => {
+    if (!editingTrack || !editingTrack.name.trim()) return;
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/track', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId: editingTrack.id, name: editingTrack.name.trim(), description: editingTrack.description.trim() }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { track } = await res.json();
+      setCareerTracks(prev => prev.map(t => t.id === track.id ? { ...t, name: track.name, description: track.description } : t));
+      setEditingTrack(null);
+    } catch (err) { console.error('updateCareerTrack failed:', err); }
+    setBuilderSaving(false);
+  };
+
+  const deleteCareerTrack = async (trackId: number) => {
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/track', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setCareerTracks(prev => prev.filter(t => t.id !== trackId));
+      setAllAssignments(prev => prev.filter(a => a.track_id !== trackId));
+      if (myAssignment?.track_id === trackId) setMyAssignment(null);
+    } catch (err) { console.error('deleteCareerTrack failed:', err); }
+    setTrackDeleteConfirm(null);
+    setBuilderSaving(false);
+  };
+
+  const updateCareerTask = async () => {
+    if (!editingTask || !editingTask.title.trim()) return;
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/task', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: editingTask.id,
+          title: editingTask.title.trim(),
+          description: editingTask.description.trim(),
+          imageUrls: editingTask.imageUrls.split('\n').map(s => s.trim()).filter(Boolean),
+          sopTitle: editingTask.sopTitle.trim(),
+          trainingModuleId: editingTask.trainingModuleId === '' ? null : editingTask.trainingModuleId,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { task } = await res.json();
+      setCareerTracks(prev => prev.map(t => t.id === task.track_id ? { ...t, tasks: t.tasks.map(tk => tk.id === task.id ? task : tk) } : t));
+      setEditingTask(null);
+    } catch (err) { console.error('updateCareerTask failed:', err); }
+    setBuilderSaving(false);
+  };
+
+  const deleteCareerTask = async (task: CareerTask) => {
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/task', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Remove the task and any of its sub-tasks (the server cascades too)
+      const removedIds = new Set([task.id]);
+      const track = careerTracks.find(t => t.id === task.track_id);
+      track?.tasks.forEach(tk => { if (tk.parent_task_id === task.id) removedIds.add(tk.id); });
+      setCareerTracks(prev => prev.map(t => t.id === task.track_id ? { ...t, tasks: t.tasks.filter(tk => !removedIds.has(tk.id)) } : t));
+      setCareerCompletions(prev => prev.filter(c => !removedIds.has(c.task_id)));
+      setAllCareerCompletions(prev => prev.filter(c => !removedIds.has(c.task_id)));
+    } catch (err) { console.error('deleteCareerTask failed:', err); }
+    setTaskDeleteConfirm(null);
+    setBuilderSaving(false);
+  };
+
+  // Admin: link or unlink a career milestone and a training module
+  const linkTaskToTraining = async (task: CareerTask, moduleId: number | null) => {
+    try {
+      const res = await fetch('/api/career/task', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id, trainingModuleId: moduleId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTrainingFormError(data.error || 'Linking failed.');
+        return;
+      }
+      setCareerTracks(prev => prev.map(t => t.id === task.track_id
+        ? { ...t, tasks: t.tasks.map(tk => tk.id === task.id ? { ...tk, training_module_id: moduleId } : tk) }
+        : t));
+    } catch {
+      setTrainingFormError('Linking failed. Check your connection.');
+    }
+  };
+
+  // Admin: verify a teammate's completed task
+  const signOffCompletion = async (completionId: number) => {
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/complete', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completionId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCareerError(data.error || 'Sign-off failed.');
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const { completion } = await res.json();
+      setAllCareerCompletions(prev => prev.map(c => c.id === completion.id ? completion : c));
+      setCareerCompletions(prev => prev.map(c => c.id === completion.id ? completion : c));
+    } catch (err) { console.error('signOffCompletion failed:', err); }
+    setBuilderSaving(false);
+  };
+
+  // Admin: reject a pending completion — the user must redo the task
+  const rejectCompletion = async (completionId: number) => {
+    setBuilderSaving(true);
+    try {
+      const res = await fetch('/api/career/complete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completionId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAllCareerCompletions(prev => prev.filter(c => c.id !== completionId));
+      setCareerCompletions(prev => prev.filter(c => c.id !== completionId));
+    } catch (err) { console.error('rejectCompletion failed:', err); }
+    setBuilderSaving(false);
+  };
+
+  const addCareerTask = async (trackId: number, parentTaskId?: number) => {
     if (!newTaskTitle.trim()) return;
     const track = careerTracks.find(t => t.id === trackId);
     try {
@@ -630,14 +853,20 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trackId,
+          parentTaskId,
           title: newTaskTitle.trim(),
           description: newTaskDesc.trim(),
           imageUrls: newTaskImages.split('\n').map(s => s.trim()).filter(Boolean),
           sopTitle: newTaskSop.trim(),
           orderIndex: track ? track.tasks.length : 0,
+          trainingModuleId: newTaskTraining === '' ? undefined : newTaskTraining,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCareerError(data.error || 'Failed to add task.');
+        throw new Error(`HTTP ${res.status}`);
+      }
       const { task } = await res.json();
       if (task) setCareerTracks(prev => prev.map(t => t.id === trackId ? { ...t, tasks: [...t.tasks, task] } : t));
     } catch (err) { console.error('addCareerTask failed:', err); }
@@ -645,7 +874,142 @@ export default function App() {
     setNewTaskDesc('');
     setNewTaskImages('');
     setNewTaskSop('');
+    setNewTaskTraining('');
     setShowAddTask(null);
+    setShowAddSubtask(null);
+  };
+
+  // ------------------------- Training modules -------------------------
+
+  const loadTraining = async () => {
+    setTrainingLoading(true);
+    setTrainingError('');
+    try {
+      const res = await fetch('/api/training');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setTrainingModules(data.modules ?? []);
+      setTrainingLoaded(true);
+    } catch (err) {
+      setTrainingError(err instanceof Error ? err.message : 'Could not load training.');
+    } finally {
+      setTrainingLoading(false);
+    }
+  };
+
+  const blankTrainingDraft = (): TrainingDraft => ({
+    id: null,
+    title: '',
+    description: '',
+    category: 'Home Performance',
+    coverUrl: '',
+    steps: [{ title: '', body: '', images: '', linkUrl: '', linkLabel: '' }],
+  });
+
+  const startEditTraining = (mod: TrainingModule) => {
+    setTrainingFormError('');
+    setTrainingDraft({
+      id: mod.id,
+      title: mod.title,
+      description: mod.description || '',
+      category: (mod.category === 'HVAC' ? 'HVAC' : 'Home Performance'),
+      coverUrl: mod.cover_url || '',
+      steps: mod.steps.length
+        ? mod.steps.map(s => ({
+            title: s.title,
+            body: s.body || '',
+            images: (s.image_urls || []).join('\n'),
+            linkUrl: s.link_url || '',
+            linkLabel: s.link_label || '',
+          }))
+        : [{ title: '', body: '', images: '', linkUrl: '', linkLabel: '' }],
+    });
+  };
+
+  const saveTrainingDraft = async () => {
+    if (!trainingDraft) return;
+    if (!trainingDraft.title.trim()) { setTrainingFormError('Module title is required.'); return; }
+    if (trainingDraft.steps.some(s => !s.title.trim())) { setTrainingFormError('Every step needs a title.'); return; }
+    setTrainingSaving(true);
+    setTrainingFormError('');
+    try {
+      const res = await fetch('/api/training', {
+        method: trainingDraft.id === null ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: trainingDraft.id ?? undefined,
+          title: trainingDraft.title.trim(),
+          description: trainingDraft.description.trim(),
+          category: trainingDraft.category,
+          coverUrl: trainingDraft.coverUrl.trim(),
+          steps: trainingDraft.steps.map(s => ({
+            title: s.title.trim(),
+            body: s.body.trim(),
+            imageUrls: s.images.split('\n').map(u => u.trim()).filter(Boolean),
+            linkUrl: s.linkUrl.trim(),
+            linkLabel: s.linkLabel.trim(),
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.module) throw new Error(data.error || 'Save failed.');
+      setTrainingModules(prev => {
+        const exists = prev.some(m => m.id === data.module.id);
+        return exists ? prev.map(m => m.id === data.module.id ? data.module : m) : [...prev, data.module];
+      });
+      setTrainingDraft(null);
+    } catch (err) {
+      setTrainingFormError(err instanceof Error ? err.message : 'Save failed.');
+    } finally {
+      setTrainingSaving(false);
+    }
+  };
+
+  const deleteTrainingModule = async (id: number) => {
+    setTrainingSaving(true);
+    try {
+      const res = await fetch('/api/training', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setTrainingModules(prev => prev.filter(m => m.id !== id));
+      // Clear any career milestones that pointed at this module
+      setCareerTracks(prev => prev.map(t => ({
+        ...t,
+        tasks: t.tasks.map(tk => tk.training_module_id === id ? { ...tk, training_module_id: null } : tk),
+      })));
+    } catch (err) { console.error('deleteTrainingModule failed:', err); }
+    setTrainingDeleteConfirm(null);
+    setTrainingSaving(false);
+  };
+
+  // Upload a photo for the training builder; target is 'cover' or a step index
+  const uploadTrainingImage = async (file: File, target: 'cover' | number) => {
+    if (!trainingDraft) return;
+    setTrainingUploading(String(target));
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        setTrainingFormError(data.error || 'Photo upload failed.');
+        return;
+      }
+      setTrainingDraft(prev => {
+        if (!prev) return prev;
+        if (target === 'cover') return { ...prev, coverUrl: data.url };
+        const steps = [...prev.steps];
+        steps[target] = { ...steps[target], images: steps[target].images ? `${steps[target].images}\n${data.url}` : data.url };
+        return { ...prev, steps };
+      });
+    } catch {
+      setTrainingFormError('Photo upload failed. Check your connection.');
+    } finally {
+      setTrainingUploading(null);
+    }
   };
 
   const saveSOPToServer = async (sop: SOP): Promise<SOP | null> => {
@@ -757,6 +1121,10 @@ export default function App() {
     setCurrentUser(null);
     setAllBadges([]);
     setBadgesLoaded(false);
+    setTrainingModules([]);
+    setTrainingLoaded(false);
+    setOpenTraining(null);
+    setTrainingDraft(null);
     setTeamUsers([]);
     setTeamUsersLoaded(false);
     setNotifications([]);
@@ -815,6 +1183,66 @@ export default function App() {
     setNewSteps(updated);
   };
 
+  const resetSopForm = () => {
+    setNewCategory('HVAC');
+    setNewTitle('');
+    setNewSummary('');
+    setNewTools('');
+    setNewMaterials('');
+    setNewSteps([{ title: '', summary: '', body: '', imageUrl: '' }]);
+    setFormError('');
+    setEditingSopId(null);
+    setEditChangeNote('');
+    setImportBusy(false);
+    setImportError('');
+    setImportNotice('');
+  };
+
+  // Upload an existing SOP document; the server extracts and parses it,
+  // and the creator form is pre-filled for review before publishing.
+  const importSopFile = async (file: File) => {
+    setImportBusy(true);
+    setImportError('');
+    setImportNotice('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/sops/import', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.draft) {
+        setImportError(data.error || 'Import failed. Please try again.');
+        return;
+      }
+      const d = data.draft;
+      if (d.category) setNewCategory(d.category);
+      setNewTitle(d.title || '');
+      setNewSummary(d.summary || '');
+      setNewTools(d.tools || '');
+      setNewMaterials(d.materials || '');
+      setNewSteps(d.steps?.length ? d.steps : [{ title: '', summary: '', body: '', imageUrl: '' }]);
+      setFormError('');
+      setImportNotice(`Imported ${d.steps?.length ?? 0} step${d.steps?.length === 1 ? '' : 's'} from “${file.name}” — review below, then publish.`);
+    } catch {
+      setImportError('Import failed. Check your connection and try again.');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  // Pre-fill the creator form with an existing SOP for in-place editing
+  const startEditSop = (doc: SOP) => {
+    setNewCategory(doc.category || 'HVAC');
+    setNewTitle(doc.title);
+    setNewSummary(doc.summary);
+    setNewTools(doc.tools || '');
+    setNewMaterials(doc.materials || '');
+    setNewSteps(doc.steps?.length ? doc.steps.map(s => ({ ...s })) : [{ title: '', summary: '', body: '', imageUrl: '' }]);
+    setFormError('');
+    setEditingSopId(doc.id);
+    setEditChangeNote('');
+    setCurrentView('new');
+  };
+
   const handlePublishSOP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.userType !== 'admin') return;
@@ -833,6 +1261,56 @@ export default function App() {
     }
 
     const todayString = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+
+    // Editing an existing SOP: bump the version, log the change note in the
+    // revision history, and save — the server notifies every teammate.
+    if (editingSopId) {
+      const original = documents.find(d => d.id === editingSopId);
+      if (!original) {
+        setFormError('Original SOP could not be found. Please go back and retry.');
+        return;
+      }
+      const cleanNote = sanitize(editChangeNote, 'notes');
+      if (!cleanNote) {
+        setFormError('Please describe what changed — it is logged in the version history for the team.');
+        return;
+      }
+      const latestVer = original.revisionHistory[0]?.version;
+      let nextVer = 'v1.1';
+      if (latestVer) {
+        const [major, minor] = latestVer.replace('v', '').split('.').map(Number);
+        nextVer = `v${major}.${(minor ?? 0) + 1}`;
+      }
+      const updatedDoc: SOP = {
+        ...original,
+        category: newCategory,
+        title: cleanTitle,
+        summary: cleanSummary,
+        tools: sanitize(newTools, 'notes'),
+        materials: sanitize(newMaterials, 'notes'),
+        steps: newSteps,
+        lastUpdated: todayString,
+        lastUpdatedBy: currentUser.name,
+        lastUpdatedByRole: currentUser.role,
+        revisionHistory: [
+          { version: nextVer, date: todayString, updatedBy: currentUser.name, userRole: currentUser.role, notes: cleanNote },
+          ...original.revisionHistory,
+        ],
+      };
+      const saved = await saveSOPToServer(updatedDoc);
+      if (!saved) {
+        setFormError('Failed to save changes. Please try again.');
+        return;
+      }
+      setDocuments(prev => prev.map(d => d.id === saved.id ? saved : d));
+      setSelectedDoc(saved);
+      setCompletedSteps({}); // new version — checklist starts fresh
+      resetSopForm();
+      setCurrentView('document');
+      return;
+    }
+
+    // Creating a brand new SOP
     const nextReview = new Date();
     nextReview.setMonth(nextReview.getMonth() + 6);
     const reviewString = nextReview.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
@@ -867,13 +1345,7 @@ export default function App() {
       return;
     }
 
-    setNewTitle('');
-    setNewSummary('');
-    setNewTools('');
-    setNewMaterials('');
-    setNewCategory('HVAC');
-    setNewSteps([{ title: '', summary: '', body: '', imageUrl: '' }]);
-    setFormError('');
+    resetSopForm();
     setCurrentView('dashboard');
   };
 
@@ -1040,6 +1512,7 @@ export default function App() {
               { view: 'dashboard', label: 'SOPs', icon: <FolderIcon />, match: ['dashboard','document','addRevision'] },
               { view: 'handbook', label: 'Handbook', icon: <HandbookIcon />, match: ['handbook'] },
               { view: 'careerLadder', label: 'Career', icon: <CareerIcon />, match: ['careerLadder','careerAdmin'] },
+              { view: 'training', label: 'Training', icon: <TrainingIcon />, match: ['training','trainingAdmin'] },
               { view: 'userNotifications', label: 'Notifications', icon: <BellIcon />, match: ['userNotifications'] },
               ...(currentUser.userType === 'admin' ? [
                 { view: 'new', label: 'Draft SOP', icon: <PlusIcon />, match: ['new'] },
@@ -1048,7 +1521,10 @@ export default function App() {
             ].map(({ view, label, icon, match }) => (
               <button
                 key={view}
-                onClick={() => setCurrentView(view as typeof currentView)}
+                onClick={() => {
+                  if (view === 'new') resetSopForm(); // sidebar always starts a blank draft
+                  setCurrentView(view as typeof currentView);
+                }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   match.includes(currentView)
                     ? 'bg-emerald-50 text-emerald-800'
@@ -1240,7 +1716,7 @@ export default function App() {
                 
                 {currentUser.userType === 'admin' && (
                   <button
-                    onClick={() => setCurrentView('new')}
+                    onClick={() => { resetSopForm(); setCurrentView('new'); }}
                     className="w-10 h-10 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl flex items-center justify-center shadow-md shadow-emerald-100 transition-all active:scale-95"
                     title="Publish New SOP"
                   >
@@ -1358,15 +1834,46 @@ export default function App() {
               <div className="flex items-center gap-2 -ml-1">
                 <button
                   type="button"
-                  onClick={() => setCurrentView('dashboard')}
+                  onClick={() => { const backTo = editingSopId ? 'document' : 'dashboard'; resetSopForm(); setCurrentView(backTo); }}
                   className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
                 >
                   <ArrowLeftIcon />
                 </button>
                 <div>
-                  <h1 className="text-lg font-black text-gray-950 leading-tight">Draft New SOP</h1>
+                  <h1 className="text-lg font-black text-gray-950 leading-tight">{editingSopId ? 'Edit SOP' : 'Draft New SOP'}</h1>
+                  {editingSopId && (
+                    <p className="text-base text-gray-400 font-bold leading-tight">Changes are version-logged and announced to the whole team.</p>
+                  )}
                 </div>
               </div>
+
+              {/* Import an existing SOP document (new drafts only) */}
+              {!editingSopId && (
+                <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3.5 space-y-2 shadow-xs">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-blue-900 flex items-center gap-1.5">
+                        <CloudUploadIcon /> Import Existing SOP
+                      </p>
+                      <p className="text-base text-blue-800/70 font-medium leading-snug mt-0.5">
+                        Have this SOP as a Word, PDF, text, or Markdown file? Upload it and the form fills itself in for review.
+                      </p>
+                    </div>
+                    <label className={`h-9 px-3.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-black flex items-center cursor-pointer flex-shrink-0 transition-colors ${importBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+                      {importBusy ? 'Importing…' : 'Choose File'}
+                      <input
+                        type="file"
+                        accept=".txt,.md,.markdown,.docx,.pdf"
+                        className="hidden"
+                        disabled={importBusy}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) importSopFile(f); e.target.value = ''; }}
+                      />
+                    </label>
+                  </div>
+                  {importNotice && <p className="text-sm font-bold text-emerald-700">✓ {importNotice}</p>}
+                  {importError && <p className="text-sm font-bold text-red-600">⚠️ {importError}</p>}
+                </div>
+              )}
 
               {formError && (
                 <div className="bg-red-50 border border-red-100 text-red-800 rounded-2xl p-3 text-sm font-semibold">
@@ -1452,18 +1959,9 @@ export default function App() {
 
                 {/* Steps constructor list */}
                 <div className="border-t border-gray-100 pt-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
-                      <BookOpenIcon /> Checklist Action Steps ({newSteps.length})
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={handleAddCreatorStep}
-                      className="h-7 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-sm flex items-center gap-1 transition-colors"
-                    >
-                      <PlusIcon /> Add Step
-                    </button>
-                  </div>
+                  <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
+                    <BookOpenIcon /> Checklist Action Steps ({newSteps.length})
+                  </h3>
 
                   <div className="space-y-4">
                     {newSteps.map((step, index) => (
@@ -1558,13 +2056,40 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Add Step — kept at the bottom so it sits right after the last step */}
+                  <button
+                    type="button"
+                    onClick={handleAddCreatorStep}
+                    className="w-full h-11 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-emerald-800 font-black text-sm flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <PlusIcon /> Add Step
+                  </button>
                 </div>
+
+                {/* Revision note — required when editing an existing SOP */}
+                {editingSopId && (
+                  <div className="bg-emerald-50/50 border border-emerald-100/50 rounded-2xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-sm font-black text-emerald-900 uppercase tracking-wider">What changed? (Revision Note)</label>
+                    <p className="text-base text-emerald-800 font-medium leading-snug">
+                      Saved to the version changelog and pushed as a notification to every teammate.
+                    </p>
+                    <textarea
+                      rows={3}
+                      required
+                      placeholder="e.g., Updated Step 2 torque calibration values for the new equipment model..."
+                      value={editChangeNote}
+                      onChange={(e) => setEditChangeNote(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-800 leading-relaxed font-semibold shadow-xs"
+                    />
+                  </div>
+                )}
 
                 {/* Submitting handles */}
                 <div className="pt-4 flex items-center justify-between gap-3">
                   <button
                     type="button"
-                    onClick={() => setCurrentView('dashboard')}
+                    onClick={() => { const backTo = editingSopId ? 'document' : 'dashboard'; resetSopForm(); setCurrentView(backTo); }}
                     className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-50 shadow-xs"
                   >
                     Cancel
@@ -1573,7 +2098,7 @@ export default function App() {
                     type="submit"
                     className="flex-1 h-11 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-emerald-100"
                   >
-                    Publish SOP Manual
+                    {editingSopId ? 'Save & Publish Update' : 'Publish SOP Manual'}
                   </button>
                 </div>
               </form>
@@ -1604,8 +2129,16 @@ export default function App() {
                 {currentUser.userType === 'admin' && (
                   <div className="flex items-center gap-1.5">
                     <button
+                      onClick={() => startEditSop(selectedDoc)}
+                      className="h-8 px-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-sm font-black transition-all flex items-center gap-1 flex-shrink-0"
+                      title="Edit this SOP — changes are version-logged and announced to the team"
+                    >
+                      <EditIcon /> Edit
+                    </button>
+                    <button
                       onClick={() => { setRevisionNotes(''); setRevisionError(''); setCurrentView('addRevision'); }}
                       className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-sm font-black transition-all flex items-center gap-1 flex-shrink-0"
+                      title="Log a changelog note without editing content"
                     >
                       <HistoryIcon /> Revise
                     </button>
@@ -2138,6 +2671,36 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              {/* Career ladder management shortcut */}
+              <button
+                onClick={() => { setCurrentView('careerAdmin'); if (careerTracks.length === 0) loadCareerData(); }}
+                className="w-full bg-white border border-gray-100 hover:border-emerald-200 hover:shadow-xs rounded-2xl p-4 flex items-center justify-between transition-all shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl"><CareerIcon /></div>
+                  <div className="text-left">
+                    <p className="text-sm font-black text-gray-900">Career Ladder Manager</p>
+                    <p className="text-base text-gray-400 font-medium">Add levels &amp; milestones, assign paths, track team progress.</p>
+                  </div>
+                </div>
+                <ChevronRightIcon />
+              </button>
+
+              {/* Training builder shortcut */}
+              <button
+                onClick={() => { setTrainingDraft(null); setCurrentView('trainingAdmin'); }}
+                className="w-full bg-white border border-gray-100 hover:border-emerald-200 hover:shadow-xs rounded-2xl p-4 flex items-center justify-between transition-all shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-50 text-blue-700 rounded-xl"><TrainingIcon /></div>
+                  <div className="text-left">
+                    <p className="text-sm font-black text-gray-900">Training Builder</p>
+                    <p className="text-base text-gray-400 font-medium">Create multi-step training with photos &amp; resource links.</p>
+                  </div>
+                </div>
+                <ChevronRightIcon />
+              </button>
 
               {/* Panels grid — single column on mobile, two columns on desktop */}
               <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-5 lg:space-y-0">
@@ -2717,16 +3280,103 @@ export default function App() {
           {/* VIEW: CAREER LADDER — Employee */}
           {currentView === 'careerLadder' && currentUser && (() => {
             const assignedTrack = myAssignment ? careerTracks.find(t => t.id === myAssignment.track_id) : null;
-            const totalTasks = assignedTrack ? assignedTrack.tasks.length : 0;
-            const doneTasks = assignedTrack ? assignedTrack.tasks.filter(t => careerCompletions.some(c => c.task_id === t.id)).length : 0;
+            const verifiedIds = new Set(careerCompletions.filter(c => c.verified_by).map(c => c.task_id));
+            const pendingIds  = new Set(careerCompletions.filter(c => !c.verified_by).map(c => c.task_id));
+            const totalTasks   = assignedTrack ? assignedTrack.tasks.length : 0;
+            const doneTasks    = assignedTrack ? assignedTrack.tasks.filter(t => verifiedIds.has(t.id)).length : 0;
+            const pendingTasks = assignedTrack ? assignedTrack.tasks.filter(t => pendingIds.has(t.id)).length : 0;
             const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+            const topTasks = assignedTrack ? assignedTrack.tasks.filter(t => !t.parent_task_id) : [];
+            const subsOf = (id: number) => assignedTrack ? assignedTrack.tasks.filter(t => t.parent_task_id === id) : [];
+
+            const renderTaskRow = (task: CareerTask, isSub: boolean) => {
+              const completion = careerCompletions.find(c => c.task_id === task.id);
+              const isVerified = !!completion?.verified_by;
+              const isPending = !!completion && !isVerified;
+              const isTaskOpen = expandedTask === task.id;
+              const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
+              const linkedTraining = task.training_module_id ? trainingModules.find(m => m.id === task.training_module_id) : null;
+              const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title || linkedTraining);
+              return (
+                <div key={task.id} className={`px-4 py-3 ${isSub ? 'pl-11 bg-gray-50/50' : ''}`}>
+                  <div className="flex items-start gap-3">
+                    <button
+                      onClick={() => toggleTaskCompletion(task)}
+                      title={isVerified ? `Verified by ${completion?.verified_by}` : isPending ? 'Awaiting admin sign-off — tap to un-check' : 'Mark complete'}
+                      className={`flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 ${isSub ? 'w-5 h-5' : 'w-6 h-6'} ${
+                        isVerified ? 'bg-emerald-600 border-emerald-600 text-white cursor-default'
+                        : isPending ? 'bg-amber-400 border-amber-400 text-white'
+                        : 'border-gray-300'
+                      }`}
+                    >
+                      {(isVerified || isPending) && <CheckIcon />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
+                        <p className={`${isSub ? 'text-sm' : 'text-base'} font-semibold leading-snug ${isVerified ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
+                        {isVerified && completion && (
+                          <p className="text-sm text-emerald-600 mt-0.5 font-bold">
+                            ✓ Verified by {completion.verified_by}{completion.verified_at ? ` · ${new Date(completion.verified_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                          </p>
+                        )}
+                        {isPending && completion && (
+                          <p className="text-sm text-amber-600 mt-0.5 font-bold">
+                            ⏳ Done — awaiting admin sign-off
+                          </p>
+                        )}
+                      </button>
+                      {isTaskOpen && (
+                        <div className="mt-3 space-y-3">
+                          {task.description ? <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
+                          {task.image_urls && task.image_urls.length > 0 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {task.image_urls.map((url, i) => (
+                                <img key={i} src={url} alt={`Example ${i + 1}`} className="h-32 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
+                              ))}
+                            </div>
+                          )}
+                          {linkedSop && (
+                            <button onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left">
+                              <BookOpenIcon />
+                              <span className="text-sm font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
+                              <ChevronRightIcon />
+                            </button>
+                          )}
+                          {task.sop_title && !linkedSop && (
+                            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                              <BookOpenIcon />
+                              <span className="text-sm text-gray-400 truncate">SOP ref: {task.sop_title}</span>
+                            </div>
+                          )}
+                          {linkedTraining && (
+                            <button
+                              onClick={() => { setOpenTraining(linkedTraining); setCurrentView('training'); }}
+                              className="flex items-center gap-2 bg-blue-50 border border-blue-100 hover:bg-blue-100 rounded-xl px-3 py-2 w-full text-left transition-colors"
+                            >
+                              <TrainingIcon />
+                              <span className="text-sm font-bold text-blue-700 truncate flex-1">Training: {linkedTraining.title}</span>
+                              <ChevronRightIcon />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {hasDetail && (
+                      <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
+                        <ChevronRightIcon />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            };
             return (
               <div className="space-y-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
                     <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
-                    <p className="text-sm text-gray-400 mt-1">Check off skills as you master them.</p>
+                    <p className="text-sm text-gray-400 mt-1">Check off skills as you master them — an admin verifies each one.</p>
                   </div>
                   {currentUser.userType === 'admin' && (
                     <button
@@ -2780,73 +3430,22 @@ export default function App() {
                       <div className="mt-3 h-2 bg-emerald-100 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                       </div>
-                      <p className="text-sm text-emerald-700 mt-1">{doneTasks} of {totalTasks} tasks complete</p>
+                      <p className="text-sm text-emerald-700 mt-1">
+                        {doneTasks} of {totalTasks} verified{pendingTasks > 0 ? ` · ${pendingTasks} awaiting sign-off` : ''}
+                      </p>
                     </div>
 
-                    {/* Task list */}
+                    {/* Task list — top-level tasks with nested sub-tasks */}
                     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden divide-y divide-gray-50">
                       {assignedTrack.tasks.length === 0 && (
                         <p className="text-sm text-gray-400 px-4 py-6 text-center">No tasks added to this level yet.</p>
                       )}
-                      {assignedTrack.tasks.map(task => {
-                        const completion = careerCompletions.find(c => c.task_id === task.id);
-                        const isDone = !!completion;
-                        const isTaskOpen = expandedTask === task.id;
-                        const linkedSop = task.sop_title ? documents.find(d => d.title.toLowerCase().includes(task.sop_title.toLowerCase())) : null;
-                        const hasDetail = !!(task.description || (task.image_urls && task.image_urls.length > 0) || task.sop_title);
-                        return (
-                          <div key={task.id} className="px-4 py-3">
-                            <div className="flex items-start gap-3">
-                              <button
-                                onClick={() => toggleTaskCompletion(task)}
-                                className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 ${isDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-300'}`}
-                              >
-                                {isDone && <CheckIcon />}
-                              </button>
-                              <div className="flex-1 min-w-0">
-                                <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
-                                  <p className={`text-base font-semibold leading-snug ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
-                                  {isDone && completion && (
-                                    <p className="text-sm text-emerald-600 mt-0.5 font-medium">
-                                      Completed {new Date(completion.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-                                  )}
-                                </button>
-                                {isTaskOpen && (
-                                  <div className="mt-3 space-y-3">
-                                    {task.description ? <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
-                                    {task.image_urls && task.image_urls.length > 0 && (
-                                      <div className="flex gap-2 overflow-x-auto pb-1">
-                                        {task.image_urls.map((url, i) => (
-                                          <img key={i} src={url} alt={`Example ${i + 1}`} className="h-32 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
-                                        ))}
-                                      </div>
-                                    )}
-                                    {linkedSop && (
-                                      <button onClick={() => { setSelectedDoc(linkedSop); setCurrentView('document'); }} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 w-full text-left">
-                                        <BookOpenIcon />
-                                        <span className="text-sm font-bold text-emerald-800 truncate">View SOP: {linkedSop.title}</span>
-                                        <ChevronRightIcon />
-                                      </button>
-                                    )}
-                                    {task.sop_title && !linkedSop && (
-                                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                                        <BookOpenIcon />
-                                        <span className="text-sm text-gray-400 truncate">SOP ref: {task.sop_title}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                              {hasDetail && (
-                                <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
-                                  <ChevronRightIcon />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {topTasks.map(task => (
+                        <React.Fragment key={task.id}>
+                          {renderTaskRow(task, false)}
+                          {subsOf(task.id).map(sub => renderTaskRow(sub, true))}
+                        </React.Fragment>
+                      ))}
 
                       {/* Admin: add task inline */}
                       {currentUser.userType === 'admin' && (
@@ -2887,7 +3486,7 @@ export default function App() {
                         <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base" />
                         <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
                         <div className="flex gap-2">
-                          <button onClick={addCareerTrack} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Create Level</button>
+                          <button onClick={() => addCareerTrack()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Create Level</button>
                           <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
                         </div>
                       </div>
@@ -2911,7 +3510,7 @@ export default function App() {
                 </button>
                 <div>
                   <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Admin View</span>
-                  <h1 className="text-2xl font-black text-gray-950 tracking-tight">Team Progress</h1>
+                  <h1 className="text-2xl font-black text-gray-950 tracking-tight">Career Ladder Manager</h1>
                 </div>
               </div>
 
@@ -2921,14 +3520,222 @@ export default function App() {
                 </div>
               )}
 
+              {/* LADDER BUILDER — manage levels (sections) & milestones */}
               {!careerLoading && (
                 <div className="space-y-3">
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">🪜 Ladder Builder</h3>
+
+                  {/* Department tabs */}
+                  <div className="flex gap-2">
+                    {(['Home Performance', 'HVAC'] as const).map(d => (
+                      <button
+                        key={d}
+                        onClick={() => { setBuilderDept(d); setExpandedBuilderTrack(null); setEditingTrack(null); setEditingTask(null); setTrackDeleteConfirm(null); setTaskDeleteConfirm(null); }}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${builderDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+
+                  {careerTracks.filter(t => t.department === builderDept).length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-3">No levels in this department yet — add the first one below.</p>
+                  )}
+
+                  {careerTracks.filter(t => t.department === builderDept).map(track => {
+                    const isOpen = expandedBuilderTrack === track.id;
+                    const builderTopTasks = track.tasks.filter(t => !t.parent_task_id);
+                    const builderSubsOf = (id: number) => track.tasks.filter(t => t.parent_task_id === id);
+
+                    const renderBuilderTask = (task: CareerTask, isSub: boolean) => (
+                      editingTask?.id === task.id ? (
+                        <div key={task.id} className={`px-4 py-3 space-y-2 bg-emerald-50/40 ${isSub ? 'pl-10' : ''}`}>
+                          <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">Edit {isSub ? 'Sub-task' : 'Milestone'}</p>
+                          <input value={editingTask.title} onChange={e => setEditingTask({ ...editingTask, title: e.target.value })} placeholder="Title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                          <textarea value={editingTask.description} onChange={e => setEditingTask({ ...editingTask, description: e.target.value })} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                          <textarea value={editingTask.imageUrls} onChange={e => setEditingTask({ ...editingTask, imageUrls: e.target.value })} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                          <input value={editingTask.sopTitle} onChange={e => setEditingTask({ ...editingTask, sopTitle: e.target.value })} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                          <select
+                            value={editingTask.trainingModuleId}
+                            onChange={e => setEditingTask({ ...editingTask, trainingModuleId: e.target.value ? Number(e.target.value) : '' })}
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                          >
+                            <option value="">No linked training module</option>
+                            {trainingModules.map(m => <option key={m.id} value={m.id}>{m.category}: {m.title}</option>)}
+                          </select>
+                          <div className="flex gap-2">
+                            <button onClick={updateCareerTask} disabled={builderSaving || !editingTask.title.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Save</button>
+                            <button onClick={() => setEditingTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={task.id} className={`py-2.5 flex items-center gap-2 ${isSub ? 'pl-10 pr-4 bg-gray-50/50' : 'px-4'}`}>
+                          <div className="flex-1 min-w-0">
+                            <p className={`${isSub ? 'text-sm' : 'text-base'} font-semibold text-gray-900 leading-snug`}>{isSub ? '↳ ' : ''}{task.title}</p>
+                            {(task.sop_title || task.description) && (
+                              <p className="text-sm text-gray-400 truncate">{task.sop_title ? `SOP: ${task.sop_title}` : task.description}</p>
+                            )}
+                          </div>
+                          {!isSub && (
+                            <button
+                              onClick={() => { setShowAddSubtask(showAddSubtask === task.id ? null : task.id); setShowAddTask(null); setTaskDeleteConfirm(null); }}
+                              className="h-7 px-2 text-sm font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-lg flex-shrink-0"
+                              title="Add a sub-task under this milestone"
+                            >
+                              + Sub
+                            </button>
+                          )}
+                          <button onClick={() => { setEditingTask({ id: task.id, track_id: task.track_id, title: task.title, description: task.description || '', imageUrls: (task.image_urls || []).join('\n'), sopTitle: task.sop_title || '', trainingModuleId: task.training_module_id ?? '' }); setTaskDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title={isSub ? 'Edit sub-task' : 'Edit milestone'}>
+                            <EditIcon />
+                          </button>
+                          {taskDeleteConfirm === task.id ? (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => deleteCareerTask(task)} disabled={builderSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
+                              <button onClick={() => setTaskDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setTaskDeleteConfirm(task.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title={isSub ? 'Delete sub-task' : 'Delete milestone (also removes its sub-tasks)'}>
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    );
+                    return (
+                      <div key={track.id} className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+                        {/* Level header / edit form */}
+                        {editingTrack?.id === track.id ? (
+                          <div className="p-3.5 space-y-2 bg-emerald-50/40">
+                            <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">Edit Level</p>
+                            <input value={editingTrack.name} onChange={e => setEditingTrack({ ...editingTrack, name: e.target.value })} placeholder="Level name*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                            <input value={editingTrack.description} onChange={e => setEditingTrack({ ...editingTrack, description: e.target.value })} placeholder="Short description" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                            <div className="flex gap-2">
+                              <button onClick={updateCareerTrack} disabled={builderSaving || !editingTrack.name.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Save</button>
+                              <button onClick={() => setEditingTrack(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3.5 flex items-center gap-2">
+                            <button onClick={() => setExpandedBuilderTrack(isOpen ? null : track.id)} className="flex-1 text-left min-w-0">
+                              <p className="text-base font-black text-gray-900 leading-snug">{track.name}</p>
+                              <p className="text-sm text-gray-400 mt-0.5 truncate">{track.tasks.length} milestone{track.tasks.length !== 1 ? 's' : ''}{track.description ? ` — ${track.description}` : ''}</p>
+                            </button>
+                            <button onClick={() => { setEditingTrack({ id: track.id, name: track.name, description: track.description || '' }); setTrackDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit level">
+                              <EditIcon />
+                            </button>
+                            {trackDeleteConfirm === track.id ? (
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => deleteCareerTrack(track.id)} disabled={builderSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
+                                <button onClick={() => setTrackDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setTrackDeleteConfirm(track.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete level (also removes its milestones)">
+                                <TrashIcon />
+                              </button>
+                            )}
+                            <button onClick={() => setExpandedBuilderTrack(isOpen ? null : track.id)} className={`p-1 text-gray-300 transition-transform ${isOpen ? 'rotate-90' : ''}`}>
+                              <ChevronRightIcon />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Milestones */}
+                        {isOpen && (
+                          <div className="border-t border-gray-50 divide-y divide-gray-50">
+                            {track.tasks.length === 0 && <p className="text-sm text-gray-400 px-4 py-3 text-center">No milestones yet.</p>}
+                            {builderTopTasks.map(task => (
+                              <React.Fragment key={task.id}>
+                                {renderBuilderTask(task, false)}
+                                {builderSubsOf(task.id).map(sub => renderBuilderTask(sub, true))}
+                                {showAddSubtask === task.id && (
+                                  <div className="pl-10 pr-4 py-3 bg-gray-50/50 space-y-2">
+                                    <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">New Sub-task under &ldquo;{task.title}&rdquo;</p>
+                                    <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Sub-task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                                    <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (optional)" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                                    <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+                                    <select
+                                      value={newTaskTraining}
+                                      onChange={e => setNewTaskTraining(e.target.value ? Number(e.target.value) : '')}
+                                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                                    >
+                                      <option value="">No linked training module</option>
+                                      {trainingModules.map(m => <option key={m.id} value={m.id}>{m.category}: {m.title}</option>)}
+                                    </select>
+                                    <div className="flex gap-2">
+                                      <button onClick={() => addCareerTask(track.id, task.id)} disabled={!newTaskTitle.trim()} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2 disabled:opacity-40">Add Sub-task</button>
+                                      <button onClick={() => setShowAddSubtask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                                    </div>
+                                  </div>
+                                )}
+                              </React.Fragment>
+                            ))}
+
+                            {/* Add milestone */}
+                            <div className="px-4 py-3">
+                              {showAddTask === track.id ? (
+                                <div className="space-y-2">
+                                  <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Milestone title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                                  <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
+                                  <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
+                                  <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                                  <select
+                                    value={newTaskTraining}
+                                    onChange={e => setNewTaskTraining(e.target.value ? Number(e.target.value) : '')}
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                                  >
+                                    <option value="">No linked training module</option>
+                                    {trainingModules.map(m => <option key={m.id} value={m.id}>{m.category}: {m.title}</option>)}
+                                  </select>
+                                  <div className="flex gap-2">
+                                    <button onClick={() => addCareerTask(track.id)} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Add Milestone</button>
+                                    <button onClick={() => setShowAddTask(null)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button onClick={() => { setShowAddTask(track.id); setShowAddSubtask(null); }} className="flex items-center gap-1.5 text-sm text-emerald-700 font-bold">
+                                  <PlusIcon /> Add Milestone
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Add level */}
+                  <div className="bg-white border border-dashed border-gray-200 rounded-2xl p-4">
+                    {showAddTrack ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">New {builderDept} Level</p>
+                        <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base" />
+                        <input value={newTrackDesc} onChange={e => setNewTrackDesc(e.target.value)} placeholder="Short description (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+                        <div className="flex gap-2">
+                          <button onClick={() => addCareerTrack(builderDept)} className="flex-1 bg-emerald-800 text-white text-sm font-bold rounded-xl py-2">Create Level</button>
+                          <button onClick={() => setShowAddTrack(false)} className="flex-1 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl py-2">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-sm font-bold">
+                        <PlusIcon /> Add New Level
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!careerLoading && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest pt-2">📊 Team Progress</h3>
                   {effectiveUsers.filter(a => a.userType !== 'admin').map(account => {
                     const assignment = allAssignments.find(a => a.user_name === account.name);
                     const assignedTrack = assignment ? careerTracks.find(t => t.id === assignment.track_id) : null;
                     const userCompletions = allCareerCompletions.filter(c => c.user_name === account.name);
+                    const userVerifiedIds = new Set(userCompletions.filter(c => c.verified_by).map(c => c.task_id));
+                    const pendingSignOffs = userCompletions.filter(c => !c.verified_by);
+                    const allTasksById = new Map(careerTracks.flatMap(t => t.tasks).map(t => [t.id, t]));
                     const totalTasks = assignedTrack ? assignedTrack.tasks.length : 0;
-                    const doneTasks = assignedTrack ? assignedTrack.tasks.filter(t => userCompletions.some(c => c.task_id === t.id)).length : 0;
+                    const doneTasks = assignedTrack ? assignedTrack.tasks.filter(t => userVerifiedIds.has(t.id)).length : 0;
                     const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
                     const sorted = [...userCompletions].sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
                     const lastActivity = sorted[0];
@@ -2981,6 +3788,42 @@ export default function App() {
                           </div>
                         )}
 
+                        {/* Pending sign-offs — the admin verification queue */}
+                        {pendingSignOffs.length > 0 && (
+                          <div className="space-y-2 bg-amber-50/70 border border-amber-100 rounded-xl p-3">
+                            <p className="text-sm font-black text-amber-700 uppercase tracking-wider">⏳ Awaiting Sign-off ({pendingSignOffs.length})</p>
+                            {pendingSignOffs.map(c => {
+                              const pendingTask = allTasksById.get(c.task_id);
+                              return (
+                                <div key={c.id} className="flex items-center gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-gray-800 leading-snug">
+                                      {pendingTask?.parent_task_id ? '↳ ' : ''}{pendingTask?.title ?? `Task #${c.task_id}`}
+                                    </p>
+                                    <p className="text-sm text-gray-400">Completed {new Date(c.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => signOffCompletion(c.id)}
+                                    disabled={builderSaving}
+                                    className="h-8 px-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-sm font-black flex-shrink-0 disabled:opacity-40"
+                                    title="Verify this task is complete"
+                                  >
+                                    Sign Off
+                                  </button>
+                                  <button
+                                    onClick={() => rejectCompletion(c.id)}
+                                    disabled={builderSaving}
+                                    className="h-8 px-2 bg-white border border-red-100 text-red-500 hover:bg-red-50 rounded-lg text-sm font-black flex-shrink-0 disabled:opacity-40"
+                                    title="Reject — the teammate must redo this task"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
                         {/* Current path & progress */}
                         {assignedTrack ? (
                           <>
@@ -2995,7 +3838,7 @@ export default function App() {
                               <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                             </div>
                             <div className="flex items-center justify-between text-sm text-gray-400">
-                              <span>{doneTasks} of {totalTasks} tasks complete</span>
+                              <span>{doneTasks} of {totalTasks} verified</span>
                               {lastActivity && <span>Last: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
                             </div>
                           </>
@@ -3005,6 +3848,386 @@ export default function App() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW: TRAINING — employee library & module viewer */}
+          {currentView === 'training' && currentUser && (
+            <div className="space-y-5">
+              {openTraining ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 -ml-1">
+                    <button onClick={() => setOpenTraining(null)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
+                      <ArrowLeftIcon />
+                    </button>
+                    <div>
+                      <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">{openTraining.category} Training</span>
+                      <h1 className="text-lg font-black text-gray-950 leading-tight">{openTraining.title}</h1>
+                    </div>
+                  </div>
+
+                  {openTraining.cover_url && (
+                    <div className="w-full h-44 rounded-2xl overflow-hidden bg-gray-100">
+                      <img
+                        src={openTraining.cover_url}
+                        alt={openTraining.title}
+                        className="object-cover w-full h-full"
+                        onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                  {openTraining.description && <p className="text-sm text-gray-500 leading-relaxed">{openTraining.description}</p>}
+
+                  {/* Career milestones this training counts toward */}
+                  {(() => {
+                    const linkedTasks = careerTracks.flatMap(t =>
+                      t.tasks.filter(tk => tk.training_module_id === openTraining.id).map(tk => ({ track: t, task: tk }))
+                    );
+                    if (!linkedTasks.length) return null;
+                    return (
+                      <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3.5 space-y-1.5">
+                        <p className="text-sm font-black text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                          <CareerIcon /> Counts toward the Career Ladder
+                        </p>
+                        {linkedTasks.map(({ track, task }) => (
+                          <button
+                            key={task.id}
+                            onClick={() => { setOpenTraining(null); setCurrentView('careerLadder'); }}
+                            className="flex items-center gap-2 w-full text-left bg-white border border-emerald-100 hover:border-emerald-200 rounded-xl px-3 py-2 transition-colors"
+                          >
+                            <span className="text-sm font-bold text-gray-800 truncate flex-1">
+                              {track.name}: {task.parent_task_id ? '↳ ' : ''}{task.title}
+                            </span>
+                            <ChevronRightIcon />
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  <div className="relative border-l-2 border-gray-100 pl-6 ml-3 py-1 space-y-6">
+                    {openTraining.steps.map((step, i) => (
+                      <div key={step.id ?? i} className="relative">
+                        <span className="absolute -left-[35px] top-1 rounded-full w-6 h-6 flex items-center justify-center text-sm font-black border-4 border-white bg-emerald-800 text-white shadow-xs">
+                          {i + 1}
+                        </span>
+                        <article className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs space-y-3">
+                          <h3 className="text-sm font-black text-gray-900 leading-snug">{step.title}</h3>
+                          {step.body && <p className="text-base text-gray-600 leading-relaxed whitespace-pre-line">{step.body}</p>}
+                          {step.image_urls && step.image_urls.length > 0 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {step.image_urls.map((url, j) => (
+                                <img key={j} src={url} alt={`${step.title} — photo ${j + 1}`} className="h-36 w-auto rounded-xl object-cover flex-shrink-0 border border-gray-100" />
+                              ))}
+                            </div>
+                          )}
+                          {step.link_url && (
+                            <a
+                              href={step.link_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 bg-blue-50 border border-blue-100 hover:bg-blue-100 rounded-xl px-3 py-2 text-sm font-bold text-blue-700 transition-colors"
+                            >
+                              <LinkIcon />
+                              <span className="truncate flex-1">{step.link_label || step.link_url}</span>
+                              <span>↗</span>
+                            </a>
+                          )}
+                        </article>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Learn & Grow</span>
+                      <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Training</h1>
+                      <p className="text-sm text-gray-400 mt-1">Step-by-step training for your trade.</p>
+                    </div>
+                    {currentUser.userType === 'admin' && (
+                      <button
+                        onClick={() => { setTrainingDraft(null); setCurrentView('trainingAdmin'); }}
+                        className="flex items-center gap-1.5 bg-emerald-800 text-white text-sm font-black uppercase tracking-wider px-3 py-2 rounded-xl"
+                      >
+                        <EditIcon /> Builder
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Category tabs */}
+                  <div className="flex gap-2">
+                    {(['Home Performance', 'HVAC'] as const).map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setTrainingCategory(cat)}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${trainingCategory === cat ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {trainingLoading && (
+                    <div className="flex items-center justify-center py-16">
+                      <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+
+                  {trainingError && !trainingLoading && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
+                      <p className="text-sm text-amber-800 font-bold">{trainingError}</p>
+                      <button onClick={loadTraining} className="text-sm font-bold text-emerald-800 bg-white border border-emerald-200 rounded-xl px-3 py-1.5">Retry</button>
+                    </div>
+                  )}
+
+                  {!trainingLoading && !trainingError && trainingModules.filter(m => m.category === trainingCategory).length === 0 && (
+                    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-8 text-center space-y-2">
+                      <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto"><TrainingIcon /></div>
+                      <p className="text-base font-black text-gray-900">No {trainingCategory} training yet</p>
+                      <p className="text-sm text-gray-400 max-w-[240px] mx-auto leading-relaxed">Training modules published by your admins will appear here.</p>
+                    </div>
+                  )}
+
+                  <div className="grid gap-3">
+                    {trainingModules.filter(m => m.category === trainingCategory).map(mod => (
+                      <button
+                        key={mod.id}
+                        onClick={() => setOpenTraining(mod)}
+                        className="bg-white border border-gray-100 hover:border-emerald-100 hover:shadow-xs rounded-2xl overflow-hidden text-left transition-all group"
+                      >
+                        {mod.cover_url && (
+                          <div className="w-full h-32 bg-gray-100 overflow-hidden">
+                            <img
+                              src={mod.cover_url}
+                              alt={mod.title}
+                              className="object-cover w-full h-full group-hover:scale-[1.02] transition-transform"
+                              onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }}
+                            />
+                          </div>
+                        )}
+                        <div className="p-4 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-black text-gray-900 leading-snug group-hover:text-emerald-800 transition-colors">{mod.title}</h4>
+                            {mod.description && <p className="text-base text-gray-400 font-medium leading-relaxed line-clamp-2 mt-0.5">{mod.description}</p>}
+                            <p className="text-sm text-gray-400 font-bold mt-1">{mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}</p>
+                          </div>
+                          <ChevronRightIcon />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* VIEW: TRAINING BUILDER (ADMIN-ONLY) */}
+          {currentView === 'trainingAdmin' && currentUser && currentUser.userType === 'admin' && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-2 -ml-1">
+                <button
+                  onClick={() => { if (trainingDraft) { setTrainingDraft(null); } else { setCurrentView('training'); } }}
+                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                >
+                  <ArrowLeftIcon />
+                </button>
+                <div>
+                  <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Admin</span>
+                  <h1 className="text-lg font-black text-gray-950 leading-tight">{trainingDraft ? (trainingDraft.id === null ? 'New Training Module' : 'Edit Training Module') : 'Training Builder'}</h1>
+                </div>
+              </div>
+
+              {!trainingDraft && (
+                <>
+                  <button
+                    onClick={() => { setTrainingFormError(''); setTrainingDraft(blankTrainingDraft()); }}
+                    className="w-full h-11 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-emerald-800 font-black text-sm flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <PlusIcon /> New Training Module
+                  </button>
+
+                  {trainingLoading && (
+                    <div className="flex items-center justify-center py-10">
+                      <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+
+                  {(['Home Performance', 'HVAC'] as const).map(cat => (
+                    <div key={cat} className="space-y-2">
+                      <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">{cat} ({trainingModules.filter(m => m.category === cat).length})</h3>
+                      {trainingModules.filter(m => m.category === cat).length === 0 && (
+                        <p className="text-sm text-gray-400 px-1">No modules yet.</p>
+                      )}
+                      {trainingModules.filter(m => m.category === cat).map(mod => (
+                        <div key={mod.id} className="bg-white border border-gray-100 rounded-2xl p-3.5 flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-base font-black text-gray-900 leading-snug">{mod.title}</p>
+                            <p className="text-sm text-gray-400 mt-0.5">{mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}{mod.created_by ? ` — by ${mod.created_by}` : ''}</p>
+                          </div>
+                          <button onClick={() => startEditTraining(mod)} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit module">
+                            <EditIcon />
+                          </button>
+                          {trainingDeleteConfirm === mod.id ? (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => deleteTrainingModule(mod.id)} disabled={trainingSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
+                              <button onClick={() => setTrainingDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setTrainingDeleteConfirm(mod.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete module">
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {trainingDraft && (
+                <div className="space-y-4">
+                  {trainingFormError && (
+                    <div className="bg-red-50 border border-red-100 text-red-800 rounded-2xl p-3 text-sm font-semibold">⚠️ {trainingFormError}</div>
+                  )}
+
+                  {/* Category */}
+                  <div className="flex gap-2">
+                    {(['Home Performance', 'HVAC'] as const).map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setTrainingDraft({ ...trainingDraft, category: cat })}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${trainingDraft.category === cat ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Module Title</label>
+                    <input value={trainingDraft.title} onChange={e => setTrainingDraft({ ...trainingDraft, title: e.target.value })} placeholder="e.g., Blower Door Setup & Testing" className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Description</label>
+                    <textarea value={trainingDraft.description} onChange={e => setTrainingDraft({ ...trainingDraft, description: e.target.value })} rows={2} placeholder="What this training covers and who it's for..." className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-800 shadow-xs" />
+                  </div>
+
+                  {/* Cover photo */}
+                  <div className="bg-white border border-gray-100 p-3 rounded-xl space-y-2 shadow-xs">
+                    <div className="flex justify-between items-center">
+                      <label className="text-sm font-black text-gray-500 uppercase tracking-wider">Cover Photo</label>
+                      <label className={`h-8 px-3 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-sm font-extrabold text-emerald-800 flex items-center gap-1 cursor-pointer transition-colors ${trainingUploading === 'cover' ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {trainingUploading === 'cover' ? 'Uploading…' : <><CloudUploadIcon /> Upload</>}
+                        <input type="file" accept="image/*" className="hidden" disabled={trainingUploading === 'cover'} onChange={e => { const f = e.target.files?.[0]; if (f) uploadTrainingImage(f, 'cover'); e.target.value = ''; }} />
+                      </label>
+                    </div>
+                    <input value={trainingDraft.coverUrl} onChange={e => setTrainingDraft({ ...trainingDraft, coverUrl: e.target.value })} placeholder="Or paste an https image URL..." className="w-full h-9 px-2.5 border border-gray-100 bg-gray-50 text-sm focus:outline-none rounded-lg text-gray-500 font-mono" />
+                    {trainingDraft.coverUrl && (
+                      <div className="w-full h-32 rounded-xl overflow-hidden bg-gray-100">
+                        <img src={trainingDraft.coverUrl} alt="Cover preview" className="object-cover w-full h-full" onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Steps */}
+                  <div className="border-t border-gray-100 pt-4 space-y-3">
+                    <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
+                      <BookOpenIcon /> Training Steps ({trainingDraft.steps.length})
+                    </h3>
+                    {trainingDraft.steps.map((step, i) => (
+                      <div key={i} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-base font-black text-gray-400 tracking-wider">STEP {i + 1}</span>
+                          {trainingDraft.steps.length > 1 && (
+                            <button onClick={() => setTrainingDraft({ ...trainingDraft, steps: trainingDraft.steps.filter((_, j) => j !== i) })} className="text-gray-400 hover:text-red-500 p-1 bg-white border border-gray-100 rounded-lg transition-colors">
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </div>
+                        <input value={step.title} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], title: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} placeholder="Step title*" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs" />
+                        <textarea value={step.body} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], body: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} rows={3} placeholder="What to teach / demonstrate in this step..." className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed shadow-xs" />
+
+                        {/* Step photos */}
+                        <div className="bg-white border border-gray-100 p-2.5 rounded-xl space-y-2 shadow-xs">
+                          <div className="flex justify-between items-center text-base font-bold text-gray-400 uppercase tracking-wide">
+                            <span>Step Photos</span>
+                            <label className={`h-7 px-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-sm font-extrabold text-emerald-800 flex items-center gap-1 cursor-pointer transition-colors ${trainingUploading === String(i) ? 'opacity-50 pointer-events-none' : ''}`}>
+                              {trainingUploading === String(i) ? 'Uploading…' : <><CloudUploadIcon /> Add Photo</>}
+                              <input type="file" accept="image/*" className="hidden" disabled={trainingUploading === String(i)} onChange={e => { const f = e.target.files?.[0]; if (f) uploadTrainingImage(f, i); e.target.value = ''; }} />
+                            </label>
+                          </div>
+                          <textarea value={step.images} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], images: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} rows={2} placeholder="Photo URLs — one per line (uploads are added automatically)" className="w-full p-2 border border-gray-100 bg-gray-50 text-sm focus:outline-none rounded-lg text-gray-500 font-mono" />
+                        </div>
+
+                        {/* Resource link */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={step.linkUrl} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], linkUrl: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} placeholder="Resource link URL (https://...)" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 shadow-xs" />
+                          <input value={step.linkLabel} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], linkLabel: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} placeholder="Link label (e.g. Watch video)" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 shadow-xs" />
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={() => setTrainingDraft({ ...trainingDraft, steps: [...trainingDraft.steps, { title: '', body: '', images: '', linkUrl: '', linkLabel: '' }] })}
+                      className="w-full h-11 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-emerald-800 font-black text-sm flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <PlusIcon /> Add Step
+                    </button>
+                  </div>
+
+                  {/* Link career milestones to this module (existing modules only) */}
+                  {trainingDraft.id !== null && (
+                    <div className="border-t border-gray-100 pt-4 space-y-2">
+                      <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
+                        <CareerIcon /> Linked Career Milestones
+                      </h3>
+                      <p className="text-sm text-gray-400 leading-snug">
+                        Tick the milestones this training prepares a teammate for. Linked milestones show an &ldquo;Open Training&rdquo; button in the career ladder, and changes save instantly.
+                      </p>
+                      {careerTracks.filter(t => t.tasks.length > 0).length === 0 && (
+                        <p className="text-sm text-gray-400">No career milestones exist yet — add some in the Career Ladder Manager.</p>
+                      )}
+                      {careerTracks.filter(t => t.tasks.length > 0).map(track => (
+                        <div key={track.id} className="space-y-1">
+                          <p className="text-sm font-black text-gray-400 uppercase tracking-wider pt-1">{track.department} — {track.name}</p>
+                          {track.tasks.map(task => {
+                            const linked = task.training_module_id === trainingDraft.id;
+                            return (
+                              <label key={task.id} className={`flex items-center gap-2 text-sm rounded-lg px-2.5 py-1.5 cursor-pointer border transition-colors ${linked ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-bold' : 'bg-white border-gray-100 text-gray-700'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={linked}
+                                  onChange={() => linkTaskToTraining(task, linked ? null : trainingDraft.id)}
+                                  className="accent-emerald-700"
+                                />
+                                <span className="truncate">{task.parent_task_id ? '↳ ' : ''}{task.title}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {trainingDraft.id === null && (
+                    <p className="text-sm text-gray-400 border-t border-gray-100 pt-3">
+                      💡 After publishing, reopen this module to link it to career ladder milestones (or pick the module from a milestone&apos;s editor in the Career Ladder Manager).
+                    </p>
+                  )}
+
+                  <div className="pt-2 flex items-center justify-between gap-3">
+                    <button onClick={() => setTrainingDraft(null)} className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-50 shadow-xs">
+                      Cancel
+                    </button>
+                    <button onClick={saveTrainingDraft} disabled={trainingSaving} className="flex-1 h-11 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-emerald-100 disabled:opacity-50">
+                      {trainingSaving ? 'Saving…' : trainingDraft.id === null ? 'Publish Module' : 'Save Changes'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -3043,6 +4266,16 @@ export default function App() {
             >
               <CareerIcon />
               <span className="text-base font-black tracking-wider uppercase">Career</span>
+            </button>
+
+            <button
+              onClick={() => { setOpenTraining(null); setCurrentView('training'); }}
+              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+                currentView === 'training' || currentView === 'trainingAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <TrainingIcon />
+              <span className="text-base font-black tracking-wider uppercase">Training</span>
             </button>
 
             <button

@@ -107,31 +107,50 @@ export function clearSessionCookie(res: ServerResponse): void {
 
 // ---------------------------------------------------------------------------
 // Server-side rate limiting (IP-based, in-memory with TTL cleanup)
+//
+// Two tiers: 'auth' is strict (credential guessing), 'api' is generous
+// enough that a dashboard load (several parallel fetches) and an office
+// of users behind one NAT IP never trip it.
 // ---------------------------------------------------------------------------
 
 interface IpRecord { count: number; resetAt: number; }
 const ipStore = new Map<string, IpRecord>();
 
-const WINDOW_MS = 60_000;  // 1-minute rolling window
-const MAX_PER_WINDOW = 10; // requests per window
+const WINDOW_MS = 60_000; // 1-minute rolling window
+const LIMITS = { auth: 10, api: 120 } as const;
+export type RateLimitBucket = keyof typeof LIMITS;
 
 function cleanIpStore() {
   const now = Date.now();
-  ipStore.forEach((rec, ip) => {
-    if (rec.resetAt < now) ipStore.delete(ip);
+  ipStore.forEach((rec, key) => {
+    if (rec.resetAt < now) ipStore.delete(key);
   });
 }
 
-export function checkIpRateLimit(req: IncomingMessage): boolean {
-  cleanIpStore();
-  const ip =
-    (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0].trim() ??
-    (req.socket as any)?.remoteAddress ??
-    'unknown';
+function clientIp(req: IncomingMessage): string {
+  // Prefer proxy-set headers over the client-controlled leftmost
+  // X-Forwarded-For entry (spoofable, would let attackers rotate
+  // fake IPs to bypass the limit). The last XFF hop is appended by
+  // the closest trusted proxy.
+  const realIp = req.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp) return realIp.trim();
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff) {
+    const parts = xff.split(',');
+    return parts[parts.length - 1].trim();
+  }
+  return req.socket?.remoteAddress ?? 'unknown';
+}
+
+export function checkIpRateLimit(req: IncomingMessage, bucket: RateLimitBucket = 'api'): boolean {
+  if (ipStore.size > 10_000) cleanIpStore();
+  const key = `${bucket}:${clientIp(req)}`;
   const now = Date.now();
-  const rec = ipStore.get(ip) ?? { count: 0, resetAt: now + WINDOW_MS };
+  let rec = ipStore.get(key);
+  if (!rec || rec.resetAt < now) {
+    rec = { count: 0, resetAt: now + WINDOW_MS };
+    ipStore.set(key, rec);
+  }
   rec.count += 1;
-  if (rec.resetAt < now) { rec.count = 1; rec.resetAt = now + WINDOW_MS; }
-  ipStore.set(ip, rec);
-  return rec.count <= MAX_PER_WINDOW;
+  return rec.count <= LIMITS[bucket];
 }

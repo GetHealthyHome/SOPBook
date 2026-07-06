@@ -1,13 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import crypto from 'crypto';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
-
-const SALT = 'sop_auth_salt_2026_v1';
-function hashPassword(pw: string): string {
-  return crypto.createHash('sha256').update(SALT + pw).digest('hex');
-}
+import { hashPassword, MAX_PASSWORD_LEN } from '@/lib/passwords';
+import { logError } from '@/lib/log';
 
 function toClient(row: Record<string, unknown>) {
   return { name: row.name, role: row.role, userType: row.user_type };
@@ -26,7 +22,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .from('app_users')
       .select('name, role, user_type')
       .order('created_at', { ascending: true });
-    if (error) return res.status(500).json({ error: 'Failed to load users.' });
+    if (error) {
+      logError('admin/users GET', error);
+      return res.status(500).json({ error: 'Failed to load users.' });
+    }
     return res.status(200).json({ users: (data ?? []).map(toClient) });
   }
 
@@ -36,17 +35,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { name, role, userType, password } = req.body ?? {};
     if (!name || !role || !userType || !password) return res.status(400).json({ error: 'name, role, userType, and password required.' });
     if (!['admin', 'user'].includes(userType)) return res.status(400).json({ error: 'Invalid userType.' });
-    if (String(password).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    const pw = String(password);
+    if (pw.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    if (pw.length > MAX_PASSWORD_LEN) return res.status(400).json({ error: 'Password too long.' });
+
+    const cleanName = sanitize(String(name), 'name');
+    if (!cleanName) return res.status(400).json({ error: 'Invalid name.' });
 
     const { data, error } = await db.from('app_users').insert({
-      name:          sanitize(String(name), 'title'),
-      role:          sanitize(String(role), 'title'),
+      name:          cleanName,
+      role:          sanitize(String(role), 'name'),
       user_type:     userType,
-      password_hash: hashPassword(String(password)),
+      password_hash: hashPassword(pw),
     }).select('name, role, user_type').single();
 
     if (error) {
       if (error.code === '23505') return res.status(409).json({ error: 'A user with that name already exists.' });
+      logError('admin/users POST', error);
       return res.status(500).json({ error: 'Failed to create user.' });
     }
     return res.status(201).json({ user: toClient(data) });
@@ -56,12 +61,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'DELETE') {
     if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
     const { name } = req.body ?? {};
-    if (!name) return res.status(400).json({ error: 'name required.' });
+    if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name required.' });
     if (name === session.name) return res.status(400).json({ error: 'Cannot delete your own account.' });
     const { error } = await db.from('app_users').delete().eq('name', name);
-    if (error) return res.status(500).json({ error: 'Failed to delete user.' });
-    // Clean up orphaned badge assignments for this user
-    await db.from('user_badges').delete().eq('user_name', name);
+    if (error) {
+      logError('admin/users DELETE', error);
+      return res.status(500).json({ error: 'Failed to delete user.' });
+    }
+    // Clean up the user's related rows so no orphaned data lingers
+    const cleanups = await Promise.all([
+      db.from('user_badges').delete().eq('user_name', name),
+      db.from('career_assignments').delete().eq('user_name', name),
+      db.from('career_completions').delete().eq('user_name', name),
+      db.from('user_notifications').delete().eq('user_name', name),
+    ]);
+    for (const c of cleanups) {
+      if (c.error) logError('admin/users DELETE cleanup', c.error);
+    }
     return res.status(200).json({ ok: true });
   }
 
