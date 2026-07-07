@@ -1937,22 +1937,22 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Tools Required</label>
-                    <input
-                      type="text"
-                      placeholder="e.g., Manifold gauge, vacuum pump..."
+                    <textarea
+                      rows={2}
+                      placeholder="e.g., Manifold gauge, vacuum pump... (one per line if you like)"
                       value={newTools}
                       onChange={(e) => setNewTools(e.target.value)}
-                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Materials Needed</label>
-                    <input
-                      type="text"
-                      placeholder="e.g., Refrigerant, gasket seals..."
+                    <textarea
+                      rows={2}
+                      placeholder="e.g., Refrigerant, gasket seals... (one per line if you like)"
                       value={newMaterials}
                       onChange={(e) => setNewMaterials(e.target.value)}
-                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
                     />
                   </div>
                 </div>
@@ -2202,13 +2202,13 @@ export default function App() {
                   {selectedDoc.tools && (
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
                       <p className="text-sm font-black text-blue-700 uppercase tracking-wider mb-1">🔧 Tools</p>
-                      <p className="text-sm text-blue-900 font-medium leading-relaxed">{selectedDoc.tools}</p>
+                      <p className="text-sm text-blue-900 font-medium leading-relaxed whitespace-pre-line">{selectedDoc.tools}</p>
                     </div>
                   )}
                   {selectedDoc.materials && (
                     <div className="bg-amber-50 border border-amber-100 rounded-xl p-2.5">
                       <p className="text-sm font-black text-amber-700 uppercase tracking-wider mb-1">📦 Materials</p>
-                      <p className="text-sm text-amber-900 font-medium leading-relaxed">{selectedDoc.materials}</p>
+                      <p className="text-sm text-amber-900 font-medium leading-relaxed whitespace-pre-line">{selectedDoc.materials}</p>
                     </div>
                   )}
                 </div>
@@ -2290,17 +2290,12 @@ export default function App() {
                             )}
 
                             <div className="space-y-1">
-                              <span className={`text-base font-bold tracking-wider uppercase block ${
-                                isStepDone ? 'text-green-600' : 'text-emerald-800'
-                              }`}>
-                                {step.summary || "Instructional Action Guideline"}
-                              </span>
                               <h3 className={`text-sm font-black leading-snug ${
                                 isStepDone ? 'text-gray-500 line-through' : 'text-gray-900'
                               }`}>
                                 {step.title}
                               </h3>
-                              <p className={`text-base leading-relaxed pt-1 font-semibold ${
+                              <p className={`text-base leading-relaxed pt-1 whitespace-pre-line ${
                                 isStepDone ? 'text-gray-400 font-normal' : 'text-gray-600 font-medium'
                               }`}>
                                 {step.body}
