@@ -414,6 +414,12 @@ export default function App() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserError, setNewUserError] = useState('');
 
+  // Admin password reset (per team member)
+  const [resetPwFor, setResetPwFor] = useState<string | null>(null);
+  const [resetPwValue, setResetPwValue] = useState('');
+  const [resetPwMsg, setResetPwMsg] = useState('');
+  const [resetPwBusy, setResetPwBusy] = useState(false);
+
   const [sopDeleteConfirm, setSopDeleteConfirm] = useState<string | null>(null);
 
   // Interactive Checklist completion tracking state
@@ -2769,32 +2775,82 @@ export default function App() {
 
                 <div className="space-y-2">
                   {effectiveUsers.map(u => (
-                    <div key={u.name} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center justify-between shadow-xs">
-                      <div>
-                        <p className="text-sm font-black text-gray-900 flex items-center gap-1.5">
-                          {u.name}
-                          <span className={`text-sm px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${u.userType === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>{u.userType}</span>
-                        </p>
-                        <p className="text-sm text-gray-400 font-medium mt-0.5">{u.role}</p>
+                    <div key={u.name} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+                            {u.name}
+                            <span className={`text-sm px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${u.userType === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>{u.userType}</span>
+                          </p>
+                          <p className="text-sm text-gray-400 font-medium mt-0.5">{u.role}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => { setResetPwFor(resetPwFor === u.name ? null : u.name); setResetPwValue(''); setResetPwMsg(''); }}
+                            className="p-1.5 text-gray-300 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all"
+                            title={`Reset ${u.name}'s password`}
+                          >
+                            🔑
+                          </button>
+                          {u.name !== currentUser.name && (
+                            <button
+                              onClick={async () => {
+                                const res = await fetch('/api/admin/users', {
+                                  method: 'DELETE',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ name: u.name }),
+                                });
+                                if (res.ok) {
+                                  setTeamUsers(prev => prev.filter(m => m.name !== u.name));
+                                  setAllBadges(prev => prev.filter(b => b.user_name !== u.name));
+                                }
+                              }}
+                              className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              title={`Remove ${u.name}`}
+                            >
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      {u.name !== currentUser.name && (
-                        <button
-                          onClick={async () => {
-                            const res = await fetch('/api/admin/users', {
-                              method: 'DELETE',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ name: u.name }),
-                            });
-                            if (res.ok) {
-                              setTeamUsers(prev => prev.filter(m => m.name !== u.name));
-                              setAllBadges(prev => prev.filter(b => b.user_name !== u.name));
-                            }
-                          }}
-                          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          title={`Remove ${u.name}`}
-                        >
-                          <TrashIcon />
-                        </button>
+
+                      {resetPwFor === u.name && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                          <p className="text-sm font-black text-gray-500 uppercase tracking-wider">Set a new password for {u.name}</p>
+                          <input
+                            type="text"
+                            value={resetPwValue}
+                            onChange={e => setResetPwValue(e.target.value)}
+                            placeholder="New password (min 8 characters)"
+                            className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-mono"
+                          />
+                          <p className="text-sm text-gray-400 leading-snug">Share this with {u.name.split(' ')[0]} directly — they can change it later from their own account.</p>
+                          {resetPwMsg && <p className={`text-sm font-bold ${resetPwMsg.startsWith('✓') ? 'text-emerald-700' : 'text-red-600'}`}>{resetPwMsg}</p>}
+                          <div className="flex gap-2">
+                            <button
+                              disabled={resetPwBusy || resetPwValue.length < 8}
+                              onClick={async () => {
+                                setResetPwBusy(true);
+                                setResetPwMsg('');
+                                try {
+                                  const res = await fetch('/api/admin/users', {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ name: u.name, newPassword: resetPwValue, role: u.role, userType: u.userType }),
+                                  });
+                                  const data = await res.json().catch(() => ({}));
+                                  if (res.ok) { setResetPwMsg(`✓ Password reset for ${u.name}.`); setResetPwValue(''); }
+                                  else setResetPwMsg(data.error || 'Reset failed.');
+                                } catch { setResetPwMsg('Reset failed. Check your connection.'); }
+                                setResetPwBusy(false);
+                              }}
+                              className="flex-1 h-9 bg-emerald-800 hover:bg-emerald-900 text-white text-sm font-bold rounded-xl disabled:opacity-40"
+                            >
+                              {resetPwBusy ? 'Resetting…' : 'Reset Password'}
+                            </button>
+                            <button onClick={() => setResetPwFor(null)} className="flex-1 h-9 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl">Close</button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ))}

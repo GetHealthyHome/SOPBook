@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
-import { hashPassword, MAX_PASSWORD_LEN } from '@/lib/passwords';
+import { hashPassword, verifyPassword, MAX_PASSWORD_LEN } from '@/lib/passwords';
 import { logError } from '@/lib/log';
 
 function toClient(row: Record<string, unknown>) {
@@ -55,6 +55,77 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: 'Failed to create user.' });
     }
     return res.status(201).json({ user: toClient(data) });
+  }
+
+  // PATCH — reset / change a password
+  //   • Admin resetting another account: { name, newPassword, role?, userType? }
+  //   • Anyone changing their own:        { currentPassword, newPassword }
+  if (req.method === 'PATCH') {
+    const { name, newPassword, currentPassword, role, userType } = req.body ?? {};
+    const pw = String(newPassword ?? '');
+    if (pw.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+    if (pw.length > MAX_PASSWORD_LEN) return res.status(400).json({ error: 'Password too long.' });
+
+    // Admin reset of a specific account (no current password needed)
+    if (name && typeof name === 'string' && session.userType === 'admin') {
+      const targetName = name;
+      const { data: updated, error } = await db
+        .from('app_users')
+        .update({ password_hash: hashPassword(pw) })
+        .eq('name', targetName)
+        .select('name')
+        .maybeSingle();
+      if (error) {
+        logError('admin/users PATCH reset', error);
+        return res.status(500).json({ error: 'Failed to reset password.' });
+      }
+      // No DB row means this is an env-var preset account. Create a DB row
+      // that takes over (login checks app_users before env fallbacks), as
+      // long as we know the role/userType to store.
+      if (!updated) {
+        const cleanRole = sanitize(String(role ?? ''), 'name');
+        if (!cleanRole || !['admin', 'user'].includes(userType)) {
+          return res.status(404).json({ error: 'That account is not stored in the database. Include role and userType to create a reset for it.' });
+        }
+        const { error: insErr } = await db.from('app_users').insert({
+          name: targetName,
+          role: cleanRole,
+          user_type: userType,
+          password_hash: hashPassword(pw),
+        });
+        if (insErr) {
+          logError('admin/users PATCH reset-insert', insErr);
+          return res.status(500).json({ error: 'Failed to reset password.' });
+        }
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    // Self-service change — verify the current password first
+    const { data: me, error: meErr } = await db
+      .from('app_users')
+      .select('password_hash')
+      .eq('name', session.name)
+      .maybeSingle();
+    if (meErr) {
+      logError('admin/users PATCH self-lookup', meErr);
+      return res.status(500).json({ error: 'Failed to change password.' });
+    }
+    if (!me) {
+      return res.status(400).json({ error: 'Your account uses a preset password managed by an administrator; ask an admin to reset it.' });
+    }
+    if (!verifyPassword(String(currentPassword ?? ''), me.password_hash)) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+    const { error: chErr } = await db
+      .from('app_users')
+      .update({ password_hash: hashPassword(pw) })
+      .eq('name', session.name);
+    if (chErr) {
+      logError('admin/users PATCH self-change', chErr);
+      return res.status(500).json({ error: 'Failed to change password.' });
+    }
+    return res.status(200).json({ ok: true });
   }
 
   // DELETE — remove a team member (admin only, cannot delete self)
