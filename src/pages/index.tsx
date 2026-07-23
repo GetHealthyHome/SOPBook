@@ -595,6 +595,28 @@ export default function App() {
       .finally(() => setHandbookLoading(false));
   };
 
+  // Admin: move a handbook section up or down and persist the new order
+  const moveHandbookSection = async (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= handbookSections.length) return;
+    const previous = handbookSections;
+    const reordered = [...handbookSections];
+    const [item] = reordered.splice(index, 1);
+    reordered.splice(target, 0, item);
+    setHandbookSections(reordered); // optimistic
+    try {
+      const res = await fetch('/api/handbook/reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: reordered.map(s => s.id) }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      console.error('moveHandbookSection failed:', err);
+      setHandbookSections(previous); // revert on failure
+    }
+  };
+
   // Team member acknowledges a handbook section at its current content
   const acknowledgeHandbookSection = async (sectionId: string) => {
     if (!currentUser) return;
@@ -3171,7 +3193,7 @@ export default function App() {
 
               {!handbookLoading && handbookSections.length > 0 && (
                 <div className="space-y-2">
-                  {handbookSections.map((section) => {
+                  {handbookSections.map((section, sectionIndex) => {
                     const isOpen = expandedSection === section.id;
                     const isEditing = editingSection?.id === section.id;
                     return (
@@ -3233,25 +3255,46 @@ export default function App() {
                           </div>
                         ) : (
                           <>
-                            <button
-                              onClick={() => {
-                                if (handbookEditMode) {
-                                  setEditingSection({ id: section.id, title: section.title, content: section.content, change_note: '' });
-                                } else {
-                                  setExpandedSection(isOpen ? null : section.id);
-                                }
-                              }}
-                              className="w-full flex items-center justify-between px-4 py-3.5 text-left"
-                            >
-                              <span className="text-base font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
-                              {handbookEditMode ? (
-                                <span className="flex-shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">Edit</span>
-                              ) : (
+                            {handbookEditMode ? (
+                              <div className="w-full flex items-center gap-1.5 pl-2 pr-3 py-2.5">
+                                {/* Reorder controls */}
+                                <div className="flex flex-col flex-shrink-0">
+                                  <button
+                                    onClick={() => moveHandbookSection(sectionIndex, -1)}
+                                    disabled={sectionIndex === 0}
+                                    title="Move up"
+                                    className="w-6 h-5 flex items-center justify-center text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded disabled:opacity-25 disabled:hover:bg-transparent"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7"/></svg>
+                                  </button>
+                                  <button
+                                    onClick={() => moveHandbookSection(sectionIndex, 1)}
+                                    disabled={sectionIndex === handbookSections.length - 1}
+                                    title="Move down"
+                                    className="w-6 h-5 flex items-center justify-center text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded disabled:opacity-25 disabled:hover:bg-transparent"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"/></svg>
+                                  </button>
+                                </div>
+                                <button
+                                  onClick={() => setEditingSection({ id: section.id, title: section.title, content: section.content, change_note: '' })}
+                                  className="flex-1 flex items-center justify-between text-left min-w-0"
+                                >
+                                  <span className="text-base font-bold text-gray-900 leading-snug pr-3 truncate">{section.title}</span>
+                                  <span className="flex-shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">Edit</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setExpandedSection(isOpen ? null : section.id)}
+                                className="w-full flex items-center justify-between px-4 py-3.5 text-left"
+                              >
+                                <span className="text-base font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
                                 <span className={`flex-shrink-0 w-5 h-5 text-emerald-800 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
                                   <ChevronRightIcon />
                                 </span>
-                              )}
-                            </button>
+                              </button>
+                            )}
                             {isOpen && !handbookEditMode && (() => {
                               const myAck = handbookAcks.find(a => a.section_id === section.id && a.user_name === currentUser.name);
                               const ackedCurrent = !!myAck && myAck.content_hash === section.content_hash;
