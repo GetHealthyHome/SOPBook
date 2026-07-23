@@ -345,13 +345,16 @@ export default function App() {
   const [docTab, setDocTab] = useState<'checklist' | 'history'>('checklist');
 
   // Handbook state
-  const [handbookSections, setHandbookSections] = useState<{id: number; title: string; content: string; order_index: number}[]>([]);
+  const [handbookSections, setHandbookSections] = useState<{id: string; title: string; content: string; order_index: number; content_hash?: string}[]>([]);
   const [handbookRevisions, setHandbookRevisions] = useState<{id: number; section_id: number; section_title: string; previous_content: string | null; new_content: string; edited_by: string; edited_at: string; change_note: string | null}[]>([]);
+  const [handbookAcks, setHandbookAcks] = useState<{id: number; section_id: string; user_name: string; user_role: string; content_hash: string; acknowledged_at: string}[]>([]);
+  const [ackBusy, setAckBusy] = useState<string | null>(null);
+  const [ackRosterFor, setAckRosterFor] = useState<string | null>(null);
   const [handbookLoading, setHandbookLoading] = useState(false);
   const [handbookError, setHandbookError] = useState('');
-  const [expandedSection, setExpandedSection] = useState<number | null>(null);
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [handbookEditMode, setHandbookEditMode] = useState(false);
-  const [editingSection, setEditingSection] = useState<{id: number | null; title: string; content: string; change_note: string} | null>(null);
+  const [editingSection, setEditingSection] = useState<{id: string | null; title: string; content: string; change_note: string} | null>(null);
   const [handbookSaving, setHandbookSaving] = useState(false);
 
   // Career Ladder state
@@ -586,9 +589,32 @@ export default function App() {
       .then(data => {
         setHandbookSections(data.sections || []);
         setHandbookRevisions(data.revisions || []);
+        setHandbookAcks(data.acknowledgements || []);
       })
       .catch(() => setHandbookError('Could not load handbook. Please try again.'))
       .finally(() => setHandbookLoading(false));
+  };
+
+  // Team member acknowledges a handbook section at its current content
+  const acknowledgeHandbookSection = async (sectionId: string) => {
+    if (!currentUser) return;
+    setAckBusy(sectionId);
+    try {
+      const res = await fetch('/api/handbook/acknowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sectionId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { acknowledgement } = await res.json();
+      if (acknowledgement) {
+        setHandbookAcks(prev => {
+          const others = prev.filter(a => !(a.section_id === sectionId && a.user_name === currentUser.name));
+          return [...others, acknowledgement];
+        });
+      }
+    } catch (err) { console.error('acknowledgeHandbookSection failed:', err); }
+    setAckBusy(null);
   };
 
   useEffect(() => {
@@ -3226,11 +3252,79 @@ export default function App() {
                                 </span>
                               )}
                             </button>
-                            {isOpen && !handbookEditMode && (
+                            {isOpen && !handbookEditMode && (() => {
+                              const myAck = handbookAcks.find(a => a.section_id === section.id && a.user_name === currentUser.name);
+                              const ackedCurrent = !!myAck && myAck.content_hash === section.content_hash;
+                              const ackedStale = !!myAck && !ackedCurrent; // acknowledged an older version
+                              const teamMembers = effectiveUsers;
+                              const ackedCurrentCount = teamMembers.filter(u =>
+                                handbookAcks.some(a => a.section_id === section.id && a.user_name === u.name && a.content_hash === section.content_hash)
+                              ).length;
+                              return (
                               <div className="px-4 pb-4 border-t border-gray-50">
                                 <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line pt-3">{section.content}</p>
+
+                                {/* Acknowledgement — the reader's own sign-off */}
+                                <div className="mt-4 pt-3 border-t border-gray-100">
+                                  {ackedCurrent ? (
+                                    <p className="text-sm font-bold text-emerald-700 flex items-center gap-1.5">
+                                      <CheckIcon /> You acknowledged this on {new Date(myAck!.acknowledged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </p>
+                                  ) : (
+                                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                                      <p className="text-sm text-gray-500 leading-snug">
+                                        {ackedStale
+                                          ? '⚠️ This section changed since you last acknowledged it. Please review and re-acknowledge.'
+                                          : 'Confirm you have read and understood this section.'}
+                                      </p>
+                                      <button
+                                        onClick={() => acknowledgeHandbookSection(section.id)}
+                                        disabled={ackBusy === section.id}
+                                        className="h-9 px-4 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-black flex-shrink-0 disabled:opacity-50"
+                                      >
+                                        {ackBusy === section.id ? 'Saving…' : ackedStale ? 'Re-acknowledge' : 'Acknowledge'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Admin roster — who has / hasn't acknowledged the current version */}
+                                {currentUser.userType === 'admin' && (
+                                  <div className="mt-3 pt-3 border-t border-gray-100">
+                                    <button
+                                      onClick={() => setAckRosterFor(ackRosterFor === section.id ? null : section.id)}
+                                      className="w-full flex items-center justify-between text-left"
+                                    >
+                                      <span className="text-sm font-black text-gray-500 uppercase tracking-wider">
+                                        Acknowledged: {ackedCurrentCount} of {teamMembers.length}
+                                      </span>
+                                      <span className={`w-4 h-4 text-gray-400 transition-transform ${ackRosterFor === section.id ? 'rotate-90' : ''}`}><ChevronRightIcon /></span>
+                                    </button>
+                                    {ackRosterFor === section.id && (
+                                      <div className="mt-2 space-y-1">
+                                        {teamMembers.map(u => {
+                                          const ua = handbookAcks.find(a => a.section_id === section.id && a.user_name === u.name);
+                                          const uCurrent = !!ua && ua.content_hash === section.content_hash;
+                                          return (
+                                            <div key={u.name} className="flex items-center justify-between text-sm">
+                                              <span className="text-gray-700 font-medium">{u.name}</span>
+                                              {uCurrent ? (
+                                                <span className="text-emerald-700 font-bold">✓ {new Date(ua!.acknowledged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                              ) : ua ? (
+                                                <span className="text-amber-600 font-bold">⚠ needs re-ack</span>
+                                              ) : (
+                                                <span className="text-gray-300 font-bold">— pending</span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                            )}
+                              );
+                            })()}
                           </>
                         )}
                       </div>
