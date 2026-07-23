@@ -2,14 +2,18 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
-import { sanitizeSteps, sanitizeRevisions, sanitizeReadLogs, SOP_ID_RE, MAX_READ_LOGS } from '@/lib/sopSanitize';
+import { sanitizeSteps, sanitizeRevisions, sanitizeReadLogs, sanitizeCategories, SOP_ID_RE, MAX_READ_LOGS } from '@/lib/sopSanitize';
 import { fanOutNotification } from '@/lib/fanOutNotification';
 import { logError } from '@/lib/log';
 
 function toClient(row: Record<string, unknown>) {
+  const categories = Array.isArray(row.categories) && row.categories.length
+    ? row.categories
+    : (row.category ? [row.category] : []);
   return {
     id:                 row.id,
-    category:           row.category,
+    category:           row.category ?? (categories[0] ?? ''),
+    categories,
     title:              row.title,
     summary:            row.summary,
     lastUpdated:        row.last_updated,
@@ -72,13 +76,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Full update: admin only
     if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
 
-    const { category, title, summary, lastUpdated, nextReviewDate,
+    const { category, categories, title, summary, lastUpdated, nextReviewDate,
             tools, materials, steps, revisionHistory, readLogs } = body;
 
     const cleanTitle = sanitize(String(title ?? ''), 'title');
+    const cleanCategories = sanitizeCategories(categories, category);
 
     const { data, error } = await db.from('sops').update({
-      category:             sanitize(String(category ?? ''), 'title'),
+      category:             cleanCategories[0] ?? '',
+      categories:           cleanCategories,
       title:                cleanTitle,
       summary:              sanitize(String(summary ?? ''), 'summary'),
       last_updated:         sanitize(String(lastUpdated ?? ''), 'default').slice(0, 40),

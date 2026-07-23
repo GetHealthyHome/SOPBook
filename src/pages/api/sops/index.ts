@@ -2,13 +2,17 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
-import { sanitizeSteps, sanitizeRevisions, sanitizeReadLogs, SOP_ID_RE } from '@/lib/sopSanitize';
+import { sanitizeSteps, sanitizeRevisions, sanitizeReadLogs, sanitizeCategories, SOP_ID_RE } from '@/lib/sopSanitize';
 import { logError } from '@/lib/log';
 
 function toClient(row: Record<string, unknown>) {
+  const categories = Array.isArray(row.categories) && row.categories.length
+    ? row.categories
+    : (row.category ? [row.category] : []);
   return {
     id:                 row.id,
-    category:           row.category,
+    category:           row.category ?? (categories[0] ?? ''),
+    categories,
     title:              row.title,
     summary:            row.summary,
     lastUpdated:        row.last_updated,
@@ -43,15 +47,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // POST — create new SOP (admin only)
   if (req.method === 'POST') {
     if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
-    const { id, category, title, summary, lastUpdated, nextReviewDate,
+    const { id, category, categories, title, summary, lastUpdated, nextReviewDate,
             tools, materials, steps, revisionHistory } = req.body ?? {};
 
     if (!id || !title) return res.status(400).json({ error: 'id and title required.' });
     if (typeof id !== 'string' || !SOP_ID_RE.test(id)) return res.status(400).json({ error: 'Invalid id.' });
 
+    const cleanCategories = sanitizeCategories(categories, category);
+
     const { data, error } = await db.from('sops').insert({
       id,
-      category:             sanitize(String(category ?? ''), 'title'),
+      category:             cleanCategories[0] ?? '',
+      categories:           cleanCategories,
       title:                sanitize(String(title), 'title'),
       summary:              sanitize(String(summary ?? ''), 'summary'),
       last_updated:         sanitize(String(lastUpdated ?? ''), 'default').slice(0, 40),
