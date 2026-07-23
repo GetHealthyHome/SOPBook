@@ -3,9 +3,12 @@ import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { fanOutNotification } from '@/lib/fanOutNotification';
+import { handbookContentHash } from '@/lib/handbookHash';
 import { logError } from '@/lib/log';
 
 const MAX_CONTENT_LEN = 50_000;
+
+interface HandbookSectionRow { id: string; title: string; content: string; order_index: number }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!checkIpRateLimit(req)) return res.status(429).json({ error: 'Too many requests.' });
@@ -15,22 +18,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const db = getSupabase();
 
-  // GET — return sections + revision history
+  // GET — return sections (+ current content hash), revisions, and
+  // acknowledgements (all members for admins, own only for regular users)
   if (req.method === 'GET') {
-    const [sectionsResult, revisionsResult] = await Promise.all([
+    const isAdmin = session.userType === 'admin';
+    const [sectionsResult, revisionsResult, acksResult] = await Promise.all([
       db.from('handbook_sections').select('id, title, content, order_index').order('order_index', { ascending: true }),
-      // Revision history is admin-only; skip the query entirely for regular users
-      session.userType === 'admin'
+      isAdmin
         ? db.from('handbook_revisions').select('*').order('edited_at', { ascending: false }).limit(100)
         : Promise.resolve({ data: [], error: null }),
+      isAdmin
+        ? db.from('handbook_acknowledgements').select('*')
+        : db.from('handbook_acknowledgements').select('*').eq('user_name', session.name),
     ]);
     if (sectionsResult.error) {
       logError('handbook GET', sectionsResult.error);
       return res.status(500).json({ error: 'Failed to load handbook.' });
     }
+    if (acksResult.error) logError('handbook GET acks', acksResult.error);
+
+    const sections = (sectionsResult.data ?? []).map((s: HandbookSectionRow) => ({
+      ...s,
+      content_hash: handbookContentHash(s.title, s.content),
+    }));
+
     return res.status(200).json({
-      sections: sectionsResult.data ?? [],
+      sections,
       revisions: revisionsResult.data ?? [],
+      acknowledgements: acksResult.data ?? [],
     });
   }
 
