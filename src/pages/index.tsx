@@ -614,14 +614,8 @@ export default function App() {
       .finally(() => setHandbookLoading(false));
   };
 
-  // Admin: move a handbook section up or down and persist the new order
-  const moveHandbookSection = async (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= handbookSections.length) return;
-    const previous = handbookSections;
-    const reordered = [...handbookSections];
-    const [item] = reordered.splice(index, 1);
-    reordered.splice(target, 0, item);
+  // Admin: persist a reordered list of handbook sections
+  const persistHandbookOrder = async (reordered: typeof handbookSections, previous: typeof handbookSections) => {
     setHandbookSections(reordered); // optimistic
     try {
       const res = await fetch('/api/handbook/reorder', {
@@ -631,9 +625,29 @@ export default function App() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch (err) {
-      console.error('moveHandbookSection failed:', err);
+      console.error('reorder failed:', err);
       setHandbookSections(previous); // revert on failure
     }
+  };
+
+  // Move a section up or down by one
+  const moveHandbookSection = async (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= handbookSections.length) return;
+    const reordered = [...handbookSections];
+    const [item] = reordered.splice(index, 1);
+    reordered.splice(target, 0, item);
+    await persistHandbookOrder(reordered, handbookSections);
+  };
+
+  // Jump a section to an arbitrary 1-based position
+  const moveHandbookSectionToPosition = async (index: number, position1Based: number) => {
+    const target = Math.max(0, Math.min(handbookSections.length - 1, position1Based - 1));
+    if (target === index) return;
+    const reordered = [...handbookSections];
+    const [item] = reordered.splice(index, 1);
+    reordered.splice(target, 0, item);
+    await persistHandbookOrder(reordered, handbookSections);
   };
 
   // Team member acknowledges a handbook section at its current content
@@ -3407,6 +3421,22 @@ export default function App() {
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"/></svg>
                                   </button>
                                 </div>
+                                {/* Jump to position — type a number to move a section far in one step */}
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={handbookSections.length}
+                                  defaultValue={sectionIndex + 1}
+                                  key={`pos-${section.id}-${sectionIndex}`}
+                                  onClick={e => e.currentTarget.select()}
+                                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                  onBlur={e => {
+                                    const n = parseInt(e.target.value, 10);
+                                    if (!Number.isNaN(n) && n !== sectionIndex + 1) moveHandbookSectionToPosition(sectionIndex, n);
+                                  }}
+                                  title={`Position ${sectionIndex + 1} of ${handbookSections.length} — type a number and press Enter to jump`}
+                                  className="w-10 h-8 flex-shrink-0 text-center text-sm font-black text-gray-600 bg-gray-50 border border-gray-200 rounded-lg focus:border-emerald-500 focus:bg-white focus:outline-none"
+                                />
                                 <button
                                   onClick={() => setEditingSection({ id: section.id, title: section.title, content: section.content, change_note: '' })}
                                   className="flex-1 flex items-center justify-between text-left min-w-0"
