@@ -73,4 +73,25 @@ export function sanitizeReadLogs(input: unknown): SopReadLog[] {
   });
 }
 
+const MAX_CATEGORIES = 6;
+
+/**
+ * Normalize an SOP's categories to a clean, deduped string array.
+ * Accepts a `categories` array; falls back to a single `category` string
+ * (legacy shape) when no array is provided.
+ */
+export function sanitizeCategories(input: unknown, fallback?: unknown): string[] {
+  let arr: unknown[] = [];
+  if (Array.isArray(input)) arr = input;
+  else if (typeof fallback === 'string' && fallback.trim()) arr = [fallback];
+
+  const out: string[] = [];
+  for (const c of arr) {
+    const clean = sanitize(String(c ?? ''), 'title');
+    if (clean && !out.includes(clean)) out.push(clean);
+    if (out.length >= MAX_CATEGORIES) break;
+  }
+  return out;
+}
+
 export { MAX_READ_LOGS };

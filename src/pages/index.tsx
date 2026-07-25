@@ -63,7 +63,8 @@ interface ReadLog {
 
 interface SOP {
   id: string;
-  category: string; // HVAC, Electrical, Plumbing, Safety
+  category: string;        // legacy single category (kept in sync = categories[0])
+  categories?: string[];   // one or more categories
   title: string;
   summary: string;
   lastUpdated: string;
@@ -429,7 +430,7 @@ export default function App() {
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
 
   // Dynamic SOP Form state
-  const [newCategory, setNewCategory] = useState('HVAC');
+  const [newCategories, setNewCategories] = useState<string[]>(['HVAC']);
   const [newTitle, setNewTitle] = useState('');
   const [newSummary, setNewSummary] = useState('');
   const [newTools, setNewTools] = useState('');
@@ -1238,7 +1239,7 @@ export default function App() {
   };
 
   const resetSopForm = () => {
-    setNewCategory('HVAC');
+    setNewCategories(['HVAC']);
     setNewTitle('');
     setNewSummary('');
     setNewTools('');
@@ -1268,7 +1269,7 @@ export default function App() {
         return;
       }
       const d = data.draft;
-      if (d.category) setNewCategory(d.category);
+      if (d.category) setNewCategories([d.category]);
       setNewTitle(d.title || '');
       setNewSummary(d.summary || '');
       setNewTools(d.tools || '');
@@ -1285,7 +1286,8 @@ export default function App() {
 
   // Pre-fill the creator form with an existing SOP for in-place editing
   const startEditSop = (doc: SOP) => {
-    setNewCategory(doc.category || 'HVAC');
+    const cats = doc.categories && doc.categories.length ? doc.categories : (doc.category ? [doc.category] : ['HVAC']);
+    setNewCategories(cats);
     setNewTitle(doc.title);
     setNewSummary(doc.summary);
     setNewTools(doc.tools || '');
@@ -1306,6 +1308,10 @@ export default function App() {
 
     if (!cleanTitle || !cleanSummary) {
       setFormError('Please enter a procedure title and overview tagline.');
+      return;
+    }
+    if (newCategories.length === 0) {
+      setFormError('Please select at least one category.');
       return;
     }
     const emptySteps = newSteps.some(s => !s.title.trim() || !s.body.trim());
@@ -1337,7 +1343,8 @@ export default function App() {
       }
       const updatedDoc: SOP = {
         ...original,
-        category: newCategory,
+        category: newCategories[0] ?? '',
+        categories: newCategories,
         title: cleanTitle,
         summary: cleanSummary,
         tools: sanitize(newTools, 'notes'),
@@ -1371,7 +1378,8 @@ export default function App() {
 
     const newSOP: SOP = {
       id: `sop-${Date.now()}`,
-      category: newCategory,
+      category: newCategories[0] ?? '',
+      categories: newCategories,
       title: cleanTitle,
       summary: cleanSummary,
       lastUpdated: todayString,
@@ -1499,6 +1507,11 @@ export default function App() {
   };
 
   const categoriesList = ["All", "HVAC", "Home Performance", "Sales", "Testing", "Safety"];
+  const SOP_CATEGORY_OPTIONS = ["HVAC", "Home Performance", "Sales", "Testing", "Safety"];
+
+  // A SOP's categories, tolerating the legacy single-category shape
+  const sopCats = (doc: SOP): string[] =>
+    (doc.categories && doc.categories.length ? doc.categories : (doc.category ? [doc.category] : []));
 
   // Falls back to PRESET_ACCOUNTS while DB users haven't loaded yet
   const effectiveUsers: User[] = teamUsers.length > 0
@@ -1508,10 +1521,11 @@ export default function App() {
   const filteredDocs = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return documents.filter(doc => {
+      const cats = (doc.categories && doc.categories.length ? doc.categories : (doc.category ? [doc.category] : []));
       const matchesSearch = doc.title?.toLowerCase().includes(q) ||
                             doc.summary?.toLowerCase().includes(q) ||
-                            doc.category?.toLowerCase().includes(q);
-      const matchesCategory = selectedCategory === "All" || doc.category === selectedCategory;
+                            cats.some(c => c.toLowerCase().includes(q));
+      const matchesCategory = selectedCategory === "All" || cats.includes(selectedCategory);
       return matchesSearch && matchesCategory;
     });
   }, [documents, searchQuery, selectedCategory]);
@@ -1851,10 +1865,12 @@ export default function App() {
                             <FolderIcon />
                           </div>
                           <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 text-base font-black tracking-widest uppercase text-emerald-800 bg-emerald-50/70 px-1.5 py-0.5 rounded-xs">
-                                <TagIcon /> {doc.category}
-                              </span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {sopCats(doc).map(cat => (
+                                <span key={cat} className="inline-flex items-center gap-1 text-base font-black tracking-widest uppercase text-emerald-800 bg-emerald-50/70 px-1.5 py-0.5 rounded-xs">
+                                  <TagIcon /> {cat}
+                                </span>
+                              ))}
                               <span className="text-base font-bold text-gray-400">
                                 {doc.revisionHistory[0]?.version || 'v1.0'}
                               </span>
@@ -1937,31 +1953,37 @@ export default function App() {
 
               <form onSubmit={handlePublishSOP} className="space-y-5">
                 <div className="space-y-3.5">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Scope Category</label>
-                      <select
-                        value={newCategory}
-                        onChange={(e) => setNewCategory(e.target.value)}
-                        className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold focus:border-emerald-600 focus:outline-none transition-all text-gray-900 shadow-xs"
-                      >
-                        <option value="HVAC">HVAC</option>
-                        <option value="Home Performance">Home Performance</option>
-                        <option value="Sales">Sales</option>
-                        <option value="Testing">Testing</option>
-                        <option value="Safety">Safety</option>
-                      </select>
+                  <div>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Scope Categories <span className="text-gray-400 normal-case font-bold">(pick one or more)</span></label>
+                    <div className="flex flex-wrap gap-2">
+                      {SOP_CATEGORY_OPTIONS.map(cat => {
+                        const active = newCategories.includes(cat);
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setNewCategories(prev => active ? prev.filter(c => c !== cat) : [...prev, cat])}
+                            className={`h-9 px-3.5 rounded-xl text-sm font-extrabold border transition-all ${
+                              active
+                                ? 'bg-emerald-800 text-white border-emerald-800 shadow-xs'
+                                : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-300'
+                            }`}
+                          >
+                            {active ? '✓ ' : ''}{cat}
+                          </button>
+                        );
+                      })}
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-sm font-black text-gray-400 uppercase tracking-wider mb-1">Author Identity</label>
-                      <input
-                        type="text"
-                        disabled
-                        value={`${currentUser.name} (Admin)`}
-                        className="w-full h-11 px-3.5 bg-gray-50 border border-gray-200 text-gray-400 rounded-xl text-sm font-extrabold focus:outline-none shadow-xs"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-sm font-black text-gray-400 uppercase tracking-wider mb-1">Author Identity</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={`${currentUser.name} (Admin)`}
+                      className="w-full h-11 px-3.5 bg-gray-50 border border-gray-200 text-gray-400 rounded-xl text-sm font-extrabold focus:outline-none shadow-xs"
+                    />
                   </div>
 
                   <div>
@@ -2174,7 +2196,7 @@ export default function App() {
                   </button>
                   <div>
                     <span className="text-base uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
-                      <TagIcon /> {selectedDoc.category} SOP
+                      <TagIcon /> {sopCats(selectedDoc).join(' · ') || 'Uncategorized'} SOP
                     </span>
                     <h1 className="text-base font-black text-gray-950 leading-tight line-clamp-1">{selectedDoc.title}</h1>
                   </div>
@@ -2501,7 +2523,7 @@ export default function App() {
                     const version = doc.revisionHistory[0]?.version || 'v1.0';
                     const lines: string[] = [
                       `SOP: ${doc.title}`,
-                      `Category: ${doc.category}  |  Version: ${version}`,
+                      `Categories: ${sopCats(doc).join(', ') || 'Uncategorized'}  |  Version: ${version}`,
                       `Last Updated: ${doc.lastUpdated} by ${doc.lastUpdatedBy} (${doc.lastUpdatedByRole})`,
                       `Next Review: ${doc.nextReviewDate}`,
                       '',
@@ -2999,9 +3021,13 @@ export default function App() {
                       <div key={doc.id} className="bg-white border border-gray-100 p-3.5 rounded-2xl shadow-xs space-y-2">
                         <div className="flex justify-between items-start gap-2">
                           <div>
-                            <span className="text-sm font-black text-emerald-800 uppercase bg-emerald-50 px-1.5 py-0.5 rounded-xs tracking-wider">
-                              {doc.category}
-                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {sopCats(doc).map(cat => (
+                                <span key={cat} className="text-sm font-black text-emerald-800 uppercase bg-emerald-50 px-1.5 py-0.5 rounded-xs tracking-wider">
+                                  {cat}
+                                </span>
+                              ))}
+                            </div>
                             <h4 className="text-sm font-black text-gray-900 mt-1">{doc.title}</h4>
                           </div>
                           <span className="text-sm font-black text-gray-900">
