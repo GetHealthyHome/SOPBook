@@ -4178,14 +4178,30 @@ export default function App() {
             <div className="space-y-5">
               {openTraining ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 -ml-1">
-                    <button onClick={() => setOpenTraining(null)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
-                      <ArrowLeftIcon />
-                    </button>
-                    <div>
-                      <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">{openTraining.category} Training</span>
-                      <h1 className="text-lg font-black text-gray-950 leading-tight">{openTraining.title}</h1>
+                  <div className="flex items-center justify-between gap-2 -ml-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button onClick={() => setOpenTraining(null)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors flex-shrink-0">
+                        <ArrowLeftIcon />
+                      </button>
+                      <div className="min-w-0">
+                        <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">{openTraining.category} Training</span>
+                        <h1 className="text-lg font-black text-gray-950 leading-tight">{openTraining.title}</h1>
+                      </div>
                     </div>
+                    {currentUser.userType === 'admin' && (
+                      <button
+                        onClick={() => {
+                          const current = trainingModules.find(m => m.id === openTraining.id) ?? openTraining;
+                          startEditTraining(current);
+                          setOpenTraining(null);
+                          setCurrentView('trainingAdmin');
+                        }}
+                        className="h-8 px-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-sm font-black transition-all flex items-center gap-1 flex-shrink-0"
+                        title="Edit this training module"
+                      >
+                        <EditIcon /> Edit
+                      </button>
+                    )}
                   </div>
 
                   {openTraining.cover_url && (
