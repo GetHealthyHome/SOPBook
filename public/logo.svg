@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Healthy Home Field Guide (HHFG) mark: white HH over a mountain
+       ridge, FG on the white panel below. Letters are drawn as paths so
+       the mark renders identically in every browser and rasterizer. -->
+  <rect width="512" height="512" rx="46" fill="#1D6B46"/>
+  <!-- white inner frame -->
+  <rect x="38" y="38" width="436" height="436" rx="8" fill="none" stroke="#FFFFFF" stroke-width="14"/>
+  <!-- white lower panel whose top edge forms the mountain ridge -->
+  <path d="M45 330 L160 245 L215 300 L302 178 L467 332 L467 467 L45 467 Z" fill="#FFFFFF"/>
+  <!-- HH -->
+  <g fill="#FFFFFF">
+    <rect x="148" y="64" width="26" height="112"/>
+    <rect x="216" y="64" width="26" height="112"/>
+    <rect x="148" y="107" width="94" height="26"/>
+    <rect x="270" y="64" width="26" height="112"/>
+    <rect x="338" y="64" width="26" height="112"/>
+    <rect x="270" y="107" width="94" height="26"/>
+  </g>
+  <!-- FG -->
+  <g fill="#1D6B46">
+    <!-- F -->
+    <rect x="160" y="342" width="26" height="114"/>
+    <rect x="160" y="342" width="82" height="26"/>
+    <rect x="160" y="386" width="68" height="26"/>
+    <!-- G -->
+    <rect x="266" y="342" width="102" height="26"/>
+    <rect x="266" y="342" width="26" height="114"/>
+    <rect x="266" y="430" width="102" height="26"/>
+    <rect x="342" y="398" width="26" height="58"/>
+    <rect x="316" y="398" width="52" height="26"/>
+  </g>
+</svg>
