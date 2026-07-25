@@ -57,22 +57,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const db = getSupabase();
 
-  // GET — all training modules with their steps (any authenticated user)
+  // GET — all training modules with their steps, plus completions
+  // (all members' for admins, own only for regular users)
   if (req.method === 'GET') {
-    const [modsRes, stepsRes] = await Promise.all([
+    const [modsRes, stepsRes, compsRes] = await Promise.all([
       db.from('training_modules').select('*').order('order_index').order('created_at'),
       db.from('training_steps').select('*').order('order_index'),
+      session.userType === 'admin'
+        ? db.from('training_completions').select('*')
+        : db.from('training_completions').select('*').eq('user_name', session.name),
     ]);
     if (modsRes.error) {
       logError('training GET', modsRes.error);
       return res.status(500).json({ error: 'Failed to load training. Make sure db/training_modules.sql has been run in Supabase.' });
     }
+    if (compsRes.error) logError('training GET completions', compsRes.error);
     const steps = stepsRes.data ?? [];
     const modules = (modsRes.data ?? []).map((m: { id: number }) => ({
       ...m,
       steps: steps.filter((s: { module_id: number }) => s.module_id === m.id),
     }));
-    return res.status(200).json({ modules });
+    return res.status(200).json({ modules, completions: compsRes.data ?? [] });
   }
 
   // Everything below is admin-only authoring
