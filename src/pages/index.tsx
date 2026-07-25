@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { RichText, RichTextarea } from '@/lib/richText';
 import {
   getAttemptRecord,
   recordFailedAttempt,
@@ -2119,21 +2120,21 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Tools Required</label>
-                    <textarea
+                    <RichTextarea
                       rows={2}
                       placeholder="e.g., Manifold gauge, vacuum pump... (one per line if you like)"
                       value={newTools}
-                      onChange={(e) => setNewTools(e.target.value)}
+                      onChange={(v) => setNewTools(v)}
                       className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Materials Needed</label>
-                    <textarea
+                    <RichTextarea
                       rows={2}
                       placeholder="e.g., Refrigerant, gasket seals... (one per line if you like)"
                       value={newMaterials}
-                      onChange={(e) => setNewMaterials(e.target.value)}
+                      onChange={(v) => setNewMaterials(v)}
                       className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
                     />
                   </div>
@@ -2227,11 +2228,11 @@ export default function App() {
                             />
                           </div>
 
-                          <textarea
+                          <RichTextarea
                             placeholder="Detailed protocol procedure guidelines description..."
                             rows={3}
                             value={step.body}
-                            onChange={(e) => handleCreatorStepFieldChange(index, 'body', e.target.value)}
+                            onChange={(v) => handleCreatorStepFieldChange(index, 'body', v)}
                             className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed font-normal shadow-xs"
                           />
                         </div>
@@ -2384,13 +2385,13 @@ export default function App() {
                   {selectedDoc.tools && (
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
                       <p className="text-sm font-black text-blue-700 uppercase tracking-wider mb-1">🔧 Tools</p>
-                      <p className="text-sm text-blue-900 font-medium leading-relaxed whitespace-pre-line">{selectedDoc.tools}</p>
+                      <RichText className="text-sm text-blue-900 font-medium leading-relaxed" text={selectedDoc.tools} />
                     </div>
                   )}
                   {selectedDoc.materials && (
                     <div className="bg-amber-50 border border-amber-100 rounded-xl p-2.5">
                       <p className="text-sm font-black text-amber-700 uppercase tracking-wider mb-1">📦 Materials</p>
-                      <p className="text-sm text-amber-900 font-medium leading-relaxed whitespace-pre-line">{selectedDoc.materials}</p>
+                      <RichText className="text-sm text-amber-900 font-medium leading-relaxed" text={selectedDoc.materials} />
                     </div>
                   )}
                 </div>
@@ -2477,11 +2478,9 @@ export default function App() {
                               }`}>
                                 {step.title}
                               </h3>
-                              <p className={`text-base leading-relaxed pt-1 whitespace-pre-line ${
+                              <RichText className={`text-base leading-relaxed pt-1 ${
                                 isStepDone ? 'text-gray-400 font-normal' : 'text-gray-600 font-medium'
-                              }`}>
-                                {step.body}
-                              </p>
+                              }`} text={step.body} />
                             </div>
                           </article>
                         </div>
@@ -3282,11 +3281,11 @@ export default function App() {
                     value={editingSection.title}
                     onChange={e => setEditingSection({ ...editingSection, title: e.target.value })}
                   />
-                  <textarea
+                  <RichTextarea
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[120px] resize-y"
                     placeholder="Section content..."
                     value={editingSection.content}
-                    onChange={e => setEditingSection({ ...editingSection, content: e.target.value })}
+                    onChange={v => setEditingSection({ ...editingSection, content: v })}
                   />
                   <div className="flex gap-2">
                     <button
@@ -3337,10 +3336,10 @@ export default function App() {
                               value={editingSection.title}
                               onChange={e => setEditingSection({ ...editingSection, title: e.target.value })}
                             />
-                            <textarea
+                            <RichTextarea
                               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 min-h-[160px] resize-y"
                               value={editingSection.content}
-                              onChange={e => setEditingSection({ ...editingSection, content: e.target.value })}
+                              onChange={v => setEditingSection({ ...editingSection, content: v })}
                             />
                             <input
                               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-500 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
@@ -3437,7 +3436,7 @@ export default function App() {
                               ).length;
                               return (
                               <div className="px-4 pb-4 border-t border-gray-50">
-                                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line pt-3">{section.content}</p>
+                                <RichText className="text-sm text-gray-600 leading-relaxed pt-3" text={section.content} />
 
                                 {/* Acknowledgement — the reader's own sign-off */}
                                 <div className="mt-4 pt-3 border-t border-gray-100">
@@ -3647,7 +3646,7 @@ export default function App() {
                       </button>
                       {isTaskOpen && (
                         <div className="mt-3 space-y-3">
-                          {task.description ? <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{task.description}</p> : null}
+                          {task.description ? <RichText className="text-sm text-gray-600 leading-relaxed" text={task.description} /> : null}
                           {task.image_urls && task.image_urls.length > 0 && (
                             <div className="flex gap-2 overflow-x-auto pb-1">
                               {task.image_urls.map((url, i) => (
@@ -3773,7 +3772,7 @@ export default function App() {
                           {showAddTask === assignedTrack.id ? (
                             <div className="space-y-2">
                               <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-                              <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
+                              <RichTextarea value={newTaskDesc} onChange={v => setNewTaskDesc(v)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
                               <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
                               <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
                               <div className="flex gap-2">
@@ -3872,7 +3871,7 @@ export default function App() {
                         <div key={task.id} className={`px-4 py-3 space-y-2 bg-emerald-50/40 ${isSub ? 'pl-10' : ''}`}>
                           <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">Edit {isSub ? 'Sub-task' : 'Milestone'}</p>
                           <input value={editingTask.title} onChange={e => setEditingTask({ ...editingTask, title: e.target.value })} placeholder="Title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
-                          <textarea value={editingTask.description} onChange={e => setEditingTask({ ...editingTask, description: e.target.value })} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                          <RichTextarea value={editingTask.description} onChange={v => setEditingTask({ ...editingTask, description: v })} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
                           <textarea value={editingTask.imageUrls} onChange={e => setEditingTask({ ...editingTask, imageUrls: e.target.value })} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
                           <input value={editingTask.sopTitle} onChange={e => setEditingTask({ ...editingTask, sopTitle: e.target.value })} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
                           <select
@@ -3971,7 +3970,7 @@ export default function App() {
                                   <div className="pl-10 pr-4 py-3 bg-gray-50/50 space-y-2">
                                     <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">New Sub-task under &ldquo;{task.title}&rdquo;</p>
                                     <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Sub-task title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
-                                    <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (optional)" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
+                                    <RichTextarea value={newTaskDesc} onChange={v => setNewTaskDesc(v)} placeholder="Description (optional)" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none bg-white" />
                                     <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (optional)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
                                     <select
                                       value={newTaskTraining}
@@ -3995,7 +3994,7 @@ export default function App() {
                               {showAddTask === track.id ? (
                                 <div className="space-y-2">
                                   <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Milestone title*" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-                                  <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
+                                  <RichTextarea value={newTaskDesc} onChange={v => setNewTaskDesc(v)} placeholder="Description (what to do / why it matters)" rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
                                   <textarea value={newTaskImages} onChange={e => setNewTaskImages(e.target.value)} placeholder="Image URLs — one per line" rows={2} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" />
                                   <input value={newTaskSop} onChange={e => setNewTaskSop(e.target.value)} placeholder="Linked SOP title (partial match ok)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
                                   <select
@@ -4251,7 +4250,7 @@ export default function App() {
                         </span>
                         <article className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs space-y-3">
                           <h3 className="text-sm font-black text-gray-900 leading-snug">{step.title}</h3>
-                          {step.body && <p className="text-base text-gray-600 leading-relaxed whitespace-pre-line">{step.body}</p>}
+                          {step.body && <RichText className="text-base text-gray-600 leading-relaxed" text={step.body} />}
                           {step.image_urls && step.image_urls.length > 0 && (
                             <div className="flex gap-2 overflow-x-auto pb-1">
                               {step.image_urls.map((url, j) => (
@@ -4592,7 +4591,7 @@ export default function App() {
                           )}
                         </div>
                         <input value={step.title} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], title: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} placeholder="Step title*" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs" />
-                        <textarea value={step.body} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], body: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} rows={3} placeholder="What to teach / demonstrate in this step..." className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed shadow-xs" />
+                        <RichTextarea value={step.body} onChange={v => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], body: v }; setTrainingDraft({ ...trainingDraft, steps }); }} rows={3} placeholder="What to teach / demonstrate in this step..." className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed shadow-xs" />
 
                         {/* Step photos */}
                         <div className="bg-white border border-gray-100 p-2.5 rounded-xl space-y-2 shadow-xs">

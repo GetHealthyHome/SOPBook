@@ -1,0 +1,141 @@
+import React, { useRef } from 'react';
+
+/**
+ * Lightweight rich-text support: content is stored as plain text with
+ * markdown-style markers and rendered as React elements — never as HTML —
+ * so there is no injection surface and the server-side sanitization
+ * (which strips angle brackets) is unaffected.
+ *
+ * Supported: **bold**, *italic*, __underline__, and "- " bullet lines.
+ */
+
+const INLINE_RE = /(\*\*.+?\*\*|__.+?__|\*[^*\n]+?\*)/g;
+
+function renderInline(text: string, keyBase: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  const re = new RegExp(INLINE_RE.source, 'g');
+  let last = 0;
+  let i = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const idx = match.index;
+    if (idx > last) nodes.push(text.slice(last, idx));
+    const token = match[0];
+    if (token.startsWith('**')) {
+      nodes.push(<strong key={`${keyBase}-${i}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith('__')) {
+      nodes.push(<u key={`${keyBase}-${i}`}>{token.slice(2, -2)}</u>);
+    } else {
+      nodes.push(<em key={`${keyBase}-${i}`}>{token.slice(1, -1)}</em>);
+    }
+    last = idx + token.length;
+    i++;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+export function RichText({ text, className }: { text: string; className?: string }) {
+  const lines = String(text ?? '').split('\n');
+  const blocks: React.ReactNode[] = [];
+  let bullets: React.ReactNode[] = [];
+
+  const flushBullets = (key: string) => {
+    if (bullets.length) {
+      blocks.push(<ul key={key} className="list-disc pl-5 space-y-0.5">{bullets}</ul>);
+      bullets = [];
+    }
+  };
+
+  lines.forEach((line, i) => {
+    const bullet = line.match(/^\s*[-•]\s+(.*)$/);
+    if (bullet) {
+      bullets.push(<li key={`li-${i}`}>{renderInline(bullet[1], `li-${i}`)}</li>);
+    } else {
+      flushBullets(`ul-${i}`);
+      blocks.push(
+        <span key={`ln-${i}`} className="block min-h-[1.25em]">
+          {renderInline(line, `ln-${i}`)}
+        </span>
+      );
+    }
+  });
+  flushBullets('ul-end');
+
+  return <div className={className}>{blocks}</div>;
+}
+
+/**
+ * A textarea with a small formatting toolbar. Buttons wrap the current
+ * selection with the matching markers (or toggle "- " prefixes for
+ * bullets), keeping the cursor on the text that was formatted.
+ */
+export function RichTextarea({ value, onChange, rows, placeholder, className }: {
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
+  placeholder?: string;
+  className?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const wrapSelection = (marker: string) => {
+    const ta = ref.current;
+    if (!ta) return;
+    const s = ta.selectionStart;
+    const e = ta.selectionEnd;
+    const selected = value.slice(s, e) || 'text';
+    const next = value.slice(0, s) + marker + selected + marker + value.slice(e);
+    onChange(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(s + marker.length, s + marker.length + selected.length);
+    });
+  };
+
+  const toggleBullets = () => {
+    const ta = ref.current;
+    if (!ta) return;
+    const s = ta.selectionStart;
+    const e = ta.selectionEnd;
+    const lineStart = value.lastIndexOf('\n', s - 1) + 1;
+    const lineEndIdx = value.indexOf('\n', e);
+    const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
+    const segment = value.slice(lineStart, lineEnd);
+    const segLines = segment.split('\n');
+    const allBulleted = segLines.every(l => /^\s*-\s+/.test(l) || !l.trim());
+    const updatedSegment = segLines
+      .map(l => {
+        if (!l.trim()) return l;
+        return allBulleted ? l.replace(/^(\s*)-\s+/, '$1') : (/^\s*-\s+/.test(l) ? l : `- ${l}`);
+      })
+      .join('\n');
+    const next = value.slice(0, lineStart) + updatedSegment + value.slice(lineEnd);
+    onChange(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(lineStart, lineStart + updatedSegment.length);
+    });
+  };
+
+  const btn = 'h-6 min-w-[24px] px-1.5 rounded-md border border-gray-200 bg-white text-gray-600 text-xs leading-none hover:border-emerald-300 hover:text-emerald-800 transition-colors';
+
+  return (
+    <div>
+      <div className="flex items-center gap-1 mb-1">
+        <button type="button" tabIndex={-1} onClick={() => wrapSelection('**')} className={`${btn} font-black`} title="Bold">B</button>
+        <button type="button" tabIndex={-1} onClick={() => wrapSelection('*')} className={`${btn} italic font-bold`} title="Italic">I</button>
+        <button type="button" tabIndex={-1} onClick={() => wrapSelection('__')} className={`${btn} underline font-bold`} title="Underline">U</button>
+        <button type="button" tabIndex={-1} onClick={toggleBullets} className={`${btn} font-bold`} title="Bullet list">•≡</button>
+      </div>
+      <textarea
+        ref={ref}
+        rows={rows}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className={className}
+      />
+    </div>
+  );
+}
