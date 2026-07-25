@@ -147,6 +147,16 @@ interface TrainingModule {
   steps: TrainingStep[];
 }
 
+interface TrainingCompletion {
+  id: number;
+  module_id: number;
+  user_name: string;
+  user_role: string;
+  completed_at: string;
+  verified_by?: string | null; // admin who validated; null = pending
+  verified_at?: string | null;
+}
+
 // Draft used by the admin Training Builder form
 interface TrainingDraftStep { title: string; body: string; images: string; linkUrl: string; linkLabel: string }
 interface TrainingDraft {
@@ -405,6 +415,13 @@ export default function App() {
   const [trainingFormError, setTrainingFormError] = useState('');
   const [trainingDeleteConfirm, setTrainingDeleteConfirm] = useState<number | null>(null);
   const [trainingUploading, setTrainingUploading] = useState<string | null>(null); // 'cover' | step index
+  // Training completion validation
+  const [trainingCompletions, setTrainingCompletions] = useState<TrainingCompletion[]>([]);
+  const [trainingCompBusy, setTrainingCompBusy] = useState(false);
+  // Training document import
+  const [trainingImportBusy, setTrainingImportBusy] = useState(false);
+  const [trainingImportError, setTrainingImportError] = useState('');
+  const [trainingImportNotice, setTrainingImportNotice] = useState('');
 
   const [allBadges, setAllBadges] = useState<UserBadge[]>([]);
   const [badgesLoaded, setBadgesLoaded] = useState(false);
@@ -944,12 +961,106 @@ export default function App() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setTrainingModules(data.modules ?? []);
+      setTrainingCompletions(data.completions ?? []);
       setTrainingLoaded(true);
     } catch (err) {
       setTrainingError(err instanceof Error ? err.message : 'Could not load training.');
     } finally {
       setTrainingLoading(false);
     }
+  };
+
+  // Upload a PDF/text/Word document of step-by-step instructions and
+  // pre-fill the Training Builder form for review before publishing.
+  const importTrainingFile = async (file: File) => {
+    setTrainingImportBusy(true);
+    setTrainingImportError('');
+    setTrainingImportNotice('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/training/import', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.draft) {
+        setTrainingImportError(data.error || 'Import failed. Please try again.');
+        return;
+      }
+      const d = data.draft;
+      setTrainingFormError('');
+      setTrainingDraft({
+        id: null,
+        title: d.title || '',
+        description: d.description || '',
+        category: d.category === 'HVAC' ? 'HVAC' : 'Home Performance',
+        coverUrl: '',
+        steps: (d.steps?.length ? d.steps : [{ title: '', body: '' }]).map((s: { title?: string; body?: string }) => ({
+          title: s.title || '',
+          body: s.body || '',
+          images: '',
+          linkUrl: '',
+          linkLabel: '',
+        })),
+      });
+      setTrainingImportNotice(`Imported ${d.steps?.length ?? 0} step${d.steps?.length === 1 ? '' : 's'} from “${file.name}” — review below, then publish.`);
+    } catch {
+      setTrainingImportError('Import failed. Check your connection and try again.');
+    } finally {
+      setTrainingImportBusy(false);
+    }
+  };
+
+  // Member marks a training module complete (pending admin validation)
+  const markTrainingComplete = async (moduleId: number) => {
+    if (!currentUser) return;
+    setTrainingCompBusy(true);
+    try {
+      const res = await fetch('/api/training/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.completion) {
+        setTrainingError(data.error || 'Failed to record completion.');
+        return;
+      }
+      setTrainingCompletions(prev => {
+        const others = prev.filter(c => !(c.module_id === moduleId && c.user_name === currentUser.name));
+        return [...others, data.completion];
+      });
+    } catch (err) { console.error('markTrainingComplete failed:', err); }
+    setTrainingCompBusy(false);
+  };
+
+  // Member un-marks their own pending completion / admin rejects any
+  const removeTrainingCompletion = async (completionId: number) => {
+    setTrainingCompBusy(true);
+    try {
+      const res = await fetch('/api/training/complete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completionId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setTrainingCompletions(prev => prev.filter(c => c.id !== completionId));
+    } catch (err) { console.error('removeTrainingCompletion failed:', err); }
+    setTrainingCompBusy(false);
+  };
+
+  // Admin validates a member's training completion
+  const validateTrainingCompletion = async (completionId: number) => {
+    setTrainingCompBusy(true);
+    try {
+      const res = await fetch('/api/training/complete', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completionId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.completion) throw new Error(data.error || `HTTP ${res.status}`);
+      setTrainingCompletions(prev => prev.map(c => c.id === data.completion.id ? data.completion : c));
+    } catch (err) { console.error('validateTrainingCompletion failed:', err); }
+    setTrainingCompBusy(false);
   };
 
   const blankTrainingDraft = (): TrainingDraft => ({
@@ -1013,6 +1124,7 @@ export default function App() {
         return exists ? prev.map(m => m.id === data.module.id ? data.module : m) : [...prev, data.module];
       });
       setTrainingDraft(null);
+      setTrainingImportNotice('');
     } catch (err) {
       setTrainingFormError(err instanceof Error ? err.message : 'Save failed.');
     } finally {
@@ -4153,6 +4265,44 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Completion + validation — the member's own record */}
+                  {(() => {
+                    const myComp = trainingCompletions.find(c => c.module_id === openTraining.id && c.user_name === currentUser.name);
+                    const isValidated = !!myComp?.verified_by;
+                    const isPending = !!myComp && !isValidated;
+                    return (
+                      <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4">
+                        {isValidated ? (
+                          <p className="text-sm font-bold text-emerald-700 flex items-center gap-1.5">
+                            <CheckIcon /> Training validated by {myComp!.verified_by}{myComp!.verified_at ? ` · ${new Date(myComp!.verified_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
+                          </p>
+                        ) : isPending ? (
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <p className="text-sm font-bold text-amber-600">⏳ Completed — awaiting admin validation</p>
+                            <button
+                              onClick={() => removeTrainingCompletion(myComp!.id)}
+                              disabled={trainingCompBusy}
+                              className="h-9 px-3 bg-white border border-gray-200 text-gray-500 rounded-xl text-sm font-bold disabled:opacity-50"
+                            >
+                              Undo
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <p className="text-sm text-gray-500 leading-snug">Finished this training? Mark it complete for admin validation.</p>
+                            <button
+                              onClick={() => markTrainingComplete(openTraining.id)}
+                              disabled={trainingCompBusy}
+                              className="h-10 px-4 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-black flex-shrink-0 disabled:opacity-50"
+                            >
+                              {trainingCompBusy ? 'Saving…' : 'Mark Training Complete'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <>
@@ -4257,8 +4407,33 @@ export default function App() {
 
               {!trainingDraft && (
                 <>
+                  {/* Import step-by-step instructions from a document */}
+                  <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3.5 space-y-2 shadow-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-blue-900 flex items-center gap-1.5">
+                          <CloudUploadIcon /> Import Training Document
+                        </p>
+                        <p className="text-base text-blue-800/70 font-medium leading-snug mt-0.5">
+                          Upload step-by-step instructions as a PDF, text, Markdown, or Word file — the module form fills itself in for review.
+                        </p>
+                      </div>
+                      <label className={`h-9 px-3.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-black flex items-center cursor-pointer flex-shrink-0 transition-colors ${trainingImportBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {trainingImportBusy ? 'Importing…' : 'Choose File'}
+                        <input
+                          type="file"
+                          accept=".pdf,.txt,.md,.markdown,.docx"
+                          className="hidden"
+                          disabled={trainingImportBusy}
+                          onChange={e => { const f = e.target.files?.[0]; if (f) importTrainingFile(f); e.target.value = ''; }}
+                        />
+                      </label>
+                    </div>
+                    {trainingImportError && <p className="text-sm font-bold text-red-600">⚠️ {trainingImportError}</p>}
+                  </div>
+
                   <button
-                    onClick={() => { setTrainingFormError(''); setTrainingDraft(blankTrainingDraft()); }}
+                    onClick={() => { setTrainingFormError(''); setTrainingImportNotice(''); setTrainingDraft(blankTrainingDraft()); }}
                     className="w-full h-11 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-emerald-800 font-black text-sm flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <PlusIcon /> New Training Module
@@ -4276,27 +4451,67 @@ export default function App() {
                       {trainingModules.filter(m => m.category === cat).length === 0 && (
                         <p className="text-sm text-gray-400 px-1">No modules yet.</p>
                       )}
-                      {trainingModules.filter(m => m.category === cat).map(mod => (
-                        <div key={mod.id} className="bg-white border border-gray-100 rounded-2xl p-3.5 flex items-center gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-base font-black text-gray-900 leading-snug">{mod.title}</p>
-                            <p className="text-sm text-gray-400 mt-0.5">{mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}{mod.created_by ? ` — by ${mod.created_by}` : ''}</p>
-                          </div>
-                          <button onClick={() => startEditTraining(mod)} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit module">
-                            <EditIcon />
-                          </button>
-                          {trainingDeleteConfirm === mod.id ? (
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => deleteTrainingModule(mod.id)} disabled={trainingSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
-                              <button onClick={() => setTrainingDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                      {trainingModules.filter(m => m.category === cat).map(mod => {
+                        const modPending = trainingCompletions.filter(c => c.module_id === mod.id && !c.verified_by);
+                        const modValidated = trainingCompletions.filter(c => c.module_id === mod.id && c.verified_by);
+                        return (
+                        <div key={mod.id} className="bg-white border border-gray-100 rounded-2xl p-3.5 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-base font-black text-gray-900 leading-snug">{mod.title}</p>
+                              <p className="text-sm text-gray-400 mt-0.5">
+                                {mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}{mod.created_by ? ` — by ${mod.created_by}` : ''}
+                                {modValidated.length > 0 ? ` · ${modValidated.length} validated` : ''}
+                              </p>
                             </div>
-                          ) : (
-                            <button onClick={() => setTrainingDeleteConfirm(mod.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete module">
-                              <TrashIcon />
+                            <button onClick={() => startEditTraining(mod)} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit module">
+                              <EditIcon />
                             </button>
+                            {trainingDeleteConfirm === mod.id ? (
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => deleteTrainingModule(mod.id)} disabled={trainingSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
+                                <button onClick={() => setTrainingDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setTrainingDeleteConfirm(mod.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete module">
+                                <TrashIcon />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Validation queue — completions awaiting admin sign-off */}
+                          {modPending.length > 0 && (
+                            <div className="space-y-1.5 bg-amber-50/70 border border-amber-100 rounded-xl p-2.5">
+                              <p className="text-sm font-black text-amber-700 uppercase tracking-wider">⏳ Awaiting Validation ({modPending.length})</p>
+                              {modPending.map(c => (
+                                <div key={c.id} className="flex items-center gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-gray-800 leading-snug">{c.user_name}</p>
+                                    <p className="text-sm text-gray-400">Completed {new Date(c.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => validateTrainingCompletion(c.id)}
+                                    disabled={trainingCompBusy}
+                                    className="h-8 px-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-sm font-black flex-shrink-0 disabled:opacity-40"
+                                    title="Validate this training completion"
+                                  >
+                                    Validate
+                                  </button>
+                                  <button
+                                    onClick={() => removeTrainingCompletion(c.id)}
+                                    disabled={trainingCompBusy}
+                                    className="h-8 px-2 bg-white border border-red-100 text-red-500 hover:bg-red-50 rounded-lg text-sm font-black flex-shrink-0 disabled:opacity-40"
+                                    title="Reject — the member must redo the training"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ))}
                 </>
@@ -4304,6 +4519,9 @@ export default function App() {
 
               {trainingDraft && (
                 <div className="space-y-4">
+                  {trainingImportNotice && (
+                    <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-2xl p-3 text-sm font-bold">✓ {trainingImportNotice}</div>
+                  )}
                   {trainingFormError && (
                     <div className="bg-red-50 border border-red-100 text-red-800 rounded-2xl p-3 text-sm font-semibold">⚠️ {trainingFormError}</div>
                   )}
