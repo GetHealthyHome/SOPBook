@@ -1657,12 +1657,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex justify-center items-start py-0 sm:py-8 font-sans antialiased text-gray-900">
         <div className="w-full max-w-md bg-white min-h-screen sm:min-h-[840px] sm:rounded-[40px] sm:shadow-2xl sm:border-[8px] sm:border-gray-900 relative overflow-hidden flex flex-col items-center justify-center p-6 text-gray-400">
-          <div className="w-16 h-16 bg-emerald-50 text-emerald-800 rounded-3xl flex items-center justify-center mx-auto shadow-md animate-pulse">
-            <svg className="w-6 h-6 animate-spin text-emerald-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-            </svg>
-          </div>
+          <img src="/logo.svg" alt="Healthy Home Field Guide" className="w-16 h-16 rounded-2xl shadow-md animate-pulse mx-auto" />
           <span className="text-sm font-bold tracking-wide uppercase mt-4 animate-pulse text-gray-500">Loading Operational Workspace...</span>
         </div>
       </div>
@@ -1678,9 +1673,7 @@ export default function App() {
         <aside className="hidden lg:flex flex-col w-56 min-h-screen bg-white border-r border-gray-100 shadow-sm fixed top-0 left-0 z-40">
           <div className="px-5 py-6 border-b border-gray-100">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-emerald-700 rounded-lg flex items-center justify-center">
-                <ShieldIcon />
-              </div>
+              <img src="/logo.svg" alt="Healthy Home Field Guide" className="w-9 h-9 rounded-lg" />
               <div>
                 <p className="text-sm font-black text-gray-900 leading-none">Field Guide</p>
                 <p className="text-base text-gray-400 font-bold mt-0.5">Healthy Home</p>
@@ -1758,6 +1751,7 @@ export default function App() {
           {currentView === 'login' && (
             <div className="space-y-6 py-8 lg:max-w-sm lg:mx-auto">
               <div className="text-center space-y-1.5">
+                <img src="/logo.svg" alt="Healthy Home Field Guide logo" className="w-24 h-24 mx-auto rounded-2xl shadow-lg mb-3" />
                 <h1 className="text-2xl font-black tracking-tight text-emerald-800 leading-tight block px-2">
                   Healthy Home<br />Energy &amp; Consulting
                 </h1>
