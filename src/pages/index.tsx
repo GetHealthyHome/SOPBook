@@ -72,8 +72,10 @@ interface SOP {
   lastUpdatedBy: string;
   lastUpdatedByRole: string;
   nextReviewDate: string;
-  tools: string;
-  materials: string;
+  ppe: string;
+  hardware: string;
+  consumables: string;
+  terms: string;
   steps: Step[];
   revisionHistory: Revision[];
   readLogs: ReadLog[];
@@ -142,6 +144,10 @@ interface TrainingModule {
   description: string;
   category: string; // Home Performance | HVAC
   cover_url: string;
+  ppe?: string;
+  hardware?: string;
+  consumables?: string;
+  terms?: string;
   order_index: number;
   created_by: string;
   created_at: string;
@@ -166,6 +172,10 @@ interface TrainingDraft {
   description: string;
   category: 'Home Performance' | 'HVAC';
   coverUrl: string;
+  ppe: string;
+  hardware: string;
+  consumables: string;
+  terms: string;
   steps: TrainingDraftStep[];
 }
 
@@ -207,8 +217,10 @@ const DEFAULT_SOPS: SOP[] = [
     lastUpdatedBy: "Marcus Thorne",
     lastUpdatedByRole: "HVAC Supervisor",
     nextReviewDate: "12/18/2026",
-    tools: "Manifold gauge set, vacuum pump, micron gauge, service wrench",
-    materials: "Refrigerant (as specified), gasket seals",
+    ppe: "Safety glasses, insulated gloves",
+    hardware: "Manifold gauge set, vacuum pump, micron gauge, service wrench",
+    consumables: "Refrigerant (as specified), gasket seals",
+    terms: "**Micron** — unit of vacuum pressure\n**Pulldown** — evacuating a system to a target vacuum",
     steps: [
       { 
         title: "Manifold Connection", 
@@ -257,8 +269,10 @@ const DEFAULT_SOPS: SOP[] = [
     lastUpdatedBy: "Sarah Lin",
     lastUpdatedByRole: "Master Electrician",
     nextReviewDate: "12/15/2026",
-    tools: "Non-contact voltage tester, multi-meter, wire stripper",
-    materials: "C-wire (blue common wire), thermostat unit, terminal board",
+    ppe: "Insulated gloves, safety glasses",
+    hardware: "Non-contact voltage tester, multi-meter, wire stripper",
+    consumables: "C-wire (blue common wire), thermostat unit, terminal board",
+    terms: "**C-wire** — common wire supplying continuous 24V power",
     steps: [
       {
         title: "Power Cycle Verification", 
@@ -393,6 +407,7 @@ export default function App() {
   // Ladder builder (careerAdmin) state
   const [builderDept, setBuilderDept] = useState<'Home Performance' | 'HVAC'>('Home Performance');
   const [expandedBuilderTrack, setExpandedBuilderTrack] = useState<number | null>(null);
+  const [builderTaskInfo, setBuilderTaskInfo] = useState<number | null>(null); // milestone whose description is expanded
   const [editingTrack, setEditingTrack] = useState<{ id: number; name: string; description: string } | null>(null);
   const [editingTask, setEditingTask] = useState<{ id: number; track_id: number; title: string; description: string; imageUrls: string; sopTitle: string; trainingModuleId: number | '' } | null>(null);
   const [trackDeleteConfirm, setTrackDeleteConfirm] = useState<number | null>(null);
@@ -451,8 +466,10 @@ export default function App() {
   const [newCategories, setNewCategories] = useState<string[]>(['HVAC']);
   const [newTitle, setNewTitle] = useState('');
   const [newSummary, setNewSummary] = useState('');
-  const [newTools, setNewTools] = useState('');
-  const [newMaterials, setNewMaterials] = useState('');
+  const [newPpe, setNewPpe] = useState('');
+  const [newHardware, setNewHardware] = useState('');
+  const [newConsumables, setNewConsumables] = useState('');
+  const [newTerms, setNewTerms] = useState('');
   const [newSteps, setNewSteps] = useState<Step[]>([
     { title: '', summary: '', body: '', imageUrl: '' }
   ]);
@@ -1008,6 +1025,7 @@ export default function App() {
         description: d.description || '',
         category: d.category === 'HVAC' ? 'HVAC' : 'Home Performance',
         coverUrl: '',
+        ppe: '', hardware: '', consumables: '', terms: '',
         steps: (d.steps?.length ? d.steps : [{ title: '', body: '' }]).map((s: { title?: string; body?: string }) => ({
           title: s.title || '',
           body: s.body || '',
@@ -1084,6 +1102,7 @@ export default function App() {
     description: '',
     category: 'Home Performance',
     coverUrl: '',
+    ppe: '', hardware: '', consumables: '', terms: '',
     steps: [{ title: '', body: '', images: '', linkUrl: '', linkLabel: '' }],
   });
 
@@ -1095,6 +1114,7 @@ export default function App() {
       description: mod.description || '',
       category: (mod.category === 'HVAC' ? 'HVAC' : 'Home Performance'),
       coverUrl: mod.cover_url || '',
+      ppe: mod.ppe || '', hardware: mod.hardware || '', consumables: mod.consumables || '', terms: mod.terms || '',
       steps: mod.steps.length
         ? mod.steps.map(s => ({
             title: s.title,
@@ -1123,6 +1143,10 @@ export default function App() {
           description: trainingDraft.description.trim(),
           category: trainingDraft.category,
           coverUrl: trainingDraft.coverUrl.trim(),
+          ppe: trainingDraft.ppe.trim(),
+          hardware: trainingDraft.hardware.trim(),
+          consumables: trainingDraft.consumables.trim(),
+          terms: trainingDraft.terms.trim(),
           steps: trainingDraft.steps.map(s => ({
             title: s.title.trim(),
             body: s.body.trim(),
@@ -1369,8 +1393,10 @@ export default function App() {
     setNewCategories(['HVAC']);
     setNewTitle('');
     setNewSummary('');
-    setNewTools('');
-    setNewMaterials('');
+    setNewPpe('');
+    setNewHardware('');
+    setNewConsumables('');
+    setNewTerms('');
     setNewSteps([{ title: '', summary: '', body: '', imageUrl: '' }]);
     setFormError('');
     setEditingSopId(null);
@@ -1399,8 +1425,10 @@ export default function App() {
       if (d.category) setNewCategories([d.category]);
       setNewTitle(d.title || '');
       setNewSummary(d.summary || '');
-      setNewTools(d.tools || '');
-      setNewMaterials(d.materials || '');
+      setNewPpe('');
+      setNewHardware(d.tools || '');
+      setNewConsumables(d.materials || '');
+      setNewTerms('');
       setNewSteps(d.steps?.length ? d.steps : [{ title: '', summary: '', body: '', imageUrl: '' }]);
       setFormError('');
       setImportNotice(`Imported ${d.steps?.length ?? 0} step${d.steps?.length === 1 ? '' : 's'} from “${file.name}” — review below, then publish.`);
@@ -1417,8 +1445,10 @@ export default function App() {
     setNewCategories(cats);
     setNewTitle(doc.title);
     setNewSummary(doc.summary);
-    setNewTools(doc.tools || '');
-    setNewMaterials(doc.materials || '');
+    setNewPpe(doc.ppe || '');
+    setNewHardware(doc.hardware || '');
+    setNewConsumables(doc.consumables || '');
+    setNewTerms(doc.terms || '');
     setNewSteps(doc.steps?.length ? doc.steps.map(s => ({ ...s })) : [{ title: '', summary: '', body: '', imageUrl: '' }]);
     setFormError('');
     setEditingSopId(doc.id);
@@ -1474,8 +1504,10 @@ export default function App() {
         categories: newCategories,
         title: cleanTitle,
         summary: cleanSummary,
-        tools: sanitize(newTools, 'notes'),
-        materials: sanitize(newMaterials, 'notes'),
+        ppe: sanitize(newPpe, 'body'),
+        hardware: sanitize(newHardware, 'body'),
+        consumables: sanitize(newConsumables, 'body'),
+        terms: sanitize(newTerms, 'body'),
         steps: newSteps,
         lastUpdated: todayString,
         lastUpdatedBy: currentUser.name,
@@ -1513,8 +1545,10 @@ export default function App() {
       lastUpdatedBy: currentUser.name,
       lastUpdatedByRole: currentUser.role,
       nextReviewDate: reviewString,
-      tools: sanitize(newTools, 'notes'),
-      materials: sanitize(newMaterials, 'notes'),
+      ppe: sanitize(newPpe, 'body'),
+      hardware: sanitize(newHardware, 'body'),
+      consumables: sanitize(newConsumables, 'body'),
+      terms: sanitize(newTerms, 'body'),
       steps: newSteps,
       revisionHistory: [{ version: "v1.0", date: todayString, updatedBy: currentUser.name, userRole: currentUser.role, notes: "Initial protocol creation." }],
       readLogs: []
@@ -2130,28 +2164,25 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Tools & Materials */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Tools Required</label>
-                    <RichTextarea
-                      rows={2}
-                      placeholder="e.g., Manifold gauge, vacuum pump... (one per line if you like)"
-                      value={newTools}
-                      onChange={(v) => setNewTools(v)}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Materials Needed</label>
-                    <RichTextarea
-                      rows={2}
-                      placeholder="e.g., Refrigerant, gasket seals... (one per line if you like)"
-                      value={newMaterials}
-                      onChange={(v) => setNewMaterials(v)}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
-                    />
-                  </div>
+                {/* Reference sections */}
+                <div className="space-y-3">
+                  {([
+                    ['🦺 PPE', newPpe, setNewPpe, 'Required PPE — e.g., safety glasses, insulated gloves...'],
+                    ['🛠️ Required Hardware / Machinery', newHardware, setNewHardware, 'Tools & machinery — e.g., manifold gauge, vacuum pump...'],
+                    ['📦 Consumables & Maintenance Supplies', newConsumables, setNewConsumables, 'Consumables — e.g., refrigerant, gasket seals, filters...'],
+                    ['📖 Technical Terms & Acronyms', newTerms, setNewTerms, 'Define terms — e.g., **CAZ** — combustion appliance zone...'],
+                  ] as const).map(([label, val, setter, ph]) => (
+                    <div key={label}>
+                      <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">{label}</label>
+                      <RichTextarea
+                        rows={2}
+                        placeholder={ph}
+                        value={val}
+                        onChange={(v) => setter(v)}
+                        className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      />
+                    </div>
+                  ))}
                 </div>
 
                 {/* Steps constructor list */}
@@ -2393,19 +2424,31 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Tools & Materials */}
-              {(selectedDoc.tools || selectedDoc.materials) && (
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedDoc.tools && (
-                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-blue-700 uppercase tracking-wider mb-1">🔧 Tools</p>
-                      <RichText className="text-sm text-blue-900 font-medium leading-relaxed" text={selectedDoc.tools} />
+              {/* Reference sections: PPE, hardware, consumables, terms */}
+              {(selectedDoc.ppe || selectedDoc.hardware || selectedDoc.consumables || selectedDoc.terms) && (
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {selectedDoc.ppe && (
+                    <div className="bg-red-50 border border-red-100 rounded-xl p-2.5">
+                      <p className="text-sm font-black text-red-700 uppercase tracking-wider mb-1">🦺 PPE</p>
+                      <RichText className="text-sm text-red-900 font-medium leading-relaxed" text={selectedDoc.ppe} />
                     </div>
                   )}
-                  {selectedDoc.materials && (
+                  {selectedDoc.hardware && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
+                      <p className="text-sm font-black text-blue-700 uppercase tracking-wider mb-1">🛠️ Hardware / Machinery</p>
+                      <RichText className="text-sm text-blue-900 font-medium leading-relaxed" text={selectedDoc.hardware} />
+                    </div>
+                  )}
+                  {selectedDoc.consumables && (
                     <div className="bg-amber-50 border border-amber-100 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-amber-700 uppercase tracking-wider mb-1">📦 Materials</p>
-                      <RichText className="text-sm text-amber-900 font-medium leading-relaxed" text={selectedDoc.materials} />
+                      <p className="text-sm font-black text-amber-700 uppercase tracking-wider mb-1">📦 Consumables &amp; Maintenance</p>
+                      <RichText className="text-sm text-amber-900 font-medium leading-relaxed" text={selectedDoc.consumables} />
+                    </div>
+                  )}
+                  {selectedDoc.terms && (
+                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-2.5">
+                      <p className="text-sm font-black text-purple-700 uppercase tracking-wider mb-1">📖 Terms &amp; Acronyms</p>
+                      <RichText className="text-sm text-purple-900 font-medium leading-relaxed" text={selectedDoc.terms} />
                     </div>
                   )}
                 </div>
@@ -2650,8 +2693,10 @@ export default function App() {
                       doc.summary,
                       '',
                     ];
-                    if (doc.tools)     lines.push(`TOOLS REQUIRED`, doc.tools, '');
-                    if (doc.materials) lines.push(`MATERIALS NEEDED`, doc.materials, '');
+                    if (doc.ppe)         lines.push(`PPE`, doc.ppe, '');
+                    if (doc.hardware)    lines.push(`HARDWARE / MACHINERY`, doc.hardware, '');
+                    if (doc.consumables) lines.push(`CONSUMABLES & MAINTENANCE`, doc.consumables, '');
+                    if (doc.terms)       lines.push(`TERMS & ACRONYMS`, doc.terms, '');
                     lines.push(`CHECKLIST STEPS`);
                     doc.steps?.forEach((step, i) => {
                       lines.push(``, `Step ${i + 1}: ${step.title}`);
@@ -3918,13 +3963,23 @@ export default function App() {
                           </div>
                         </div>
                       ) : (
-                        <div key={task.id} className={`py-2.5 flex items-center gap-2 ${isSub ? 'pl-10 pr-4 bg-gray-50/50' : 'px-4'}`}>
+                        <div key={task.id}>
+                        <div className={`py-2.5 flex items-center gap-2 ${isSub ? 'pl-10 pr-4 bg-gray-50/50' : 'px-4'}`}>
                           <div className="flex-1 min-w-0">
                             <p className={`${isSub ? 'text-sm' : 'text-base'} font-semibold text-gray-900 leading-snug`}>{isSub ? '↳ ' : ''}{task.title}</p>
                             {(task.sop_title || task.description) && (
                               <p className="text-sm text-gray-400 truncate">{task.sop_title ? `SOP: ${task.sop_title}` : task.description}</p>
                             )}
                           </div>
+                          {task.description && (
+                            <button
+                              onClick={() => setBuilderTaskInfo(builderTaskInfo === task.id ? null : task.id)}
+                              className={`w-6 h-6 flex items-center justify-center rounded-full border text-sm font-black flex-shrink-0 transition-colors ${builderTaskInfo === task.id ? 'bg-emerald-700 text-white border-emerald-700' : 'text-emerald-700 border-emerald-200 hover:bg-emerald-50'}`}
+                              title="Show description"
+                            >
+                              i
+                            </button>
+                          )}
                           {!isSub && (
                             <button
                               onClick={() => { setShowAddSubtask(showAddSubtask === task.id ? null : task.id); setShowAddTask(null); setTaskDeleteConfirm(null); }}
@@ -3947,6 +4002,12 @@ export default function App() {
                               <TrashIcon />
                             </button>
                           )}
+                        </div>
+                        {builderTaskInfo === task.id && task.description && (
+                          <div className={`pb-3 ${isSub ? 'pl-10 pr-4 bg-gray-50/50' : 'px-4'}`}>
+                            <RichText className="text-sm text-gray-600 leading-relaxed bg-gray-50 border border-gray-100 rounded-xl p-3" text={task.description} />
+                          </div>
+                        )}
                         </div>
                       )
                     );
@@ -4244,6 +4305,36 @@ export default function App() {
                     </div>
                   )}
                   {openTraining.description && <p className="text-sm text-gray-500 leading-relaxed">{openTraining.description}</p>}
+
+                  {/* Reference sections */}
+                  {(openTraining.ppe || openTraining.hardware || openTraining.consumables || openTraining.terms) && (
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {openTraining.ppe && (
+                        <div className="bg-red-50 border border-red-100 rounded-xl p-2.5">
+                          <p className="text-sm font-black text-red-700 uppercase tracking-wider mb-1">🦺 PPE</p>
+                          <RichText className="text-sm text-red-900 font-medium leading-relaxed" text={openTraining.ppe} />
+                        </div>
+                      )}
+                      {openTraining.hardware && (
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
+                          <p className="text-sm font-black text-blue-700 uppercase tracking-wider mb-1">🛠️ Hardware / Machinery</p>
+                          <RichText className="text-sm text-blue-900 font-medium leading-relaxed" text={openTraining.hardware} />
+                        </div>
+                      )}
+                      {openTraining.consumables && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-xl p-2.5">
+                          <p className="text-sm font-black text-amber-700 uppercase tracking-wider mb-1">📦 Consumables &amp; Maintenance</p>
+                          <RichText className="text-sm text-amber-900 font-medium leading-relaxed" text={openTraining.consumables} />
+                        </div>
+                      )}
+                      {openTraining.terms && (
+                        <div className="bg-purple-50 border border-purple-100 rounded-xl p-2.5">
+                          <p className="text-sm font-black text-purple-700 uppercase tracking-wider mb-1">📖 Terms &amp; Acronyms</p>
+                          <RichText className="text-sm text-purple-900 font-medium leading-relaxed" text={openTraining.terms} />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Career milestones this training counts toward */}
                   {(() => {
@@ -4603,6 +4694,22 @@ export default function App() {
                         <img src={trainingDraft.coverUrl} alt="Cover preview" className="object-cover w-full h-full" onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
                       </div>
                     )}
+                  </div>
+
+                  {/* Reference sections */}
+                  <div className="space-y-3">
+                    {([
+                      ['🦺 PPE', trainingDraft.ppe, (v: string) => setTrainingDraft({ ...trainingDraft, ppe: v }), 'Required PPE...'],
+                      ['🛠️ Required Hardware / Machinery', trainingDraft.hardware, (v: string) => setTrainingDraft({ ...trainingDraft, hardware: v }), 'Tools & machinery...'],
+                      ['📦 Consumables & Maintenance Supplies', trainingDraft.consumables, (v: string) => setTrainingDraft({ ...trainingDraft, consumables: v }), 'Consumables & supplies...'],
+                      ['📖 Technical Terms & Acronyms', trainingDraft.terms, (v: string) => setTrainingDraft({ ...trainingDraft, terms: v }), 'Define terms & acronyms...'],
+                    ] as const).map(([label, val, setter, ph]) => (
+                      <div key={label}>
+                        <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">{label}</label>
+                        <RichTextarea rows={2} placeholder={ph} value={val} onChange={setter}
+                          className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-700 shadow-xs" />
+                      </div>
+                    ))}
                   </div>
 
                   {/* Steps */}

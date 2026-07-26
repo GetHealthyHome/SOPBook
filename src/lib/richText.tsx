@@ -103,18 +103,24 @@ export function RichTextarea({ value, onChange, rows, placeholder, className }: 
     const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
     const segment = value.slice(lineStart, lineEnd);
     const segLines = segment.split('\n');
-    const allBulleted = segLines.every(l => /^\s*-\s+/.test(l) || !l.trim());
+    // "All bulleted" only counts lines that have text; an empty selection
+    // (a blank line) should ADD a bullet so a list can be started.
+    const nonEmpty = segLines.filter(l => l.trim());
+    const allBulleted = nonEmpty.length > 0 && nonEmpty.every(l => /^\s*-\s+/.test(l));
     const updatedSegment = segLines
       .map(l => {
-        if (!l.trim()) return l;
-        return allBulleted ? l.replace(/^(\s*)-\s+/, '$1') : (/^\s*-\s+/.test(l) ? l : `- ${l}`);
+        if (allBulleted) return l.replace(/^(\s*)-\s+/, '$1');   // remove bullets
+        if (/^\s*-\s+/.test(l)) return l;                        // already bulleted
+        return `- ${l}`;                                          // add (blank line -> "- ")
       })
       .join('\n');
     const next = value.slice(0, lineStart) + updatedSegment + value.slice(lineEnd);
     onChange(next);
     requestAnimationFrame(() => {
       ta.focus();
-      ta.setSelectionRange(lineStart, lineStart + updatedSegment.length);
+      // Put the cursor at the end of the updated segment so the user can type
+      const caret = lineStart + updatedSegment.length;
+      ta.setSelectionRange(caret, caret);
     });
   };
 
