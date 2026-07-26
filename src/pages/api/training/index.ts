@@ -99,6 +99,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       description: sanitize(String(body.description ?? ''), 'summary'),
       category:    body.category,
       cover_url:   coverUrl,
+      ppe:         sanitize(String(body.ppe ?? ''), 'body'),
+      hardware:    sanitize(String(body.hardware ?? ''), 'body'),
+      consumables: sanitize(String(body.consumables ?? ''), 'body'),
+      terms:       sanitize(String(body.terms ?? ''), 'body'),
     };
 
     let moduleId: number;

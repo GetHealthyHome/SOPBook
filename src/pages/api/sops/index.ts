@@ -19,8 +19,10 @@ function toClient(row: Record<string, unknown>) {
     lastUpdatedBy:      row.last_updated_by,
     lastUpdatedByRole:  row.last_updated_by_role,
     nextReviewDate:     row.next_review_date,
-    tools:              row.tools ?? '',
-    materials:          row.materials ?? '',
+    ppe:                row.ppe ?? '',
+    hardware:           row.hardware ?? '',
+    consumables:        row.consumables ?? '',
+    terms:              row.terms ?? '',
     steps:              row.steps ?? [],
     revisionHistory:    row.revision_history ?? [],
     readLogs:           row.read_logs ?? [],
@@ -48,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'POST') {
     if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
     const { id, category, categories, title, summary, lastUpdated, nextReviewDate,
-            tools, materials, steps, revisionHistory } = req.body ?? {};
+            ppe, hardware, consumables, terms, steps, revisionHistory } = req.body ?? {};
 
     if (!id || !title) return res.status(400).json({ error: 'id and title required.' });
     if (typeof id !== 'string' || !SOP_ID_RE.test(id)) return res.status(400).json({ error: 'Invalid id.' });
@@ -66,8 +68,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       last_updated_by:      session.name,
       last_updated_by_role: session.role,
       next_review_date:     sanitize(String(nextReviewDate ?? ''), 'default').slice(0, 40),
-      tools:                sanitize(String(tools ?? ''), 'notes'),
-      materials:            sanitize(String(materials ?? ''), 'notes'),
+      ppe:                  sanitize(String(ppe ?? ''), 'body'),
+      hardware:             sanitize(String(hardware ?? ''), 'body'),
+      consumables:          sanitize(String(consumables ?? ''), 'body'),
+      terms:                sanitize(String(terms ?? ''), 'body'),
       steps:                sanitizeSteps(steps),
       revision_history:     sanitizeRevisions(revisionHistory),
       read_logs:            sanitizeReadLogs(req.body?.readLogs),
