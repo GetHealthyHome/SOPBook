@@ -2476,29 +2476,29 @@ export default function App() {
 
               {/* Reference sections: PPE, hardware, consumables, terms */}
               {(selectedDoc.ppe || selectedDoc.hardware || selectedDoc.consumables || selectedDoc.terms) && (
-                <div className="grid sm:grid-cols-2 gap-2">
+                <div className="space-y-2">
                   {selectedDoc.ppe && (
-                    <div className="bg-red-50 border border-red-100 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-red-700 uppercase tracking-wider mb-1">🦺 PPE</p>
-                      <RichText className="text-sm text-red-900 font-medium leading-relaxed" text={selectedDoc.ppe} />
+                    <div className="bg-green-50 border-2 border-green-800 rounded-xl p-2.5">
+                      <p className="text-sm font-black text-green-900 uppercase tracking-wider mb-1">PPE</p>
+                      <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={selectedDoc.ppe} />
                     </div>
                   )}
                   {selectedDoc.hardware && (
-                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-blue-700 uppercase tracking-wider mb-1">🛠️ Hardware / Machinery</p>
-                      <RichText className="text-sm text-blue-900 font-medium leading-relaxed" text={selectedDoc.hardware} />
+                    <div className="bg-green-50 border-2 border-green-800 rounded-xl p-2.5">
+                      <p className="text-sm font-black text-green-900 uppercase tracking-wider mb-1">Required Hardware / Machinery</p>
+                      <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={selectedDoc.hardware} />
                     </div>
                   )}
                   {selectedDoc.consumables && (
-                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-amber-700 uppercase tracking-wider mb-1">📦 Consumables &amp; Maintenance</p>
-                      <RichText className="text-sm text-amber-900 font-medium leading-relaxed" text={selectedDoc.consumables} />
+                    <div className="bg-green-50 border-2 border-green-800 rounded-xl p-2.5">
+                      <p className="text-sm font-black text-green-900 uppercase tracking-wider mb-1">Consumables &amp; Maintenance Supplies</p>
+                      <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={selectedDoc.consumables} />
                     </div>
                   )}
                   {selectedDoc.terms && (
-                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-purple-700 uppercase tracking-wider mb-1">📖 Terms &amp; Acronyms</p>
-                      <RichText className="text-sm text-purple-900 font-medium leading-relaxed" text={selectedDoc.terms} />
+                    <div className="bg-green-50 border-2 border-green-800 rounded-xl p-2.5">
+                      <p className="text-sm font-black text-green-900 uppercase tracking-wider mb-1">Technical Terms &amp; Acronyms</p>
+                      <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={selectedDoc.terms} />
                     </div>
                   )}
                 </div>
