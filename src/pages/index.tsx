@@ -26,7 +26,6 @@ const ArrowLeftIcon = () => <svg className="w-5 h-5" fill="none" stroke="current
 const TrashIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>;
 const CheckIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"/></svg>;
 const AwardIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>;
-const ImageIcon = () => <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
 const TagIcon = () => <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
 const UserIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>;
 const HistoryIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>;
@@ -199,14 +198,6 @@ const PRESET_ACCOUNTS = [
 
 // Credential validation is server-side only (/api/auth/login).
 // No passwords or Supabase keys exist in this client bundle.
-
-const PHOTO_PRESETS = [
-  { name: "Coil Gauges", url: "https://images.unsplash.com/photo-1581094288338-2314dddb7eed?w=600&auto=format&fit=crop&q=80" },
-  { name: "Thermostat Core", url: "https://images.unsplash.com/photo-1558002038-1055907df827?w=600&auto=format&fit=crop&q=80" },
-  { name: "Safety Panel", url: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&auto=format&fit=crop&q=80" },
-  { name: "PEX Piping", url: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&auto=format&fit=crop&q=80" },
-  { name: "Vacuum Pump", url: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=600&auto=format&fit=crop&q=80" }
-];
 
 const DEFAULT_SOPS: SOP[] = [
   {
@@ -491,8 +482,7 @@ export default function App() {
   const [importError, setImportError] = useState('');
   const [importNotice, setImportNotice] = useState('');
 
-  // Custom interactive mock upload states
-  const [uploadTargetIdx, setUploadTargetIdx] = useState<number | null>(null);
+  // Per-step photo upload busy flags
   const [isUploading, setIsUploading] = useState<Record<number, boolean>>({});
 
   // New Revision Form State
@@ -700,7 +690,7 @@ export default function App() {
     if (currentView === 'handbook' && handbookSections.length === 0 && !handbookLoading) {
       loadHandbook();
     }
-  }, [currentView]);
+  }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadCareerData = async (_user?: User) => {
     setCareerLoading(true);
@@ -1235,14 +1225,19 @@ export default function App() {
   };
 
   const saveSOPToServer = async (sop: SOP): Promise<SOP | null> => {
-    const res = await fetch(`/api/sops/${sop.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sop),
-    });
-    if (!res.ok) return null;
-    const { sop: updated } = await res.json();
-    return updated ?? null;
+    // Never throws — callers treat null as "save failed" and show an error
+    try {
+      const res = await fetch(`/api/sops/${sop.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sop),
+      });
+      if (!res.ok) return null;
+      const { sop: updated } = await res.json();
+      return updated ?? null;
+    } catch {
+      return null;
+    }
   };
 
   // Handler for recommending SOP updates
@@ -1364,13 +1359,6 @@ export default function App() {
       ...prev,
       [index]: !prev[index]
     }));
-  };
-
-  const selectPresetPhoto = (stepIndex: number, url: string) => {
-    const updated = [...newSteps];
-    updated[stepIndex] = { ...updated[stepIndex], imageUrl: url };
-    setNewSteps(updated);
-    setUploadTargetIdx(null);
   };
 
   const uploadImageFile = async (stepIndex: number, file: File) => {
@@ -1725,9 +1713,9 @@ export default function App() {
     (doc.categories && doc.categories.length ? doc.categories : (doc.category ? [doc.category] : []));
 
   // Falls back to PRESET_ACCOUNTS while DB users haven't loaded yet
-  const effectiveUsers: User[] = teamUsers.length > 0
+  const effectiveUsers: User[] = useMemo(() => teamUsers.length > 0
     ? teamUsers
-    : PRESET_ACCOUNTS.map(a => ({ ...a, userType: a.userType as 'admin' | 'user' }));
+    : PRESET_ACCOUNTS.map(a => ({ ...a, userType: a.userType as 'admin' | 'user' })), [teamUsers]);
 
   const filteredDocs = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -1750,7 +1738,7 @@ export default function App() {
     const potential = sopCount * teamSize;
     const compliance = potential > 0 ? Math.round((readCount / potential) * 100) : 100;
     return { totalSOPsCount: sopCount, totalTeamSize: teamSize, actualReadLogsCount: readCount, aggregateComplianceRate: compliance };
-  }, [documents]);
+  }, [documents, effectiveUsers]);
 
   if (!mounted) {
     return (
@@ -2282,14 +2270,6 @@ export default function App() {
                             </div>
 
                             <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setUploadTargetIdx(uploadTargetIdx === index ? null : index)}
-                                className="flex-1 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg text-base font-bold text-gray-600 transition-colors flex items-center justify-center gap-1"
-                              >
-                                <ImageIcon /> Preset Library
-                              </button>
-
                               <label className={`flex-1 h-8 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-base font-extrabold text-emerald-800 transition-colors flex items-center justify-center gap-1 cursor-pointer ${isUploading[index] ? 'opacity-50 pointer-events-none' : ''}`}>
                                 {isUploading[index] ? 'Uploading...' : <><CloudUploadIcon /> Upload Photo</>}
                                 <input
