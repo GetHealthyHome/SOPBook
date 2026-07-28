@@ -13,16 +13,12 @@ const MAX_TEXT_CHARS = 200_000;
 // file content (magic bytes) where possible, never by the client's
 // MIME header.
 async function extractText(buf: Buffer, filename: string): Promise<string | null> {
-  // PDF: %PDF-
+  // PDF: %PDF- . pdf-parse v1's pure-JS engine runs in the serverless
+  // runtime; v2 required browser globals (DOMMatrix) and crashed there.
   if (buf.length >= 5 && buf.subarray(0, 5).toString('ascii') === '%PDF-') {
-    const { PDFParse } = await import('pdf-parse');
-    const parser = new PDFParse({ data: buf });
-    try {
-      const { text } = await parser.getText();
-      return text;
-    } finally {
-      await parser.destroy().catch(() => {});
-    }
+    const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
+    const { text } = await pdfParse(buf);
+    return text;
   }
   // DOCX: a zip container (PK..) with a .docx name
   if (buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04 &&
