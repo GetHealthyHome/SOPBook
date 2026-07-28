@@ -1822,15 +1822,6 @@ export default function App() {
         currentUser && currentView !== 'login' ? 'lg:ml-56' : ''
       } max-w-md bg-white min-h-screen sm:max-lg:min-h-[840px] sm:max-lg:rounded-[40px] sm:max-lg:shadow-2xl sm:max-lg:border-[8px] sm:max-lg:border-gray-900 relative overflow-hidden flex flex-col`}>
 
-        {/* Status Bar emulation — hidden on desktop */}
-        <div className="lg:hidden bg-white px-6 pt-3 pb-2 flex justify-between items-center text-base font-bold text-gray-400 select-none border-b border-gray-50">
-          <span>9:41</span>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-2 bg-gray-400 rounded-xs inline-block"></span>
-            <span className="w-2.5 h-2.5 bg-gray-400 rounded-full inline-block"></span>
-          </div>
-        </div>
-
         {/* View Router Body Viewport */}
         <div className="flex-1 overflow-y-auto pb-24 lg:pb-8 px-5 lg:px-8 pt-4 lg:pt-8 lg:max-w-4xl lg:mx-auto lg:w-full">
 
@@ -4848,47 +4839,47 @@ export default function App() {
           <div className="lg:hidden absolute bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around px-2 z-50 shadow-lg">
             <button
               onClick={() => setCurrentView('dashboard')}
-              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+              className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
                 currentView === 'dashboard' || currentView === 'document' || currentView === 'addRevision' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               <FolderIcon />
-              <span className="text-base font-black tracking-wider uppercase">SOPs</span>
+              <span className="text-[10px] leading-none font-black tracking-wide uppercase whitespace-nowrap">SOPs</span>
             </button>
 
             <button
               onClick={() => setCurrentView('handbook')}
-              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+              className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
                 currentView === 'handbook' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               <HandbookIcon />
-              <span className="text-base font-black tracking-wider uppercase">Handbook</span>
+              <span className="text-[10px] leading-none font-black tracking-wide uppercase whitespace-nowrap">Handbook</span>
             </button>
 
             <button
               onClick={() => setCurrentView('careerLadder')}
-              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+              className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
                 currentView === 'careerLadder' || currentView === 'careerAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               <CareerIcon />
-              <span className="text-base font-black tracking-wider uppercase">Career</span>
+              <span className="text-[10px] leading-none font-black tracking-wide uppercase whitespace-nowrap">Career</span>
             </button>
 
             <button
               onClick={() => { setOpenTraining(null); setCurrentView('training'); }}
-              className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+              className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
                 currentView === 'training' || currentView === 'trainingAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               <TrainingIcon />
-              <span className="text-base font-black tracking-wider uppercase">Training</span>
+              <span className="text-[10px] leading-none font-black tracking-wide uppercase whitespace-nowrap">Training</span>
             </button>
 
             <button
               onClick={() => setCurrentView('userNotifications')}
-              className={`flex flex-col items-center gap-1 flex-1 relative transition-all ${
+              className={`flex flex-col items-center gap-1 flex-1 min-w-0 relative transition-all ${
                 currentView === 'userNotifications' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
@@ -4900,29 +4891,29 @@ export default function App() {
                   </span>
                 )}
               </div>
-              <span className="text-base font-black tracking-wider uppercase">Alerts</span>
+              <span className="text-[10px] leading-none font-black tracking-wide uppercase whitespace-nowrap">Alerts</span>
             </button>
 
             {currentUser.userType === 'admin' && (
               <>
                 <button
                   onClick={() => setCurrentView('new')}
-                  className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+                  className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
                     currentView === 'new' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
                   <PlusIcon />
-                  <span className="text-base font-black tracking-wider uppercase">Draft</span>
+                  <span className="text-[10px] leading-none font-black tracking-wide uppercase whitespace-nowrap">Draft</span>
                 </button>
 
                 <button
                   onClick={() => setCurrentView('adminConsole')}
-                  className={`flex flex-col items-center gap-1 flex-1 transition-all ${
+                  className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
                     currentView === 'adminConsole' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
                   <ShieldIcon />
-                  <span className="text-base font-black tracking-wider uppercase">Audit</span>
+                  <span className="text-[10px] leading-none font-black tracking-wide uppercase whitespace-nowrap">Audit</span>
                 </button>
               </>
             )}
