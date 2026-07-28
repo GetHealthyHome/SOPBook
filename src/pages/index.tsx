@@ -47,6 +47,12 @@ interface Step {
   imageUrl?: string;
 }
 
+// Chromium's install-prompt event; not yet in the TS DOM lib
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
 interface Revision {
   version: string;
   date: string;
@@ -332,6 +338,10 @@ const BadgeChip = ({ badge, onRemove }: { badge: string; onRemove?: () => void }
 export default function App() {
   // Mounting check to eliminate Next.js server/client hydration mismatch errors
   const [mounted, setMounted] = useState(false);
+  // Offline/online indicator + deferred PWA install prompt
+  const [isOnline, setIsOnline] = useState(true);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training' | 'trainingAdmin'>('login');
@@ -525,6 +535,49 @@ export default function App() {
       .catch(() => {}) // network error — remain on login screen
       .finally(() => { setLoading(false); });
   }, []);
+
+  // Network status indicator + custom PWA install banner.
+  // beforeinstallprompt is intercepted so the browser's own install bar
+  // stays hidden; we surface a dismissible in-app banner instead.
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    const onBeforeInstall = (e: Event) => {
+      e.preventDefault(); // defer the native banner
+      try {
+        if (localStorage.getItem('sop_install_dismissed')) return;
+      } catch {} // storage blocked (private mode) — still offer the banner
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+      setShowInstallBanner(true);
+    };
+    const onInstalled = () => { setShowInstallBanner(false); setInstallPrompt(null); };
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    setShowInstallBanner(false);
+    try {
+      await installPrompt.prompt();
+      await installPrompt.userChoice; // resolves once the user decides
+    } catch {} // prompt can only be used once; ignore repeat/blocked calls
+    setInstallPrompt(null);
+  };
+
+  const dismissInstallBanner = () => {
+    setShowInstallBanner(false);
+    try { localStorage.setItem('sop_install_dismissed', '1'); } catch {}
+  };
 
   // Attach inactivity listeners when a user is logged in
   useEffect(() => {
@@ -1821,6 +1874,36 @@ export default function App() {
       <div className={`w-full transition-all lg:max-w-none lg:min-h-screen lg:bg-gray-50 ${
         currentUser && currentView !== 'login' ? 'lg:ml-56' : ''
       } max-w-md bg-white min-h-screen sm:max-lg:min-h-[840px] sm:max-lg:rounded-[40px] sm:max-lg:shadow-2xl sm:max-lg:border-[8px] sm:max-lg:border-gray-900 relative overflow-hidden flex flex-col`}>
+
+        {/* Network status indicator — visible whenever the device is offline */}
+        {!isOnline && (
+          <div role="status" className="bg-amber-500 text-white text-sm font-black text-center py-1.5 select-none">
+            Offline mode — showing saved copies
+          </div>
+        )}
+
+        {/* Custom install banner: shown when the browser offers installability */}
+        {showInstallBanner && (
+          <div
+            role="dialog"
+            aria-label="Install app"
+            className={`absolute left-3 right-3 z-50 bg-emerald-900 text-white rounded-2xl shadow-xl p-3.5 flex items-center gap-3 ${
+              currentUser && currentView !== 'login' ? 'bottom-20' : 'bottom-4'
+            }`}
+          >
+            <img src="/logo.svg" alt="" className="w-10 h-10 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black leading-tight">Install the Field Guide</p>
+              <p className="text-xs text-emerald-100 font-medium leading-snug">Add to your home screen for offline SOP access.</p>
+            </div>
+            <button onClick={handleInstallClick} className="h-9 px-3.5 bg-white text-emerald-900 rounded-xl text-sm font-black flex-shrink-0">
+              Install
+            </button>
+            <button onClick={dismissInstallBanner} aria-label="Dismiss install banner" className="text-emerald-200 hover:text-white p-1 flex-shrink-0">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* View Router Body Viewport */}
         <div className="flex-1 overflow-y-auto pb-24 lg:pb-8 px-5 lg:px-8 pt-4 lg:pt-8 lg:max-w-4xl lg:mx-auto lg:w-full">
