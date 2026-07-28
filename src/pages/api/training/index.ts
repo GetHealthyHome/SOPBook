@@ -72,10 +72,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: 'Failed to load training. Make sure db/training_modules.sql has been run in Supabase.' });
     }
     if (compsRes.error) logError('training GET completions', compsRes.error);
-    const steps = stepsRes.data ?? [];
+    // Group steps by module in one pass instead of a filter per module
+    const stepsByModule = new Map<number, unknown[]>();
+    for (const s of (stepsRes.data ?? []) as { module_id: number }[]) {
+      const list = stepsByModule.get(s.module_id);
+      if (list) list.push(s);
+      else stepsByModule.set(s.module_id, [s]);
+    }
     const modules = (modsRes.data ?? []).map((m: { id: number }) => ({
       ...m,
-      steps: steps.filter((s: { module_id: number }) => s.module_id === m.id),
+      steps: stepsByModule.get(m.id) ?? [],
     }));
     return res.status(200).json({ modules, completions: compsRes.data ?? [] });
   }
