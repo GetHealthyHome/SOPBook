@@ -429,6 +429,8 @@ export default function App() {
   const [trainingDraft, setTrainingDraft] = useState<TrainingDraft | null>(null);
   const [trainingSaving, setTrainingSaving] = useState(false);
   const [trainingFormError, setTrainingFormError] = useState('');
+  // Same idea as formErrorFields, for the training builder ('title', 'step-<i>-title')
+  const [trainingErrorFields, setTrainingErrorFields] = useState<Set<string>>(new Set());
   const [trainingDeleteConfirm, setTrainingDeleteConfirm] = useState<number | null>(null);
   const [trainingUploading, setTrainingUploading] = useState<string | null>(null); // 'cover' | step index
   // Training completion validation
@@ -474,6 +476,10 @@ export default function App() {
     { title: '', summary: '', body: '', imageUrl: '' }
   ]);
   const [formError, setFormError] = useState('');
+  // Fields that failed validation on the last save attempt, highlighted in
+  // red until edited. Keys: 'title', 'summary', 'categories', 'changeNote',
+  // 'step-<i>-title', 'step-<i>-body'.
+  const [formErrorFields, setFormErrorFields] = useState<Set<string>>(new Set());
 
   // In-place SOP editing (admin) — when set, the creator form edits this SOP
   const [editingSopId, setEditingSopId] = useState<string | null>(null);
@@ -1108,6 +1114,7 @@ export default function App() {
 
   const startEditTraining = (mod: TrainingModule) => {
     setTrainingFormError('');
+    setTrainingErrorFields(new Set());
     setTrainingDraft({
       id: mod.id,
       title: mod.title,
@@ -1129,8 +1136,16 @@ export default function App() {
 
   const saveTrainingDraft = async () => {
     if (!trainingDraft) return;
-    if (!trainingDraft.title.trim()) { setTrainingFormError('Module title is required.'); return; }
-    if (trainingDraft.steps.some(s => !s.title.trim())) { setTrainingFormError('Every step needs a title.'); return; }
+    // Collect every problem at once and highlight the offending fields in red
+    const problems = new Set<string>();
+    const messages: string[] = [];
+    if (!trainingDraft.title.trim()) { problems.add('title'); messages.push('Module title is required.'); }
+    trainingDraft.steps.forEach((s, i) => { if (!s.title.trim()) problems.add(`step-${i}-title`); });
+    if (Array.from(problems).some(k => k.startsWith('step-'))) {
+      messages.push('Every step needs a title — the missing ones are marked in red.');
+    }
+    setTrainingErrorFields(problems);
+    if (problems.size) { setTrainingFormError(messages.join(' ')); return; }
     setTrainingSaving(true);
     setTrainingFormError('');
     try {
@@ -1363,12 +1378,17 @@ export default function App() {
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (res.ok && data.url) {
-        const updated = [...newSteps];
-        updated[stepIndex] = { ...updated[stepIndex], imageUrl: data.url };
-        setNewSteps(updated);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        setFormError(data.error || `Photo upload failed for step ${stepIndex + 1}. Please try again.`);
+        return;
       }
+      setFormError('');
+      // Functional update so an in-flight upload never clobbers edits made
+      // to other fields while it was running
+      setNewSteps(prev => prev.map((s, i) => i === stepIndex ? { ...s, imageUrl: data.url } : s));
+    } catch {
+      setFormError(`Photo upload failed for step ${stepIndex + 1}. Check your connection and try again.`);
     } finally {
       setIsUploading(prev => ({ ...prev, [stepIndex]: false }));
     }
@@ -1381,12 +1401,34 @@ export default function App() {
   const handleRemoveCreatorStep = (index: number) => {
     if (newSteps.length === 1) return;
     setNewSteps(newSteps.filter((_, i) => i !== index));
+    // Step indices shift after a removal, so drop all step highlights
+    setFormErrorFields(prev => new Set(Array.from(prev).filter(k => !k.startsWith('step-'))));
   };
 
   const handleCreatorStepFieldChange = (index: number, field: keyof Step, value: string) => {
     const updated = [...newSteps];
     updated[index] = { ...updated[index], [field]: value };
     setNewSteps(updated);
+    clearFieldError(`step-${index}-${field}`);
+  };
+
+  // Un-highlight a field once the user starts correcting it
+  const clearFieldError = (key: string) => {
+    setFormErrorFields(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const clearTrainingFieldError = (key: string) => {
+    setTrainingErrorFields(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
   };
 
   const resetSopForm = () => {
@@ -1399,6 +1441,7 @@ export default function App() {
     setNewTerms('');
     setNewSteps([{ title: '', summary: '', body: '', imageUrl: '' }]);
     setFormError('');
+    setFormErrorFields(new Set());
     setEditingSopId(null);
     setEditChangeNote('');
     setImportBusy(false);
@@ -1463,19 +1506,29 @@ export default function App() {
     const cleanTitle = sanitize(newTitle, 'title');
     const cleanSummary = sanitize(newSummary, 'summary');
 
-    if (!cleanTitle || !cleanSummary) {
-      setFormError('Please enter a procedure title and overview tagline.');
+    // Collect every problem at once and highlight the offending fields in red
+    const problems = new Set<string>();
+    const messages: string[] = [];
+    if (!cleanTitle) { problems.add('title'); messages.push('SOP title is required.'); }
+    if (!cleanSummary) { problems.add('summary'); messages.push('Overview tagline is required.'); }
+    if (newCategories.length === 0) { problems.add('categories'); messages.push('Select at least one category.'); }
+    newSteps.forEach((s, i) => {
+      if (!s.title.trim()) problems.add(`step-${i}-title`);
+      if (!s.body.trim()) problems.add(`step-${i}-body`);
+    });
+    if (Array.from(problems).some(k => k.startsWith('step-'))) {
+      messages.push('Every step needs an action title and a procedural body — the missing ones are marked in red.');
+    }
+    if (editingSopId && !sanitize(editChangeNote, 'notes')) {
+      problems.add('changeNote');
+      messages.push('Describe what changed — it is logged in the version history for the team.');
+    }
+    setFormErrorFields(problems);
+    if (problems.size) {
+      setFormError(messages.join(' '));
       return;
     }
-    if (newCategories.length === 0) {
-      setFormError('Please select at least one category.');
-      return;
-    }
-    const emptySteps = newSteps.some(s => !s.title.trim() || !s.body.trim());
-    if (emptySteps) {
-      setFormError('All checklists require a step action title and procedural body.');
-      return;
-    }
+    setFormError('');
 
     const todayString = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
@@ -1488,10 +1541,6 @@ export default function App() {
         return;
       }
       const cleanNote = sanitize(editChangeNote, 'notes');
-      if (!cleanNote) {
-        setFormError('Please describe what changed — it is logged in the version history for the team.');
-        return;
-      }
       const latestVer = original.revisionHistory[0]?.version;
       let nextVer = 'v1.1';
       if (latestVer) {
@@ -2109,15 +2158,15 @@ export default function App() {
               <form onSubmit={handlePublishSOP} className="space-y-5">
                 <div className="space-y-3.5">
                   <div>
-                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Scope Categories <span className="text-gray-400 normal-case font-bold">(pick one or more)</span></label>
-                    <div className="flex flex-wrap gap-2">
+                    <label className={`block text-sm font-black uppercase tracking-wider mb-1 ${formErrorFields.has('categories') ? 'text-red-600' : 'text-gray-500'}`}>Scope Categories <span className="text-gray-400 normal-case font-bold">(pick one or more)</span></label>
+                    <div className={`flex flex-wrap gap-2 ${formErrorFields.has('categories') ? 'p-2 rounded-xl border-2 border-red-400 bg-red-50/60' : ''}`}>
                       {SOP_CATEGORY_OPTIONS.map(cat => {
                         const active = newCategories.includes(cat);
                         return (
                           <button
                             key={cat}
                             type="button"
-                            onClick={() => setNewCategories(prev => active ? prev.filter(c => c !== cat) : [...prev, cat])}
+                            onClick={() => { setNewCategories(prev => active ? prev.filter(c => c !== cat) : [...prev, cat]); clearFieldError('categories'); }}
                             className={`h-9 px-3.5 rounded-xl text-sm font-extrabold border transition-all ${
                               active
                                 ? 'bg-emerald-800 text-white border-emerald-800 shadow-xs'
@@ -2147,8 +2196,8 @@ export default function App() {
                       type="text"
                       placeholder="e.g., Boiler Backflow Valve Purging"
                       value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      onChange={(e) => { setNewTitle(e.target.value); clearFieldError('title'); }}
+                      className={`w-full h-11 px-3.5 border rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs ${formErrorFields.has('title') ? 'border-red-500 bg-red-50/60' : 'bg-white border-gray-200'}`}
                     />
                   </div>
 
@@ -2158,8 +2207,8 @@ export default function App() {
                       type="text"
                       placeholder="e.g., Standard protocols for safety water checks..."
                       value={newSummary}
-                      onChange={(e) => setNewSummary(e.target.value)}
-                      className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs"
+                      onChange={(e) => { setNewSummary(e.target.value); clearFieldError('summary'); }}
+                      className={`w-full h-11 px-3.5 border rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs ${formErrorFields.has('summary') ? 'border-red-500 bg-red-50/60' : 'bg-white border-gray-200'}`}
                     />
                   </div>
                 </div>
@@ -2213,7 +2262,7 @@ export default function App() {
                             placeholder="Action Step Title (e.g., Turn power panel off)"
                             value={step.title}
                             onChange={(e) => handleCreatorStepFieldChange(index, 'title', e.target.value)}
-                            className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs"
+                            className={`w-full h-9 px-3 border rounded-lg text-sm focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs ${formErrorFields.has(`step-${index}-title`) ? 'border-red-500 bg-red-50/60' : 'bg-white border-gray-200'}`}
                           />
 
                           <input
@@ -2278,7 +2327,7 @@ export default function App() {
                             rows={3}
                             value={step.body}
                             onChange={(v) => handleCreatorStepFieldChange(index, 'body', v)}
-                            className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed font-normal shadow-xs"
+                            className={`w-full p-2.5 border rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed font-normal shadow-xs ${formErrorFields.has(`step-${index}-body`) ? 'border-red-500 bg-red-50/60' : 'bg-white border-gray-200'}`}
                           />
                         </div>
                       </div>
@@ -2307,8 +2356,8 @@ export default function App() {
                       required
                       placeholder="e.g., Updated Step 2 torque calibration values for the new equipment model..."
                       value={editChangeNote}
-                      onChange={(e) => setEditChangeNote(e.target.value)}
-                      className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-800 leading-relaxed font-semibold shadow-xs"
+                      onChange={(e) => { setEditChangeNote(e.target.value); clearFieldError('changeNote'); }}
+                      className={`w-full p-2.5 border rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-800 leading-relaxed font-semibold shadow-xs ${formErrorFields.has('changeNote') ? 'border-red-500 bg-red-50/60' : 'bg-white border-gray-200'}`}
                     />
                   </div>
                 )}
@@ -4563,7 +4612,7 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={() => { setTrainingFormError(''); setTrainingImportNotice(''); setTrainingDraft(blankTrainingDraft()); }}
+                    onClick={() => { setTrainingFormError(''); setTrainingErrorFields(new Set()); setTrainingImportNotice(''); setTrainingDraft(blankTrainingDraft()); }}
                     className="w-full h-11 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-emerald-800 font-black text-sm flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <PlusIcon /> New Training Module
@@ -4670,8 +4719,8 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Module Title</label>
-                    <input value={trainingDraft.title} onChange={e => setTrainingDraft({ ...trainingDraft, title: e.target.value })} placeholder="e.g., Blower Door Setup & Testing" className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs" />
+                    <label className={`block text-sm font-black uppercase tracking-wider mb-1 ${trainingErrorFields.has('title') ? 'text-red-600' : 'text-gray-500'}`}>Module Title</label>
+                    <input value={trainingDraft.title} onChange={e => { setTrainingDraft({ ...trainingDraft, title: e.target.value }); clearTrainingFieldError('title'); }} placeholder="e.g., Blower Door Setup & Testing" className={`w-full h-11 px-3.5 border rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-medium text-gray-900 shadow-xs ${trainingErrorFields.has('title') ? 'border-red-500 bg-red-50/60' : 'bg-white border-gray-200'}`} />
                   </div>
 
                   <div>
@@ -4722,12 +4771,12 @@ export default function App() {
                         <div className="flex justify-between items-center">
                           <span className="text-base font-black text-gray-400 tracking-wider">STEP {i + 1}</span>
                           {trainingDraft.steps.length > 1 && (
-                            <button onClick={() => setTrainingDraft({ ...trainingDraft, steps: trainingDraft.steps.filter((_, j) => j !== i) })} className="text-gray-400 hover:text-red-500 p-1 bg-white border border-gray-100 rounded-lg transition-colors">
+                            <button onClick={() => { setTrainingDraft({ ...trainingDraft, steps: trainingDraft.steps.filter((_, j) => j !== i) }); setTrainingErrorFields(prev => new Set(Array.from(prev).filter(k => !k.startsWith('step-')))); }} className="text-gray-400 hover:text-red-500 p-1 bg-white border border-gray-100 rounded-lg transition-colors">
                               <TrashIcon />
                             </button>
                           )}
                         </div>
-                        <input value={step.title} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], title: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); }} placeholder="Step title*" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs" />
+                        <input value={step.title} onChange={e => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], title: e.target.value }; setTrainingDraft({ ...trainingDraft, steps }); clearTrainingFieldError(`step-${i}-title`); }} placeholder="Step title*" className={`w-full h-9 px-3 border rounded-lg text-sm focus:border-emerald-600 focus:outline-none font-semibold text-gray-900 shadow-xs ${trainingErrorFields.has(`step-${i}-title`) ? 'border-red-500 bg-red-50/60' : 'bg-white border-gray-200'}`} />
                         <RichTextarea value={step.body} onChange={v => { const steps = [...trainingDraft.steps]; steps[i] = { ...steps[i], body: v }; setTrainingDraft({ ...trainingDraft, steps }); }} rows={3} placeholder="What to teach / demonstrate in this step..." className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:border-emerald-600 focus:outline-none text-gray-600 leading-relaxed shadow-xs" />
 
                         {/* Step photos */}
