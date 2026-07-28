@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { RichText, RichTextarea } from '@/lib/richText';
+import { compressImage } from '@/lib/compressImage';
 import {
   getAttemptRecord,
   recordFailedAttempt,
@@ -1212,7 +1213,7 @@ export default function App() {
     setTrainingUploading(String(target));
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', await compressImage(file));
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) {
@@ -1376,7 +1377,7 @@ export default function App() {
     setIsUploading(prev => ({ ...prev, [stepIndex]: true }));
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', await compressImage(file));
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) {
