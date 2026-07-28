@@ -21,12 +21,13 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
     const idx = match.index;
     if (idx > last) nodes.push(text.slice(last, idx));
     const token = match[0];
+    // Explicit classes so formatting never depends on browser/reset defaults
     if (token.startsWith('**')) {
-      nodes.push(<strong key={`${keyBase}-${i}`}>{token.slice(2, -2)}</strong>);
+      nodes.push(<strong key={`${keyBase}-${i}`} className="font-bold">{token.slice(2, -2)}</strong>);
     } else if (token.startsWith('__')) {
-      nodes.push(<u key={`${keyBase}-${i}`}>{token.slice(2, -2)}</u>);
+      nodes.push(<u key={`${keyBase}-${i}`} className="underline">{token.slice(2, -2)}</u>);
     } else {
-      nodes.push(<em key={`${keyBase}-${i}`}>{token.slice(1, -1)}</em>);
+      nodes.push(<em key={`${keyBase}-${i}`} className="italic">{token.slice(1, -1)}</em>);
     }
     last = idx + token.length;
     i++;
