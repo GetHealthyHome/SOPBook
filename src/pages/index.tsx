@@ -47,6 +47,34 @@ interface Step {
   imageUrl?: string;
 }
 
+/**
+ * Collapsed-by-default reference panel (PPE, hardware, consumables, terms).
+ * Keeps the top of an SOP/training module short while leaving the detail one
+ * tap away. `filled` matches the SOP view's light green fill; the training
+ * view uses the outline-only treatment.
+ */
+function ReferenceSection({ title, text, filled }: { title: string; text: string; filled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`border-2 border-green-800 rounded-xl overflow-hidden ${filled ? 'bg-green-50' : ''}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left"
+      >
+        <span className="text-sm font-black text-green-900 uppercase tracking-wider">{title}</span>
+        <span className={`text-green-900 text-xs transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}>▼</span>
+      </button>
+      {open && (
+        <div className="px-2.5 pb-2.5">
+          <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={text} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 type View =
   | 'login' | 'home' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole'
   | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training'
@@ -606,10 +634,23 @@ export default function App() {
   }, [currentView]);
 
   const goBack = () => {
-    const target = viewHistory[viewHistory.length - 1];
+    // An open training module is a screen of its own even though the view
+    // never changed — close it first rather than leaving the section.
+    if (currentView === 'training' && openTraining) {
+      setOpenTraining(null);
+      return;
+    }
+    const target = viewHistory[viewHistory.length - 1] ?? 'home';
+    if (target === currentView) {
+      // Nothing to retrace: fall back home without arming the skip flag,
+      // which would otherwise swallow the next real navigation.
+      setViewHistory(h => h.slice(0, -1));
+      if (currentView !== 'home') setCurrentView('home');
+      return;
+    }
     skipHistoryPush.current = true;
     setViewHistory(h => h.slice(0, -1));
-    setCurrentView(target ?? 'home');
+    setCurrentView(target);
   };
 
   const dismissInstallBanner = () => {
@@ -1960,13 +2001,16 @@ export default function App() {
         {/* Global toolbar: back out of a wrong turn, or jump straight to search */}
         {currentUser && currentView !== 'login' && (
           <div className="flex items-center justify-between gap-2 px-4 lg:px-8 pt-3 pb-1 lg:max-w-4xl lg:mx-auto lg:w-full">
-            <button
-              onClick={goBack}
-              disabled={viewHistory.length === 0}
-              className="flex items-center gap-1 h-9 px-3 rounded-xl text-sm font-black text-gray-500 hover:text-emerald-800 hover:bg-emerald-50 disabled:opacity-0 disabled:pointer-events-none transition-colors"
-            >
-              ← Back
-            </button>
+            {/* Always available off the home screen — with no history to
+                retrace it still takes you home, so it never dead-ends. */}
+            {currentView !== 'home' ? (
+              <button
+                onClick={goBack}
+                className="flex items-center gap-1 h-9 px-3 rounded-xl text-sm font-black text-gray-500 hover:text-emerald-800 hover:bg-emerald-50 transition-colors"
+              >
+                ← Back
+              </button>
+            ) : <span />}
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setCurrentView('home')}
@@ -2763,30 +2807,10 @@ export default function App() {
               {/* Reference sections: PPE, hardware, consumables, terms */}
               {(selectedDoc.ppe || selectedDoc.hardware || selectedDoc.consumables || selectedDoc.terms) && (
                 <div className="space-y-2">
-                  {selectedDoc.ppe && (
-                    <div className="bg-green-50 border-2 border-green-800 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-green-900 uppercase tracking-wider mb-1">PPE</p>
-                      <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={selectedDoc.ppe} />
-                    </div>
-                  )}
-                  {selectedDoc.hardware && (
-                    <div className="bg-green-50 border-2 border-green-800 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-green-900 uppercase tracking-wider mb-1">Required Hardware / Machinery</p>
-                      <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={selectedDoc.hardware} />
-                    </div>
-                  )}
-                  {selectedDoc.consumables && (
-                    <div className="bg-green-50 border-2 border-green-800 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-green-900 uppercase tracking-wider mb-1">Consumables &amp; Maintenance Supplies</p>
-                      <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={selectedDoc.consumables} />
-                    </div>
-                  )}
-                  {selectedDoc.terms && (
-                    <div className="bg-green-50 border-2 border-green-800 rounded-xl p-2.5">
-                      <p className="text-sm font-black text-green-900 uppercase tracking-wider mb-1">Technical Terms &amp; Acronyms</p>
-                      <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={selectedDoc.terms} />
-                    </div>
-                  )}
+                  {selectedDoc.ppe && <ReferenceSection filled title="PPE" text={selectedDoc.ppe} />}
+                  {selectedDoc.hardware && <ReferenceSection filled title="Required Hardware / Machinery" text={selectedDoc.hardware} />}
+                  {selectedDoc.consumables && <ReferenceSection filled title="Consumables & Maintenance Supplies" text={selectedDoc.consumables} />}
+                  {selectedDoc.terms && <ReferenceSection filled title="Technical Terms & Acronyms" text={selectedDoc.terms} />}
                 </div>
               )}
 
@@ -4653,30 +4677,10 @@ export default function App() {
                   {/* Reference sections */}
                   {(openTraining.ppe || openTraining.hardware || openTraining.consumables || openTraining.terms) && (
                     <div className="space-y-2">
-                      {openTraining.ppe && (
-                        <div className="border-2 border-green-800 rounded-xl p-2.5">
-                          <p className="text-sm font-black text-green-800 uppercase tracking-wider mb-1">PPE</p>
-                          <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={openTraining.ppe} />
-                        </div>
-                      )}
-                      {openTraining.hardware && (
-                        <div className="border-2 border-green-800 rounded-xl p-2.5">
-                          <p className="text-sm font-black text-green-800 uppercase tracking-wider mb-1">Required Hardware / Machinery</p>
-                          <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={openTraining.hardware} />
-                        </div>
-                      )}
-                      {openTraining.consumables && (
-                        <div className="border-2 border-green-800 rounded-xl p-2.5">
-                          <p className="text-sm font-black text-green-800 uppercase tracking-wider mb-1">Consumables &amp; Maintenance Supplies</p>
-                          <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={openTraining.consumables} />
-                        </div>
-                      )}
-                      {openTraining.terms && (
-                        <div className="border-2 border-green-800 rounded-xl p-2.5">
-                          <p className="text-sm font-black text-green-800 uppercase tracking-wider mb-1">Technical Terms &amp; Acronyms</p>
-                          <RichText className="text-sm text-gray-800 font-medium leading-relaxed" text={openTraining.terms} />
-                        </div>
-                      )}
+                      {openTraining.ppe && <ReferenceSection title="PPE" text={openTraining.ppe} />}
+                      {openTraining.hardware && <ReferenceSection title="Required Hardware / Machinery" text={openTraining.hardware} />}
+                      {openTraining.consumables && <ReferenceSection title="Consumables & Maintenance Supplies" text={openTraining.consumables} />}
+                      {openTraining.terms && <ReferenceSection title="Technical Terms & Acronyms" text={openTraining.terms} />}
                     </div>
                   )}
 
