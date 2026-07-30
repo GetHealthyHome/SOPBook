@@ -3,6 +3,7 @@ import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { isSafeImageUrl } from '@/lib/sopSanitize';
+import { normalizeImageUrl } from '@/lib/imageUrl';
 import { logError } from '@/lib/log';
 
 const CATEGORIES = ['Home Performance', 'HVAC'];
@@ -40,7 +41,7 @@ function cleanSteps(input: unknown): CleanStep[] | null {
       title,
       body: sanitize(String(s.body ?? ''), 'body'),
       image_urls: Array.isArray(s.imageUrls)
-        ? s.imageUrls.slice(0, MAX_IMAGES_PER_STEP).map((u: unknown) => String(u).trim()).filter(isSafeImageUrl)
+        ? s.imageUrls.slice(0, MAX_IMAGES_PER_STEP).map((u: unknown) => normalizeImageUrl(String(u))).filter(isSafeImageUrl)
         : [],
       link_url: isSafeLinkUrl(linkUrl) ? linkUrl : '',
       link_label: sanitize(String(s.linkLabel ?? ''), 'title'),
@@ -95,7 +96,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const title = sanitize(String(body.title ?? ''), 'title');
     if (!title) return res.status(400).json({ error: 'Title required.' });
     if (!CATEGORIES.includes(body.category)) return res.status(400).json({ error: 'Invalid category.' });
-    const coverUrl = typeof body.coverUrl === 'string' && isSafeImageUrl(body.coverUrl.trim()) ? body.coverUrl.trim() : '';
+    const cover = typeof body.coverUrl === 'string' ? normalizeImageUrl(body.coverUrl) : '';
+    const coverUrl = isSafeImageUrl(cover) ? cover : '';
     const steps = cleanSteps(body.steps);
     if (steps === null) return res.status(400).json({ error: 'Every step needs a title.' });
     if (!steps.length) return res.status(400).json({ error: 'At least one step is required.' });
