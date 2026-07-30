@@ -2262,8 +2262,11 @@ export default function App() {
             const tile = 'flex flex-col items-center gap-2 active:scale-95 transition-transform';
             // Each section gets its own colour so the circles are quick to
             // tell apart at a glance; all are dark enough for white icons.
+            // Fixed 40px circle (60% smaller than the full-column version).
+            // The button itself still fills the column, so the tap target
+            // stays comfortably large even though the circle is small.
             const circle = (colour: string) =>
-              `relative w-full aspect-square rounded-full ${colour} flex items-center justify-center text-white shadow-md transition-colors`;
+              `relative w-10 h-10 rounded-full ${colour} flex items-center justify-center text-white shadow-md transition-colors`;
             const label = 'text-[11px] leading-tight font-black uppercase tracking-wide text-center text-gray-700';
             const icon = 'w-1/2 h-1/2';
             return (
@@ -2271,7 +2274,7 @@ export default function App() {
                 <h1 className="text-2xl font-black text-gray-950 tracking-tight text-center">
                   Welcome back {currentUser.name.split(' ')[0]}!
                 </h1>
-                <div className="grid grid-cols-3 gap-x-4 gap-y-5">
+                <div className="grid grid-cols-3 gap-x-4 gap-y-4">
                   <button onClick={() => setCurrentView('dashboard')} className={tile}>
                     <span className={circle('bg-emerald-900 hover:bg-emerald-800')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
@@ -2299,7 +2302,7 @@ export default function App() {
                   <button onClick={() => setCurrentView('userNotifications')} className={tile}>
                     <span className={circle('bg-rose-700 hover:bg-rose-600')}>
                       {unread > 0 && (
-                        <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-black rounded-full min-w-[20px] h-[20px] px-1 flex items-center justify-center shadow-md ring-2 ring-white">
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center shadow-md ring-2 ring-white">
                           {unread > 9 ? '9+' : unread}
                         </span>
                       )}
