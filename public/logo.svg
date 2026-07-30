@@ -1,33 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Healthy Home Field Guide (HHFG) mark: green HH over a house/mountain
-       roofline with chimney, FG below, on a white panel inside a dark green
-       frame. Letters are drawn as paths so the mark renders identically in
-       every browser and rasterizer. -->
-  <rect width="512" height="512" rx="10" fill="#1E4B2D"/>
-  <!-- white interior panel -->
-  <rect x="42" y="42" width="428" height="428" rx="4" fill="#FFFFFF"/>
-  <!-- HH -->
-  <g fill="#1E4B2D">
-    <rect x="88" y="75" width="34" height="140"/>
-    <rect x="194" y="75" width="34" height="140"/>
-    <rect x="88" y="127" width="140" height="34"/>
-    <rect x="284" y="75" width="34" height="140"/>
-    <rect x="390" y="75" width="34" height="140"/>
-    <rect x="284" y="127" width="140" height="34"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 660">
+  <!-- Healthy Home Field Guide mark: a house outline with a check inside,
+       drawn as strokes so it stays crisp at every size. -->
+  <g fill="none" stroke="#3B5D24" stroke-width="62" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M95 295 L318 72 L505 272"/>
+    <path d="M152 300 V588 H470 V430"/>
+    <path d="M258 396 L325 478 L497 285"/>
   </g>
-  <!-- roofline: mountains left, main roof peak, chimney on the right slope -->
-  <path d="M42 302 L148 215 L186 253 L275 165 L343 218 L343 180 L376 180 L376 244 L470 316"
-        fill="none" stroke="#1E4B2D" stroke-width="15" stroke-linejoin="miter"/>
-  <!-- FG -->
-  <g fill="#1E4B2D">
-    <!-- F -->
-    <rect x="95" y="340" width="34" height="122"/>
-    <rect x="95" y="340" width="130" height="34"/>
-    <rect x="95" y="404" width="110" height="34"/>
-  </g>
-  <!-- G: rounded, drawn as a thick stroke plus a solid inner bar -->
-  <path d="M430 357 L330 357 Q297 357 297 390 L297 412 Q297 445 330 445 L397 445 Q430 445 430 412"
-        fill="none" stroke="#1E4B2D" stroke-width="34"/>
-  <rect x="338" y="390" width="109" height="34" fill="#1E4B2D"/>
-  <rect x="413" y="400" width="34" height="62" fill="#1E4B2D"/>
 </svg>
