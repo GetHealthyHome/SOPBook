@@ -2835,6 +2835,14 @@ export default function App() {
                 </button>
               </div>
 
+              {/* Back to the SOP library */}
+              <button
+                onClick={() => setCurrentView('dashboard')}
+                className="w-full h-11 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-sm font-black transition-all flex items-center justify-center gap-2"
+              >
+                ← Back to All SOPs
+              </button>
+
             </div>
           )}
 
@@ -4537,6 +4545,14 @@ export default function App() {
                       </div>
                     );
                   })()}
+
+                  {/* Back to the training library */}
+                  <button
+                    onClick={() => setOpenTraining(null)}
+                    className="w-full h-11 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-sm font-black transition-all flex items-center justify-center gap-2"
+                  >
+                    ← Back to All Training
+                  </button>
                 </div>
               ) : (
                 <>
