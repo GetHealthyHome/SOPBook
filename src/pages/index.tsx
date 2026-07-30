@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { RichText, RichTextarea } from '@/lib/richText';
 import { compressImage } from '@/lib/compressImage';
+import { normalizeImageUrl } from '@/lib/imageUrl';
 import {
   getAttemptRecord,
   recordFailedAttempt,
@@ -45,6 +46,34 @@ interface Step {
   summary: string;
   body: string;
   imageUrl?: string;
+}
+
+/**
+ * Image that shows a visible placeholder when the source fails to load.
+ * Broken photos used to hide themselves, which looked identical to "no
+ * photo was ever added" — so a bad link was invisible to the author.
+ */
+function SafeImage({ src, alt, className, wrapperClassName }: {
+  src: string;
+  alt: string;
+  className?: string;
+  wrapperClassName?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [src]); // retry when the URL changes
+  if (failed) {
+    return (
+      <div className={`${wrapperClassName ?? ''} flex flex-col items-center justify-center gap-1 bg-gray-100 text-gray-400 text-center p-3`}>
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        <span className="text-xs font-bold leading-tight">Photo didn’t load — the link may be blocked. Upload the photo instead.</span>
+      </div>
+    );
+  }
+  return (
+    <div className={wrapperClassName}>
+      <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />
+    </div>
+  );
 }
 
 /**
@@ -2648,7 +2677,7 @@ export default function App() {
                               type="text"
                               placeholder="Or paste direct image web URL..."
                               value={step.imageUrl || ''}
-                              onChange={(e) => handleCreatorStepFieldChange(index, 'imageUrl', e.target.value)}
+                              onChange={(e) => handleCreatorStepFieldChange(index, 'imageUrl', normalizeImageUrl(e.target.value))}
                               className="w-full h-8 px-2.5 border border-gray-100 bg-gray-50 text-sm focus:outline-none rounded-lg text-gray-500 font-mono"
                             />
                           </div>
@@ -2877,16 +2906,12 @@ export default function App() {
                             }`}
                           >
                             {step.imageUrl && step.imageUrl.trim() !== '' && (
-                              <div className="relative w-full h-44 rounded-xl overflow-hidden bg-gray-100">
-                                <img
-                                  src={step.imageUrl}
-                                  alt={step.title}
-                                  className="object-cover w-full h-full"
-                                  onError={(e) => {
-                                    if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none';
-                                  }}
-                                />
-                              </div>
+                              <SafeImage
+                                src={step.imageUrl}
+                                alt={step.title}
+                                wrapperClassName="relative w-full h-44 rounded-xl overflow-hidden bg-gray-100"
+                                className="object-cover w-full h-full"
+                              />
                             )}
 
                             <div className="space-y-1">
@@ -4663,14 +4688,12 @@ export default function App() {
                   </div>
 
                   {openTraining.cover_url && (
-                    <div className="w-full h-44 rounded-2xl overflow-hidden bg-gray-100">
-                      <img
-                        src={openTraining.cover_url}
-                        alt={openTraining.title}
-                        className="object-cover w-full h-full"
-                        onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }}
-                      />
-                    </div>
+                    <SafeImage
+                      src={openTraining.cover_url}
+                      alt={openTraining.title}
+                      wrapperClassName="w-full h-44 rounded-2xl overflow-hidden bg-gray-100"
+                      className="object-cover w-full h-full"
+                    />
                   )}
                   {openTraining.description && <p className="text-sm text-gray-500 leading-relaxed">{openTraining.description}</p>}
 
@@ -4850,14 +4873,12 @@ export default function App() {
                         className="bg-white border border-gray-100 hover:border-emerald-100 hover:shadow-xs rounded-2xl overflow-hidden text-left transition-all group"
                       >
                         {mod.cover_url && (
-                          <div className="w-full h-32 bg-gray-100 overflow-hidden">
-                            <img
-                              src={mod.cover_url}
-                              alt={mod.title}
-                              className="object-cover w-full h-full group-hover:scale-[1.02] transition-transform"
-                              onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }}
-                            />
-                          </div>
+                          <SafeImage
+                            src={mod.cover_url}
+                            alt={mod.title}
+                            wrapperClassName="w-full h-32 bg-gray-100 overflow-hidden"
+                            className="object-cover w-full h-full group-hover:scale-[1.02] transition-transform"
+                          />
                         )}
                         <div className="p-4 flex items-center justify-between gap-2">
                           <div className="min-w-0">
@@ -5044,11 +5065,14 @@ export default function App() {
                         <input type="file" accept="image/*" className="hidden" disabled={trainingUploading === 'cover'} onChange={e => { const f = e.target.files?.[0]; if (f) uploadTrainingImage(f, 'cover'); e.target.value = ''; }} />
                       </label>
                     </div>
-                    <input value={trainingDraft.coverUrl} onChange={e => setTrainingDraft({ ...trainingDraft, coverUrl: e.target.value })} placeholder="Or paste an https image URL..." className="w-full h-9 px-2.5 border border-gray-100 bg-gray-50 text-sm focus:outline-none rounded-lg text-gray-500 font-mono" />
+                    <input value={trainingDraft.coverUrl} onChange={e => setTrainingDraft({ ...trainingDraft, coverUrl: normalizeImageUrl(e.target.value) })} placeholder="Or paste a direct https image URL..." className="w-full h-9 px-2.5 border border-gray-100 bg-gray-50 text-sm focus:outline-none rounded-lg text-gray-500 font-mono" />
                     {trainingDraft.coverUrl && (
-                      <div className="w-full h-32 rounded-xl overflow-hidden bg-gray-100">
-                        <img src={trainingDraft.coverUrl} alt="Cover preview" className="object-cover w-full h-full" onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
-                      </div>
+                      <SafeImage
+                        src={trainingDraft.coverUrl}
+                        alt="Cover preview"
+                        wrapperClassName="w-full h-32 rounded-xl overflow-hidden bg-gray-100"
+                        className="object-cover w-full h-full"
+                      />
                     )}
                   </div>
 

@@ -5,6 +5,7 @@
  * bloat a row without bound.
  */
 import { sanitize } from './security';
+import { normalizeImageUrl } from './imageUrl';
 
 export const SOP_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
@@ -36,7 +37,8 @@ export function sanitizeSteps(input: unknown): SopStep[] {
   if (!Array.isArray(input)) return [];
   return input.slice(0, MAX_STEPS).map(raw => {
     const s = asRecord(raw);
-    const imageUrl = typeof s.imageUrl === 'string' ? s.imageUrl.trim() : '';
+    // Unwrap image-search result links so a pasted Google/Bing URL still works
+    const imageUrl = typeof s.imageUrl === 'string' ? normalizeImageUrl(s.imageUrl) : '';
     return {
       title:    sanitize(String(s.title ?? ''), 'title'),
       summary:  sanitize(String(s.summary ?? ''), 'summary'),
