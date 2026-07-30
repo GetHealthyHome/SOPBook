@@ -344,7 +344,7 @@ export default function App() {
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
-  const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training' | 'trainingAdmin'>('login');
+  const [currentView, setCurrentView] = useState<'login' | 'home' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training' | 'trainingAdmin'>('login');
 
   // Account authorization state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -529,7 +529,7 @@ export default function App() {
       .then(data => {
         if (data?.user) {
           setCurrentUser(data.user);
-          setCurrentView('dashboard');
+          setCurrentView('home');
         }
       })
       .catch(() => {}) // network error — remain on login screen
@@ -1361,7 +1361,7 @@ export default function App() {
         clearAttempts(nameKey);
         setAttemptsLeft(null);
         setCurrentUser(user);
-        setCurrentView('dashboard');
+        setCurrentView('home');
       } else if (response.status === 429) {
         setLoginError('Too many requests from your network. Please wait a moment.');
       } else {
@@ -1813,7 +1813,12 @@ export default function App() {
         <aside className="hidden lg:flex flex-col w-56 min-h-screen bg-white border-r border-gray-100 shadow-sm fixed top-0 left-0 z-40">
           <div className="px-5 py-6 border-b border-gray-100">
             <div className="flex items-center gap-2.5">
-              <img src="/logo.svg" alt="Healthy Home Field Guide" className="w-9 h-9" />
+              <img
+                src="/logo.svg"
+                alt="Healthy Home Field Guide"
+                className={`w-9 h-9 ${currentUser ? 'cursor-pointer' : ''}`}
+                onClick={() => { if (currentUser) setCurrentView('home'); }}
+              />
               <div>
                 <p className="text-sm font-black text-gray-900 leading-none">Field Guide</p>
                 <p className="text-base text-gray-400 font-bold mt-0.5">Healthy Home</p>
@@ -1984,12 +1989,53 @@ export default function App() {
                       : 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-emerald-100'
                   }`}
                 >
-                  {lockoutSeconds > 0 ? `Locked (${lockoutSeconds}s)` : 'Enter Operational Portal'}
+                  {lockoutSeconds > 0 ? `Locked (${lockoutSeconds}s)` : 'Sign In'}
                 </button>
               </form>
 
             </div>
           )}
+
+          {/* VIEW: HOME LAUNCHER */}
+          {currentView === 'home' && currentUser && (() => {
+            const unread = userNotifications.filter(n => !n.read_at).length;
+            const tile = 'relative bg-emerald-900 hover:bg-emerald-800 active:scale-95 transition-all rounded-2xl p-6 flex flex-col items-center justify-center gap-3 text-white shadow-md shadow-emerald-100';
+            const label = 'text-sm font-black uppercase tracking-wider';
+            return (
+              <div className="space-y-6 py-6">
+                <h1 className="text-2xl font-black text-gray-950 tracking-tight text-center">
+                  Welcome back {currentUser.name.split(' ')[0]}!
+                </h1>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setCurrentView('dashboard')} className={tile}>
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                    <span className={label}>SOPs</span>
+                  </button>
+                  <button onClick={() => setCurrentView('handbook')} className={tile}>
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                    <span className={label}>Handbook</span>
+                  </button>
+                  <button onClick={() => setCurrentView('careerLadder')} className={tile}>
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    <span className={label}>Career Ladder</span>
+                  </button>
+                  <button onClick={() => { setOpenTraining(null); setCurrentView('training'); }} className={tile}>
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-6 4v-3.5"/></svg>
+                    <span className={label}>Training</span>
+                  </button>
+                  <button onClick={() => setCurrentView('userNotifications')} className={`${tile} col-span-2`}>
+                    {unread > 0 && (
+                      <span className="absolute top-3 right-3 bg-red-500 text-white text-xs font-black rounded-full min-w-[22px] h-[22px] px-1.5 flex items-center justify-center shadow-md">
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    )}
+                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    <span className={label}>Notifications</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* VIEW: MAIN SOP DIRECTORY */}
           {currentView === 'dashboard' && currentUser && (
