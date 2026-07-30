@@ -47,6 +47,11 @@ interface Step {
   imageUrl?: string;
 }
 
+type View =
+  | 'login' | 'home' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole'
+  | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training'
+  | 'trainingAdmin' | 'search';
+
 // Chromium's install-prompt event; not yet in the TS DOM lib
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -342,9 +347,17 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [installHint, setInstallHint] = useState(false);
 
   // Navigation Router: login, dashboard, new, document, addRevision, adminConsole
-  const [currentView, setCurrentView] = useState<'login' | 'home' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole' | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training' | 'trainingAdmin'>('login');
+  const [currentView, setCurrentView] = useState<View>('login');
+  // Breadcrumb of previously visited views, powering the global Back button
+  const [viewHistory, setViewHistory] = useState<View[]>([]);
+  const skipHistoryPush = useRef(false);
+  const lastView = useRef<View>('login');
+
+  // Global search across SOPs, training, handbook and career milestones
+  const [globalQuery, setGlobalQuery] = useState('');
 
   // Account authorization state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -565,13 +578,38 @@ export default function App() {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!installPrompt) return;
+    // No stored prompt (iOS Safari, or the prompt was already consumed):
+    // tell the user how to install by hand instead of doing nothing.
+    if (!installPrompt) {
+      setInstallHint(true);
+      return;
+    }
     setShowInstallBanner(false);
     try {
       await installPrompt.prompt();
       await installPrompt.userChoice; // resolves once the user decides
     } catch {} // prompt can only be used once; ignore repeat/blocked calls
     setInstallPrompt(null);
+  };
+
+  // Record view changes so the Back button can retrace them. Navigating
+  // back pops instead of pushing, so Back never ping-pongs between two views.
+  useEffect(() => {
+    if (lastView.current === currentView) return;
+    if (skipHistoryPush.current) {
+      skipHistoryPush.current = false;
+    } else if (lastView.current !== 'login') {
+      // Cap the stack so a long session can't grow it without bound
+      setViewHistory(h => [...h.slice(-19), lastView.current]);
+    }
+    lastView.current = currentView;
+  }, [currentView]);
+
+  const goBack = () => {
+    const target = viewHistory[viewHistory.length - 1];
+    skipHistoryPush.current = true;
+    setViewHistory(h => h.slice(0, -1));
+    setCurrentView(target ?? 'home');
   };
 
   const dismissInstallBanner = () => {
@@ -740,7 +778,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (currentView === 'handbook' && handbookSections.length === 0 && !handbookLoading) {
+    if ((currentView === 'handbook' || currentView === 'search') && handbookSections.length === 0 && !handbookLoading) {
       loadHandbook();
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -795,14 +833,14 @@ export default function App() {
   // milestones a module counts toward), and training data in career
   // views (to show a milestone's linked training).
   useEffect(() => {
-    if ((currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'training' || currentView === 'trainingAdmin') && currentUser && careerTracks.length === 0 && !careerLoading) {
+    if ((currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'search') && currentUser && careerTracks.length === 0 && !careerLoading) {
       loadCareerData();
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load training modules on first visit to a training or career view
   useEffect(() => {
-    if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin') && currentUser && !trainingLoaded && !trainingLoading) {
+    if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'search') && currentUser && !trainingLoaded && !trainingLoading) {
       loadTraining();
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1404,6 +1442,8 @@ export default function App() {
     setLoginError('');
     setLockoutSeconds(0);
     setAttemptsLeft(null);
+    setGlobalQuery('');
+    setViewHistory([]);
     setCurrentView('login');
   }, []);
 
@@ -1887,26 +1927,66 @@ export default function App() {
           </div>
         )}
 
-        {/* Custom install banner: shown when the browser offers installability */}
+        {/* Custom install banner: shown when the browser offers installability.
+            The whole banner is the install target; only the ✕ opts out. */}
         {showInstallBanner && (
           <div
             role="dialog"
             aria-label="Install app"
-            className={`absolute left-3 right-3 z-50 bg-emerald-900 text-white rounded-2xl shadow-xl p-3.5 flex items-center gap-3 ${
+            className={`absolute left-3 right-3 z-[60] bg-emerald-900 text-white rounded-2xl shadow-xl flex items-center gap-3 pr-2 ${
               currentUser && currentView !== 'login' ? 'bottom-20' : 'bottom-4'
             }`}
           >
-            <img src="/logo.svg" alt="" className="w-10 h-10 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-black leading-tight">Install the Field Guide</p>
-              <p className="text-xs text-emerald-100 font-medium leading-snug">Add to your home screen for offline SOP access.</p>
-            </div>
-            <button onClick={handleInstallClick} className="h-9 px-3.5 bg-white text-emerald-900 rounded-xl text-sm font-black flex-shrink-0">
-              Install
+            <button onClick={handleInstallClick} className="flex-1 min-w-0 flex items-center gap-3 text-left p-3.5 pr-0">
+              <img src="/logo.svg" alt="" className="w-10 h-10 flex-shrink-0" />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-black leading-tight">Install the Field Guide</span>
+                <span className="block text-xs text-emerald-100 font-medium leading-snug">
+                  {installHint
+                    ? 'Tap your browser’s Share button, then “Add to Home Screen”.'
+                    : 'Add to your home screen for offline SOP access.'}
+                </span>
+              </span>
+              <span className="h-9 px-3.5 bg-white text-emerald-900 rounded-xl text-sm font-black flex items-center flex-shrink-0">
+                Install
+              </span>
             </button>
-            <button onClick={dismissInstallBanner} aria-label="Dismiss install banner" className="text-emerald-200 hover:text-white p-1 flex-shrink-0">
+            <button onClick={dismissInstallBanner} aria-label="Dismiss install banner" className="text-emerald-200 hover:text-white p-2 flex-shrink-0">
               ✕
             </button>
+          </div>
+        )}
+
+        {/* Global toolbar: back out of a wrong turn, or jump straight to search */}
+        {currentUser && currentView !== 'login' && (
+          <div className="flex items-center justify-between gap-2 px-4 lg:px-8 pt-3 pb-1 lg:max-w-4xl lg:mx-auto lg:w-full">
+            <button
+              onClick={goBack}
+              disabled={viewHistory.length === 0}
+              className="flex items-center gap-1 h-9 px-3 rounded-xl text-sm font-black text-gray-500 hover:text-emerald-800 hover:bg-emerald-50 disabled:opacity-0 disabled:pointer-events-none transition-colors"
+            >
+              ← Back
+            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentView('home')}
+                aria-label="Home"
+                className={`h-9 px-3 rounded-xl text-sm font-black transition-colors ${
+                  currentView === 'home' ? 'text-emerald-800 bg-emerald-50' : 'text-gray-500 hover:text-emerald-800 hover:bg-emerald-50'
+                }`}
+              >
+                ⌂ Home
+              </button>
+              <button
+                onClick={() => setCurrentView('search')}
+                aria-label="Search"
+                className={`h-9 px-3 rounded-xl text-sm font-black flex items-center gap-1 transition-colors ${
+                  currentView === 'search' ? 'text-emerald-800 bg-emerald-50' : 'text-gray-500 hover:text-emerald-800 hover:bg-emerald-50'
+                }`}
+              >
+                <SearchIcon /> Search
+              </button>
+            </div>
           </div>
         )}
 
@@ -1996,40 +2076,146 @@ export default function App() {
             </div>
           )}
 
+          {/* VIEW: GLOBAL SEARCH */}
+          {currentView === 'search' && currentUser && (() => {
+            const q = globalQuery.trim().toLowerCase();
+            const hit = (...fields: (string | undefined)[]) =>
+              fields.some(f => (f ?? '').toLowerCase().includes(q));
+
+            const sopHits = q ? documents.filter(d =>
+              hit(d.title, d.summary, d.category, ...(d.categories ?? []),
+                  ...(d.steps ?? []).flatMap(s => [s.title, s.summary, s.body]))
+            ) : [];
+            const trainingHits = q ? trainingModules.filter(m =>
+              hit(m.title, m.description, m.category,
+                  ...(m.steps ?? []).flatMap(s => [s.title, s.body]))
+            ) : [];
+            const handbookHits = q ? handbookSections.filter(s => hit(s.title, s.content)) : [];
+            const careerHits = q ? careerTracks.flatMap(t =>
+              t.tasks.filter(tk => hit(tk.title, tk.description)).map(tk => ({ track: t, task: tk }))
+            ) : [];
+            const total = sopHits.length + trainingHits.length + handbookHits.length + careerHits.length;
+            const row = 'w-full text-left bg-white border border-gray-100 hover:border-emerald-200 rounded-xl px-3.5 py-2.5 shadow-xs transition-colors';
+            const heading = 'text-sm font-black text-gray-400 uppercase tracking-wider';
+
+            return (
+              <div className="space-y-4">
+                <div>
+                  <h1 className="text-2xl font-black text-gray-950 tracking-tight">Search</h1>
+                  <p className="text-sm text-gray-400 mt-0.5">Find any SOP, training, handbook section, or milestone.</p>
+                </div>
+
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"><SearchIcon /></span>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={globalQuery}
+                    onChange={e => setGlobalQuery(e.target.value)}
+                    placeholder="Search everything..."
+                    className="w-full h-12 pl-10 pr-10 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:border-emerald-600 focus:outline-none shadow-xs"
+                  />
+                  {globalQuery && (
+                    <button onClick={() => setGlobalQuery('')} aria-label="Clear search"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 font-black">✕</button>
+                  )}
+                </div>
+
+                {!q && (
+                  <p className="text-sm text-gray-400 text-center py-8">Start typing to search across the whole Field Guide.</p>
+                )}
+                {q && total === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-8">No matches for &ldquo;{globalQuery}&rdquo;.</p>
+                )}
+
+                {sopHits.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className={heading}>SOPs ({sopHits.length})</p>
+                    {sopHits.map(doc => (
+                      <button key={doc.id} className={row}
+                        onClick={() => { setSelectedDoc(doc); setCompletedSteps({}); setCurrentView('document'); }}>
+                        <span className="block text-sm font-black text-gray-900 leading-snug">{doc.title}</span>
+                        {doc.summary && <span className="block text-sm text-gray-400 truncate">{doc.summary}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {trainingHits.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className={heading}>Training ({trainingHits.length})</p>
+                    {trainingHits.map(mod => (
+                      <button key={mod.id} className={row}
+                        onClick={() => { setOpenTraining(mod); setCurrentView('training'); }}>
+                        <span className="block text-sm font-black text-gray-900 leading-snug">{mod.title}</span>
+                        {mod.description && <span className="block text-sm text-gray-400 truncate">{mod.description}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {handbookHits.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className={heading}>Handbook ({handbookHits.length})</p>
+                    {handbookHits.map(section => (
+                      <button key={section.id} className={row}
+                        onClick={() => { setExpandedSection(section.id); setCurrentView('handbook'); }}>
+                        <span className="block text-sm font-black text-gray-900 leading-snug">{section.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {careerHits.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className={heading}>Career Milestones ({careerHits.length})</p>
+                    {careerHits.map(({ track, task }) => (
+                      <button key={task.id} className={row}
+                        onClick={() => { setExpandedTask(task.id); setCurrentView('careerLadder'); }}>
+                        <span className="block text-sm font-black text-gray-900 leading-snug">{task.title}</span>
+                        <span className="block text-sm text-gray-400 truncate">{track.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* VIEW: HOME LAUNCHER */}
           {currentView === 'home' && currentUser && (() => {
             const unread = userNotifications.filter(n => !n.read_at).length;
-            const tile = 'relative bg-emerald-900 hover:bg-emerald-800 active:scale-95 transition-all rounded-2xl p-6 flex flex-col items-center justify-center gap-3 text-white shadow-md shadow-emerald-100';
-            const label = 'text-sm font-black uppercase tracking-wider';
+            const tile = 'relative aspect-square bg-emerald-900 hover:bg-emerald-800 active:scale-95 transition-all rounded-2xl p-2 flex flex-col items-center justify-center gap-2 text-white shadow-md shadow-emerald-100';
+            const label = 'text-[10px] leading-tight font-black uppercase tracking-wide text-center';
             return (
               <div className="space-y-6 py-6">
                 <h1 className="text-2xl font-black text-gray-950 tracking-tight text-center">
                   Welcome back {currentUser.name.split(' ')[0]}!
                 </h1>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <button onClick={() => setCurrentView('dashboard')} className={tile}>
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                    <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
                     <span className={label}>SOPs</span>
                   </button>
                   <button onClick={() => setCurrentView('handbook')} className={tile}>
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                    <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
                     <span className={label}>Handbook</span>
                   </button>
                   <button onClick={() => setCurrentView('careerLadder')} className={tile}>
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                     <span className={label}>Career Ladder</span>
                   </button>
                   <button onClick={() => { setOpenTraining(null); setCurrentView('training'); }} className={tile}>
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-6 4v-3.5"/></svg>
+                    <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-6 4v-3.5"/></svg>
                     <span className={label}>Training</span>
                   </button>
-                  <button onClick={() => setCurrentView('userNotifications')} className={`${tile} col-span-2`}>
+                  <button onClick={() => setCurrentView('userNotifications')} className={tile}>
                     {unread > 0 && (
-                      <span className="absolute top-3 right-3 bg-red-500 text-white text-xs font-black rounded-full min-w-[22px] h-[22px] px-1.5 flex items-center justify-center shadow-md">
+                      <span className="absolute top-1.5 right-1.5 bg-red-500 text-white text-[10px] font-black rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center shadow-md">
                         {unread > 9 ? '9+' : unread}
                       </span>
                     )}
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
                     <span className={label}>Notifications</span>
                   </button>
                 </div>
