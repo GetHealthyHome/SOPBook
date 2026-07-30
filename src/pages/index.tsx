@@ -2260,7 +2260,10 @@ export default function App() {
             const unread = userNotifications.filter(n => !n.read_at).length;
             // Circular icon button with the label sitting below the circle
             const tile = 'flex flex-col items-center gap-2 active:scale-95 transition-transform';
-            const circle = 'relative w-full aspect-square rounded-full bg-emerald-900 hover:bg-emerald-800 flex items-center justify-center text-white shadow-md shadow-emerald-100 transition-colors';
+            // Each section gets its own colour so the circles are quick to
+            // tell apart at a glance; all are dark enough for white icons.
+            const circle = (colour: string) =>
+              `relative w-full aspect-square rounded-full ${colour} flex items-center justify-center text-white shadow-md transition-colors`;
             const label = 'text-[11px] leading-tight font-black uppercase tracking-wide text-center text-gray-700';
             const icon = 'w-1/2 h-1/2';
             return (
@@ -2270,31 +2273,31 @@ export default function App() {
                 </h1>
                 <div className="grid grid-cols-3 gap-x-4 gap-y-5">
                   <button onClick={() => setCurrentView('dashboard')} className={tile}>
-                    <span className={circle}>
+                    <span className={circle('bg-emerald-900 hover:bg-emerald-800')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
                     </span>
                     <span className={label}>SOPs</span>
                   </button>
                   <button onClick={() => setCurrentView('handbook')} className={tile}>
-                    <span className={circle}>
+                    <span className={circle('bg-blue-800 hover:bg-blue-700')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
                     </span>
                     <span className={label}>Handbook</span>
                   </button>
                   <button onClick={() => setCurrentView('careerLadder')} className={tile}>
-                    <span className={circle}>
+                    <span className={circle('bg-amber-600 hover:bg-amber-500')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                     </span>
                     <span className={label}>Career Ladder</span>
                   </button>
                   <button onClick={() => { setOpenTraining(null); setCurrentView('training'); }} className={tile}>
-                    <span className={circle}>
+                    <span className={circle('bg-violet-800 hover:bg-violet-700')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-6 4v-3.5"/></svg>
                     </span>
                     <span className={label}>Training</span>
                   </button>
                   <button onClick={() => setCurrentView('userNotifications')} className={tile}>
-                    <span className={circle}>
+                    <span className={circle('bg-rose-700 hover:bg-rose-600')}>
                       {unread > 0 && (
                         <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-black rounded-full min-w-[20px] h-[20px] px-1 flex items-center justify-center shadow-md ring-2 ring-white">
                           {unread > 9 ? '9+' : unread}
