@@ -2796,7 +2796,9 @@ export default function App() {
               {!showingSopList && (
                 <div className="space-y-2">
                   <span className="text-xs font-black text-gray-600 tracking-widest uppercase block">Divisions</span>
-                  <div className="grid grid-cols-2 gap-2.5">
+                  {/* 2:1 tiles — the column count steps up with the viewport so
+                      the tiles keep their shape instead of stretching wide. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                     {categoriesList.map(cat => {
                       const count = documents.filter(d =>
                         (d.categories?.length ? d.categories : [d.category]).includes(cat)
@@ -2805,14 +2807,18 @@ export default function App() {
                         <button
                           key={cat}
                           onClick={() => setSelectedCategory(cat)}
-                          className="bg-white border border-gray-200 hover:border-emerald-300 hover:shadow-md rounded-2xl p-4 text-left transition-all active:scale-[0.99] group"
+                          className="aspect-[2/1] bg-white border border-gray-200 hover:border-emerald-300 hover:shadow-md rounded-2xl p-3 text-left transition-all active:scale-[0.99] group flex items-center gap-2.5 overflow-hidden"
                         >
-                          <span className="inline-flex p-2.5 bg-emerald-50 text-emerald-800 rounded-xl group-hover:bg-emerald-800 group-hover:text-white transition-colors">
+                          {/* Wide tiles read better with the icon beside the
+                              label rather than stacked above it */}
+                          <span className="inline-flex p-2 bg-emerald-50 text-emerald-800 rounded-lg group-hover:bg-emerald-800 group-hover:text-white transition-colors flex-shrink-0">
                             <FolderIcon />
                           </span>
-                          <span className="block text-base font-black text-gray-900 leading-snug mt-2.5">{cat}</span>
-                          <span className="block text-xs text-gray-600 font-bold mt-0.5">
-                            {count} {count === 1 ? 'procedure' : 'procedures'}
+                          <span className="min-w-0">
+                            <span className="block text-sm font-black text-gray-900 leading-tight">{cat}</span>
+                            <span className="block text-xs text-gray-600 font-bold mt-0.5">
+                              {count} {count === 1 ? 'procedure' : 'procedures'}
+                            </span>
                           </span>
                         </button>
                       );
