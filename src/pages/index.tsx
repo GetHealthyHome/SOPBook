@@ -131,7 +131,7 @@ function ReferenceSection({ title, text, filled }: { title: string; text: string
 type View =
   | 'login' | 'home' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole'
   | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training'
-  | 'trainingAdmin' | 'search';
+  | 'trainingAdmin' | 'search' | 'safety';
 
 // Chromium's install-prompt event; not yet in the TS DOM lib
 interface BeforeInstallPromptEvent extends Event {
@@ -934,7 +934,7 @@ export default function App() {
 
   // Load training modules on first visit to a training or career view
   useEffect(() => {
-    if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'search') && currentUser && !trainingLoaded && !trainingLoading) {
+    if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'search' || currentView === 'safety') && currentUser && !trainingLoaded && !trainingLoading) {
       loadTraining();
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1965,6 +1965,7 @@ export default function App() {
               { view: 'handbook', label: 'Handbook', icon: <HandbookIcon />, match: ['handbook'] },
               { view: 'careerLadder', label: 'Career', icon: <CareerIcon />, match: ['careerLadder','careerAdmin'] },
               { view: 'training', label: 'Training', icon: <TrainingIcon />, match: ['training','trainingAdmin'] },
+              { view: 'safety', label: 'Safety', icon: <ShieldIcon />, match: ['safety'] },
               { view: 'userNotifications', label: 'Notifications', icon: <BellIcon />, match: ['userNotifications'] },
               ...(currentUser.userType === 'admin' ? [
                 { view: 'new', label: 'Draft SOP', icon: <PlusIcon />, match: ['new'] },
@@ -2173,6 +2174,103 @@ export default function App() {
             </div>
           )}
 
+          {/* VIEW: SAFETY CENTRE — one place for the safety-critical material
+              that already lives across SOPs and training, so nobody has to open
+              each procedure to find out what protection a job needs. */}
+          {currentView === 'safety' && currentUser && (() => {
+            const isSafety = (d: SOP) =>
+              (d.categories?.length ? d.categories : [d.category]).some(c => (c ?? '').toLowerCase() === 'safety');
+            const safetySops = documents.filter(isSafety);
+            const sopPpe = documents.filter(d => d.ppe?.trim());
+            const trainingPpe = trainingModules.filter(m => m.ppe?.trim());
+            const nothing = safetySops.length === 0 && sopPpe.length === 0 && trainingPpe.length === 0;
+            const card = 'w-full text-left bg-white border border-gray-200 hover:border-red-300 hover:shadow-md rounded-2xl p-4 transition-all active:scale-[0.99]';
+
+            return (
+              <div className="space-y-6">
+                <div className="flex items-start gap-3">
+                  <span className="p-3 bg-red-50 text-red-700 rounded-2xl flex-shrink-0">
+                    <ShieldIcon />
+                  </span>
+                  <div>
+                    <h1 className="text-2xl font-black text-gray-950 tracking-tight leading-tight">Safety</h1>
+                    <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">
+                      Safety procedures and every PPE requirement across the Field Guide, in one place.
+                    </p>
+                  </div>
+                </div>
+
+                {nothing && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center">
+                    <p className="text-base font-black text-gray-900">Nothing here yet</p>
+                    <p className="text-sm text-gray-600 mt-1 leading-relaxed max-w-[300px] mx-auto">
+                      Safety content appears automatically once an SOP is filed under the Safety
+                      category, or once any SOP or training module lists PPE.
+                    </p>
+                  </div>
+                )}
+
+                {safetySops.length > 0 && (
+                  <section className="space-y-2">
+                    <h2 className="text-xs font-black text-gray-600 uppercase tracking-widest">
+                      Safety procedures ({safetySops.length})
+                    </h2>
+                    {safetySops.map(doc => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        className={card}
+                        onClick={() => { setSelectedDoc(doc); setCompletedSteps({}); setDocTab('checklist'); setCurrentView('document'); }}
+                      >
+                        <span className="block text-base font-black text-gray-900 leading-snug">{doc.title}</span>
+                        {doc.summary && <span className="block text-sm text-gray-600 leading-relaxed mt-0.5 line-clamp-2">{doc.summary}</span>}
+                      </button>
+                    ))}
+                  </section>
+                )}
+
+                {(sopPpe.length > 0 || trainingPpe.length > 0) && (
+                  <section className="space-y-2">
+                    <h2 className="text-xs font-black text-gray-600 uppercase tracking-widest">
+                      PPE by procedure ({sopPpe.length + trainingPpe.length})
+                    </h2>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Check the gear you need before starting — tap any entry to open it.
+                    </p>
+                    {sopPpe.map(doc => (
+                      <button
+                        key={`sop-${doc.id}`}
+                        type="button"
+                        className={`${card} border-l-4 border-l-red-600`}
+                        onClick={() => { setSelectedDoc(doc); setCompletedSteps({}); setDocTab('checklist'); setCurrentView('document'); }}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-red-800 bg-red-50 px-1.5 py-0.5 rounded">SOP</span>
+                          <span className="text-base font-black text-gray-900 leading-snug">{doc.title}</span>
+                        </span>
+                        <RichText className="text-sm text-gray-700 leading-relaxed mt-1.5" text={doc.ppe ?? ''} />
+                      </button>
+                    ))}
+                    {trainingPpe.map(mod => (
+                      <button
+                        key={`mod-${mod.id}`}
+                        type="button"
+                        className={`${card} border-l-4 border-l-red-600`}
+                        onClick={() => { setOpenTraining(mod); setCurrentView('training'); }}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-violet-800 bg-violet-50 px-1.5 py-0.5 rounded">Training</span>
+                          <span className="text-base font-black text-gray-900 leading-snug">{mod.title}</span>
+                        </span>
+                        <RichText className="text-sm text-gray-700 leading-relaxed mt-1.5" text={mod.ppe ?? ''} />
+                      </button>
+                    ))}
+                  </section>
+                )}
+              </div>
+            );
+          })()}
+
           {/* VIEW: GLOBAL SEARCH */}
           {currentView === 'search' && currentUser && (() => {
             const q = globalQuery.trim().toLowerCase();
@@ -2323,6 +2421,12 @@ export default function App() {
                     </span>
                     <span className={label}>Training</span>
                   </button>
+                  <button onClick={() => setCurrentView('safety')} className={tile}>
+                    <span className={circle('bg-red-700 hover:bg-red-600')}>
+                      <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    </span>
+                    <span className={label}>Safety</span>
+                  </button>
                   <button onClick={() => setCurrentView('userNotifications')} className={tile}>
                     <span className={circle('bg-rose-700 hover:bg-rose-600')}>
                       {unread > 0 && (
@@ -2451,7 +2555,7 @@ export default function App() {
                 {filteredDocs.length === 0 ? (
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 text-center">
                     <div className="text-amber-500 mb-2 flex justify-center"><AlertCircleIcon /></div>
-                    <h3 className="text-xs font-bold text-gray-900">No guidelines found</h3>
+                    <h3 className="text-base font-bold text-gray-900">No guidelines found</h3>
                     <p className="text-sm text-gray-500 mt-1 max-w-[260px] mx-auto leading-relaxed">
                       There are no protocols registered under this category tab. Click below to reload sample data.
                     </p>
@@ -2464,48 +2568,71 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="grid gap-3">
-                    {filteredDocs.map((doc) => (
-                      <div
-                        key={doc.id}
-                        onClick={() => {
-                          setSelectedDoc(doc);
-                          setCompletedSteps({}); // Reset timeline checks
-                          setDocTab('checklist');
-                          setCurrentView('document');
-                        }}
-                        className="bg-white border border-gray-100 hover:border-emerald-100 hover:shadow-xs rounded-2xl p-4 transition-all cursor-pointer flex items-center justify-between group active:bg-gray-50 duration-150"
-                      >
-                        <div className="flex items-start gap-3.5 pr-2">
-                          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl group-hover:bg-emerald-800 group-hover:text-white transition-all duration-150 flex-shrink-0 mt-0.5">
+                    {filteredDocs.map((doc) => {
+                      // Sign-off state is the point of the app, so surface it on
+                      // the card instead of making people open every SOP to check.
+                      const version = doc.revisionHistory?.[0]?.version || 'v1.0';
+                      const signedOff = doc.readLogs?.some(
+                        l => l.userName === currentUser.name && l.versionRead === version
+                      );
+                      return (
+                        <button
+                          key={doc.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDoc(doc);
+                            setCompletedSteps({}); // Reset timeline checks
+                            setDocTab('checklist');
+                            setCurrentView('document');
+                          }}
+                          className="w-full text-left bg-white border border-gray-200 hover:border-emerald-300 hover:shadow-md rounded-2xl p-4 transition-all cursor-pointer flex items-start gap-3.5 group active:scale-[0.99] duration-150"
+                        >
+                          <span className="p-3 bg-emerald-50 text-emerald-800 rounded-xl group-hover:bg-emerald-800 group-hover:text-white transition-colors duration-150 flex-shrink-0">
                             <FolderIcon />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {sopCats(doc).map(cat => (
-                                <span key={cat} className="inline-flex items-center gap-1 text-xs font-black tracking-widest uppercase text-emerald-800 bg-emerald-50/70 px-1.5 py-0.5 rounded-xs">
-                                  <TagIcon /> {cat}
-                                </span>
-                              ))}
-                              <span className="text-xs font-bold text-gray-500">
-                                {doc.revisionHistory[0]?.version || 'v1.0'}
+                          </span>
+
+                          <span className="flex-1 min-w-0 space-y-1.5">
+                            {/* Title leads — it is what people scan for */}
+                            <span className="flex items-start justify-between gap-2">
+                              <span className="text-base font-black text-gray-900 leading-snug line-clamp-2 group-hover:text-emerald-800 transition-colors">
+                                {doc.title}
                               </span>
-                            </div>
-                            <h4 className="text-sm font-black text-gray-900 leading-snug line-clamp-1 group-hover:text-emerald-800 transition-colors">
-                              {doc.title}
-                            </h4>
-                            <p className="text-xs text-gray-500 font-semibold leading-relaxed line-clamp-2">
-                              {doc.summary}
-                            </p>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 font-bold">
-                              <span>By {doc.lastUpdatedBy}</span>
-                              <span>•</span>
-                              <span>{doc.lastUpdated}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <ChevronRightIcon />
-                      </div>
-                    ))}
+                              <span className="text-gray-400 group-hover:text-emerald-700 transition-colors flex-shrink-0 mt-0.5">
+                                <ChevronRightIcon />
+                              </span>
+                            </span>
+
+                            {doc.summary && (
+                              <span className="block text-sm text-gray-600 leading-relaxed line-clamp-2">
+                                {doc.summary}
+                              </span>
+                            )}
+
+                            {/* One quiet meta row instead of three competing ones */}
+                            <span className="flex items-center flex-wrap gap-x-2 gap-y-1 pt-0.5">
+                              <span
+                                className={`inline-flex items-center gap-1 text-xs font-black uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                                  signedOff
+                                    ? 'bg-emerald-100 text-emerald-900'
+                                    : 'bg-amber-100 text-amber-900'
+                                }`}
+                              >
+                                {signedOff ? '✓ Signed off' : 'Needs sign-off'}
+                              </span>
+                              {sopCats(doc).map(cat => (
+                                <span key={cat} className="text-xs font-bold text-gray-600">{cat}</span>
+                              ))}
+                              <span className="text-xs text-gray-500" aria-hidden="true">·</span>
+                              <span className="text-xs font-bold text-gray-600">{version}</span>
+                              <span className="text-xs text-gray-500" aria-hidden="true">·</span>
+                              <span className="text-xs text-gray-600">{doc.steps?.length ?? 0} steps</span>
+                              <span className="text-xs text-gray-500" aria-hidden="true">·</span>
+                              <span className="text-xs text-gray-600">{doc.lastUpdated}</span>
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -2789,22 +2916,29 @@ export default function App() {
           {currentView === 'document' && selectedDoc && currentUser && (
             <div className="space-y-5">
               
-              {/* Headings Row */}
-              <div className="flex items-center justify-between -ml-1 border-b border-gray-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentView('dashboard')}
-                    className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
-                  >
-                    <ArrowLeftIcon />
-                  </button>
-                  <div>
-                    <span className="text-xs uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
-                      <TagIcon /> {sopCats(selectedDoc).join(' · ') || 'Uncategorized'} SOP
-                    </span>
-                    <h1 className="text-xs font-black text-gray-950 leading-tight line-clamp-1">{selectedDoc.title}</h1>
+              {/* Title block — the document's name is the anchor of this screen,
+                  so it gets room to breathe instead of being clamped to one line
+                  beside the admin controls. */}
+              <div className="space-y-3 border-b border-gray-100 pb-4">
+                <div className="flex items-start justify-between gap-2 -ml-1">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <button
+                      onClick={() => setCurrentView('dashboard')}
+                      aria-label="Back to all SOPs"
+                      className="p-1.5 hover:bg-gray-100 rounded-full text-gray-600 transition-colors flex-shrink-0 mt-0.5"
+                    >
+                      <ArrowLeftIcon />
+                    </button>
+                    <div className="min-w-0">
+                      <span className="text-xs uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
+                        <TagIcon /> {sopCats(selectedDoc).join(' · ') || 'Uncategorized'}
+                      </span>
+                      <h1 className="text-xl font-black text-gray-950 leading-tight mt-0.5">{selectedDoc.title}</h1>
+                      {selectedDoc.summary && (
+                        <p className="text-sm text-gray-600 leading-relaxed mt-1">{selectedDoc.summary}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
 
                 {currentUser.userType === 'admin' && (
                   <div className="flex items-center gap-1.5">
@@ -2855,25 +2989,32 @@ export default function App() {
                 )}
               </div>
 
-              {/* Version & Author metadata block */}
-              <div className="bg-gray-50 rounded-2xl p-3.5 flex justify-between items-center text-sm shadow-xs">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500 font-extrabold uppercase">Current Standard</span>
-                    <span className="text-emerald-800 font-black">{selectedDoc.revisionHistory[0]?.version || 'v1.0'}</span>
-                  </div>
-                  <p className="text-gray-800 font-extrabold leading-none mt-1">Updated by {selectedDoc.lastUpdatedBy}</p>
-                  <p className="text-gray-500 font-bold mt-1">Role: {selectedDoc.lastUpdatedByRole} • {selectedDoc.lastUpdated}</p>
-                  
-                  {/* Scheduled review date */}
-                  <div className="flex items-center gap-1 text-base text-amber-600 font-bold pt-1.5">
-                    <CalendarIcon />
-                    <span>Next Compliance Health Review: {selectedDoc.nextReviewDate || "12/28/2026"}</span>
-                  </div>
-                </div>
-                <span className="text-sm font-black text-emerald-800 bg-emerald-50 px-2 py-1.5 rounded-lg flex-shrink-0">
-                  {selectedDoc.steps?.length} Steps
-                </span>
+                {/* Facts as an even chip row: scannable at a glance, rather than
+                    label-and-value paragraphs that have to be read through. */}
+                {(() => {
+                  const version = selectedDoc.revisionHistory?.[0]?.version || 'v1.0';
+                  const signedOff = selectedDoc.readLogs?.some(
+                    l => l.userName === currentUser.name && l.versionRead === version
+                  );
+                  const chip = 'inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full';
+                  return (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`${chip} ${signedOff ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'} font-black uppercase tracking-wide`}>
+                        {signedOff ? '✓ Signed off' : 'Needs sign-off'}
+                      </span>
+                      <span className={`${chip} bg-gray-100 text-gray-700`}>{version}</span>
+                      <span className={`${chip} bg-gray-100 text-gray-700`}>{selectedDoc.steps?.length ?? 0} steps</span>
+                      <span className={`${chip} bg-gray-100 text-gray-700`}>
+                        {selectedDoc.lastUpdatedBy} · {selectedDoc.lastUpdated}
+                      </span>
+                      {selectedDoc.nextReviewDate && (
+                        <span className={`${chip} bg-amber-50 text-amber-800`}>
+                          <CalendarIcon /> Review {selectedDoc.nextReviewDate}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Reference sections: PPE, hardware, consumables, terms */}
@@ -2984,7 +3125,7 @@ export default function App() {
                   <div className="bg-emerald-50/20 border border-emerald-100/50 rounded-2xl p-4 space-y-3.5 shadow-xs">
                     <div className="flex justify-between items-start gap-2">
                       <div className="space-y-0.5">
-                        <h4 className="text-xs font-black text-gray-900 leading-none flex items-center gap-1">
+                        <h4 className="text-base font-black text-gray-900 leading-none flex items-center gap-1">
                           <SparklesIcon /> Spot an issue with this SOP?
                         </h4>
                         <p className="text-xs text-gray-500 mt-1 leading-snug">
@@ -3023,7 +3164,7 @@ export default function App() {
                   {/* Bottom validation button panel */}
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
                     <div className="max-w-[55%]">
-                      <h4 className="text-xs font-bold text-gray-900 leading-none">Compliance Registry</h4>
+                      <h4 className="text-base font-bold text-gray-900 leading-none">Compliance Registry</h4>
                       <p className="text-xs text-gray-500 mt-1 leading-snug">
                         Validating certifies full execution of procedural version {currentVersion}.
                       </p>
@@ -3069,7 +3210,7 @@ export default function App() {
                             <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded-md">{rev.version}</span>
                             <span className="text-gray-500">{rev.date}</span>
                           </div>
-                          <p className="text-xs text-gray-800 font-bold mt-1">&ldquo;{rev.notes}&rdquo;</p>
+                          <p className="text-base text-gray-800 font-bold mt-1">&ldquo;{rev.notes}&rdquo;</p>
                           <p className="text-xs text-gray-500 font-bold">
                             Revised by: {rev.updatedBy} ({rev.userRole})
                           </p>
@@ -3182,7 +3323,7 @@ export default function App() {
                 </button>
                 <div>
                   <span className="text-xs uppercase tracking-wider text-gray-500 font-bold">SOP Revision Journal</span>
-                  <h1 className="text-xs font-black text-gray-900 leading-none">Drafting Version Changelog</h1>
+                  <h1 className="text-base font-black text-gray-900 leading-none">Drafting Version Changelog</h1>
                 </div>
               </div>
 
@@ -3253,7 +3394,7 @@ export default function App() {
                   <span className="text-xs uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
                     <ShieldIcon /> ADMINISTRATOR CONSOLE
                   </span>
-                  <h1 className="text-xs font-black text-gray-950 leading-tight">Oversight & Compliance Matrix</h1>
+                  <h1 className="text-base font-black text-gray-950 leading-tight">Oversight & Compliance Matrix</h1>
                 </div>
               </div>
 
@@ -3330,7 +3471,7 @@ export default function App() {
                         <p className="text-xs font-black text-emerald-800 uppercase tracking-wider leading-none">
                           ALERT FOR: {notif.docTitle}
                         </p>
-                        <p className="text-xs text-gray-850 font-semibold leading-relaxed pt-0.5">
+                        <p className="text-base text-gray-850 font-semibold leading-relaxed pt-0.5">
                           &ldquo;{notif.notes}&rdquo;
                         </p>
                         <div className="flex justify-between items-center text-sm text-gray-500 font-bold pt-1">
@@ -3808,7 +3949,7 @@ export default function App() {
                   <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
                     <HandbookIcon />
                   </div>
-                  <p className="text-xs font-black text-gray-900">No Content Yet</p>
+                  <p className="text-base font-black text-gray-900">No Content Yet</p>
                   <p className="text-sm text-gray-500 max-w-[220px] mx-auto leading-relaxed">
                     {currentUser.userType === 'admin' ? 'Click "Edit Handbook" to add the first section.' : 'Handbook sections have not been loaded. Contact your administrator.'}
                   </p>
@@ -3920,7 +4061,7 @@ export default function App() {
                                   onClick={() => setEditingSection({ id: section.id, title: section.title, content: section.content, change_note: '' })}
                                   className="flex-1 flex items-center justify-between text-left min-w-0"
                                 >
-                                  <span className="text-xs font-bold text-gray-900 leading-snug pr-3 truncate">{section.title}</span>
+                                  <span className="text-base font-bold text-gray-900 leading-snug pr-3 truncate">{section.title}</span>
                                   <span className="flex-shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">Edit</span>
                                 </button>
                               </div>
@@ -3929,7 +4070,7 @@ export default function App() {
                                 onClick={() => setExpandedSection(isOpen ? null : section.id)}
                                 className="w-full flex items-center justify-between px-4 py-3.5 text-left"
                               >
-                                <span className="text-xs font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
+                                <span className="text-base font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
                                 <span className={`flex-shrink-0 w-5 h-5 text-emerald-800 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
                                   <ChevronRightIcon />
                                 </span>
@@ -4237,7 +4378,7 @@ export default function App() {
                     <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
                       <CareerIcon />
                     </div>
-                    <p className="text-xs font-black text-gray-900">Path Not Assigned Yet</p>
+                    <p className="text-base font-black text-gray-900">Path Not Assigned Yet</p>
                     <p className="text-sm text-gray-500 max-w-[220px] mx-auto leading-relaxed">Your admin will assign your career path and starting level. Check back soon.</p>
                   </div>
                 )}
@@ -4250,7 +4391,7 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-black text-emerald-700 uppercase tracking-widest">{assignedTrack.department}</p>
-                          <p className="text-xs font-black text-gray-900 mt-0.5">{assignedTrack.name}</p>
+                          <p className="text-base font-black text-gray-900 mt-0.5">{assignedTrack.name}</p>
                           {myAssignment && <p className="text-sm text-gray-500 mt-0.5">Assigned by {myAssignment.assigned_by}</p>}
                         </div>
                         <span className="text-2xl font-black text-emerald-800">{pct}%</span>
@@ -4459,7 +4600,7 @@ export default function App() {
                         ) : (
                           <div className="p-3.5 flex items-center gap-2">
                             <button onClick={() => setExpandedBuilderTrack(isOpen ? null : track.id)} className="flex-1 text-left min-w-0">
-                              <p className="text-xs font-black text-gray-900 leading-snug">{track.name}</p>
+                              <p className="text-base font-black text-gray-900 leading-snug">{track.name}</p>
                               <p className="text-sm text-gray-500 mt-0.5 truncate">{track.tasks.length} milestone{track.tasks.length !== 1 ? 's' : ''}{track.description ? ` — ${track.description}` : ''}</p>
                             </button>
                             <button onClick={() => { setEditingTrack({ id: track.id, name: track.name, description: track.description || '' }); setTrackDeleteConfirm(null); }} className="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit level">
@@ -4587,7 +4728,7 @@ export default function App() {
                         {/* Header */}
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="text-xs font-bold text-gray-900">{account.name}</p>
+                            <p className="text-base font-bold text-gray-900">{account.name}</p>
                             <p className="text-xs text-gray-500">{account.role}</p>
                           </div>
                           <button
@@ -4897,7 +5038,7 @@ export default function App() {
                   {!trainingLoading && !trainingError && trainingModules.filter(m => m.category === trainingCategory).length === 0 && (
                     <div className="bg-gray-50 border border-gray-100 rounded-2xl p-8 text-center space-y-2">
                       <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto"><TrainingIcon /></div>
-                      <p className="text-xs font-black text-gray-900">No {trainingCategory} training yet</p>
+                      <p className="text-base font-black text-gray-900">No {trainingCategory} training yet</p>
                       <p className="text-sm text-gray-500 max-w-[240px] mx-auto leading-relaxed">Training modules published by your admins will appear here.</p>
                     </div>
                   )}
@@ -5002,7 +5143,7 @@ export default function App() {
                         <div key={mod.id} className="bg-white border border-gray-100 rounded-2xl p-3.5 space-y-2">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-black text-gray-900 leading-snug">{mod.title}</p>
+                              <p className="text-base font-black text-gray-900 leading-snug">{mod.title}</p>
                               <p className="text-sm text-gray-500 mt-0.5">
                                 {mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}{mod.created_by ? ` — by ${mod.created_by}` : ''}
                                 {modValidated.length > 0 ? ` · ${modValidated.length} validated` : ''}
