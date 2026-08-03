@@ -230,6 +230,27 @@ interface TrainingStep {
   order_index: number;
 }
 
+/** Authored safety content — OSHA-style overviews and toolbox talks. */
+interface SafetyModule {
+  id: number;
+  title: string;
+  body: string;
+  image_url: string;
+  link_url: string;
+  link_label: string;
+  created_by: string;
+  created_at: string;
+}
+
+interface SafetyDraft {
+  id: number | null;
+  title: string;
+  body: string;
+  imageUrl: string;
+  linkUrl: string;
+  linkLabel: string;
+}
+
 interface TrainingModule {
   id: number;
   title: string;
@@ -529,6 +550,17 @@ export default function App() {
   const [trainingErrorFields, setTrainingErrorFields] = useState<Set<string>>(new Set());
   const [trainingDeleteConfirm, setTrainingDeleteConfirm] = useState<number | null>(null);
   const [trainingUploading, setTrainingUploading] = useState<string | null>(null); // 'cover' | step index
+
+  // Safety modules (authored) + admin builder state
+  const [safetyModules, setSafetyModules] = useState<SafetyModule[]>([]);
+  const [safetyLoaded, setSafetyLoaded] = useState(false);
+  const [safetyLoading, setSafetyLoading] = useState(false);
+  const [safetyError, setSafetyError] = useState('');
+  const [safetyDraft, setSafetyDraft] = useState<SafetyDraft | null>(null);
+  const [safetySaving, setSafetySaving] = useState(false);
+  const [safetyFormError, setSafetyFormError] = useState('');
+  const [safetyUploading, setSafetyUploading] = useState(false);
+  const [safetyDeleteConfirm, setSafetyDeleteConfirm] = useState<number | null>(null);
   // Training completion validation
   const [trainingCompletions, setTrainingCompletions] = useState<TrainingCompletion[]>([]);
   const [trainingCompBusy, setTrainingCompBusy] = useState(false);
@@ -933,6 +965,13 @@ export default function App() {
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load safety modules on first visit to the Safety view
+  useEffect(() => {
+    if (currentView === 'safety' && currentUser && !safetyLoaded && !safetyLoading) {
+      loadSafety();
+    }
+  }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load training modules on first visit to a training or career view
   useEffect(() => {
     if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'search' || currentView === 'safety' || currentView === 'adminConsole') && currentUser && !trainingLoaded && !trainingLoading) {
@@ -1183,6 +1222,96 @@ export default function App() {
     } finally {
       setTrainingLoading(false);
     }
+  };
+
+  // ---- Safety modules -----------------------------------------------------
+  const loadSafety = async () => {
+    setSafetyLoading(true);
+    setSafetyError('');
+    try {
+      const res = await fetch('/api/safety');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setSafetyModules(data.modules ?? []);
+      setSafetyLoaded(true);
+    } catch (err) {
+      setSafetyError(err instanceof Error ? err.message : 'Could not load safety modules.');
+    } finally {
+      setSafetyLoading(false);
+    }
+  };
+
+  const blankSafetyDraft = (): SafetyDraft => ({
+    id: null, title: '', body: '', imageUrl: '', linkUrl: '', linkLabel: '',
+  });
+
+  const uploadSafetyPhoto = async (file: File) => {
+    setSafetyUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', await compressImage(file));
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        setSafetyFormError(data.error || 'Photo upload failed.');
+        return;
+      }
+      setSafetyFormError('');
+      setSafetyDraft(prev => (prev ? { ...prev, imageUrl: data.url } : prev));
+    } catch {
+      setSafetyFormError('Photo upload failed. Check your connection.');
+    } finally {
+      setSafetyUploading(false);
+    }
+  };
+
+  const saveSafetyDraft = async () => {
+    if (!safetyDraft) return;
+    if (!safetyDraft.title.trim()) { setSafetyFormError('Give the module a title.'); return; }
+    setSafetySaving(true);
+    setSafetyFormError('');
+    try {
+      const res = await fetch('/api/safety', {
+        method: safetyDraft.id === null ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: safetyDraft.id ?? undefined,
+          title: safetyDraft.title.trim(),
+          body: safetyDraft.body,
+          imageUrl: safetyDraft.imageUrl.trim(),
+          linkUrl: safetyDraft.linkUrl.trim(),
+          linkLabel: safetyDraft.linkLabel.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.module) throw new Error(data.error || 'Save failed.');
+      setSafetyModules(prev => {
+        const exists = prev.some(m => m.id === data.module.id);
+        return exists ? prev.map(m => (m.id === data.module.id ? data.module : m)) : [...prev, data.module];
+      });
+      setSafetyDraft(null);
+    } catch (err) {
+      setSafetyFormError(err instanceof Error ? err.message : 'Save failed.');
+    } finally {
+      setSafetySaving(false);
+    }
+  };
+
+  const deleteSafetyModule = async (id: number) => {
+    setSafetySaving(true);
+    try {
+      const res = await fetch('/api/safety', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSafetyModules(prev => prev.filter(m => m.id !== id));
+    } catch (err) {
+      console.error('deleteSafetyModule failed:', err);
+    }
+    setSafetyDeleteConfirm(null);
+    setSafetySaving(false);
   };
 
   // Upload a PDF/text/Word document of step-by-step instructions and
@@ -2175,95 +2304,225 @@ export default function App() {
             </div>
           )}
 
-          {/* VIEW: SAFETY CENTRE — one place for the safety-critical material
-              that already lives across SOPs and training, so nobody has to open
-              each procedure to find out what protection a job needs. */}
+          {/* VIEW: SAFETY — authored OSHA-style overviews and toolbox talks,
+              plus any SOPs filed under the Safety category. */}
           {currentView === 'safety' && currentUser && (() => {
-            const isSafety = (d: SOP) =>
+            const isAdmin = currentUser.userType === 'admin';
+            const isSafetySop = (d: SOP) =>
               (d.categories?.length ? d.categories : [d.category]).some(c => (c ?? '').toLowerCase() === 'safety');
-            const safetySops = documents.filter(isSafety);
-            const sopPpe = documents.filter(d => d.ppe?.trim());
-            const trainingPpe = trainingModules.filter(m => m.ppe?.trim());
-            const nothing = safetySops.length === 0 && sopPpe.length === 0 && trainingPpe.length === 0;
-            const card = 'w-full text-left bg-white border border-gray-200 hover:border-red-300 hover:shadow-md rounded-2xl p-4 transition-all active:scale-[0.99]';
+            const safetySops = documents.filter(isSafetySop);
 
             return (
               <div className="space-y-6">
-                <div className="flex items-start gap-3">
-                  <span className="p-3 bg-red-50 text-red-700 rounded-2xl flex-shrink-0">
-                    <ShieldIcon />
-                  </span>
-                  <div>
-                    <h1 className="text-2xl font-black text-gray-950 tracking-tight leading-tight">Safety</h1>
-                    <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">
-                      Safety procedures and every PPE requirement across the Field Guide, in one place.
-                    </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span className="p-3 bg-red-50 text-red-700 rounded-2xl flex-shrink-0">
+                      <ShieldIcon />
+                    </span>
+                    <div className="min-w-0">
+                      <h1 className="text-2xl font-black text-gray-950 tracking-tight leading-tight">Safety</h1>
+                      <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">
+                        Safety overviews, toolbox talks and OSHA guidance for the crew.
+                      </p>
+                    </div>
                   </div>
+                  {isAdmin && !safetyDraft && (
+                    <button
+                      onClick={() => { setSafetyFormError(''); setSafetyDraft(blankSafetyDraft()); }}
+                      className="h-10 px-3 bg-red-700 hover:bg-red-800 text-white rounded-xl text-sm font-black flex items-center gap-1 flex-shrink-0 transition-colors"
+                    >
+                      <PlusIcon /> Add
+                    </button>
+                  )}
                 </div>
 
-                {nothing && (
+                {/* Admin builder */}
+                {isAdmin && safetyDraft && (
+                  <div className="bg-white border-2 border-red-200 rounded-2xl p-4 space-y-3.5 shadow-sm">
+                    <h2 className="text-base font-black text-gray-950">
+                      {safetyDraft.id === null ? 'New safety module' : 'Edit safety module'}
+                    </h2>
+
+                    {safetyFormError && (
+                      <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm font-semibold">
+                        &#9888; {safetyFormError}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-black text-gray-600 uppercase tracking-wider mb-1">Title</label>
+                      <input
+                        value={safetyDraft.title}
+                        onChange={e => setSafetyDraft({ ...safetyDraft, title: e.target.value })}
+                        placeholder="e.g., Ladder Safety Toolbox Talk"
+                        className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-base font-medium text-gray-900 focus:border-red-600 focus:outline-none shadow-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black text-gray-600 uppercase tracking-wider mb-1">Content</label>
+                      <RichTextarea
+                        rows={10}
+                        value={safetyDraft.body}
+                        onChange={v => setSafetyDraft({ ...safetyDraft, body: v })}
+                        placeholder={'Write the safety overview here.\n\nUse the buttons above for **bold**, *italic*, __underline__ and bullet lists.'}
+                        className="w-full p-3 bg-white border border-gray-200 rounded-xl text-base text-gray-900 leading-relaxed focus:border-red-600 focus:outline-none shadow-xs"
+                      />
+                    </div>
+
+                    {/* Photo */}
+                    <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-black text-gray-600 uppercase tracking-wider">Photo</label>
+                        <label className={`h-8 px-3 bg-white border border-gray-200 hover:border-red-300 rounded-lg text-sm font-extrabold text-gray-700 flex items-center gap-1 cursor-pointer transition-colors ${safetyUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                          {safetyUploading ? 'Uploading…' : <><CloudUploadIcon /> Upload</>}
+                          <input type="file" accept="image/*" className="hidden" disabled={safetyUploading}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) uploadSafetyPhoto(f); e.target.value = ''; }} />
+                        </label>
+                      </div>
+                      <input
+                        value={safetyDraft.imageUrl}
+                        onChange={e => setSafetyDraft({ ...safetyDraft, imageUrl: normalizeImageUrl(e.target.value) })}
+                        placeholder="Or paste a direct https image URL..."
+                        className="w-full h-9 px-2.5 border border-gray-200 bg-white text-sm focus:outline-none rounded-lg text-gray-600 font-mono"
+                      />
+                      {safetyDraft.imageUrl && (
+                        <SafeImage src={safetyDraft.imageUrl} alt="Safety module photo preview"
+                          wrapperClassName="w-full h-36 rounded-xl overflow-hidden bg-gray-100"
+                          className="object-cover w-full h-full" />
+                      )}
+                    </div>
+
+                    {/* Reference link */}
+                    <div className="grid grid-cols-1 gap-2">
+                      <div>
+                        <label className="block text-xs font-black text-gray-600 uppercase tracking-wider mb-1">Link (optional)</label>
+                        <input
+                          value={safetyDraft.linkUrl}
+                          onChange={e => setSafetyDraft({ ...safetyDraft, linkUrl: e.target.value })}
+                          placeholder="https://www.osha.gov/..."
+                          className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-base text-gray-900 focus:border-red-600 focus:outline-none shadow-xs"
+                        />
+                      </div>
+                      <input
+                        value={safetyDraft.linkLabel}
+                        onChange={e => setSafetyDraft({ ...safetyDraft, linkLabel: e.target.value })}
+                        placeholder="Link label (e.g. OSHA fact sheet)"
+                        className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-base text-gray-900 focus:border-red-600 focus:outline-none shadow-xs"
+                      />
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => { setSafetyDraft(null); setSafetyFormError(''); }}
+                        className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50">
+                        Cancel
+                      </button>
+                      <button onClick={saveSafetyDraft} disabled={safetySaving}
+                        className="flex-1 h-11 bg-red-700 hover:bg-red-800 text-white rounded-xl text-sm font-black disabled:opacity-50 transition-colors">
+                        {safetySaving ? 'Saving…' : 'Save module'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {safetyLoading && <ListSkeleton rows={3} withMedia />}
+
+                {safetyError && !safetyLoading && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <p className="text-sm text-amber-900 font-semibold">{safetyError}</p>
+                  </div>
+                )}
+
+                {!safetyLoading && !safetyError && safetyModules.length === 0 && !safetyDraft && (
                   <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center">
-                    <p className="text-base font-black text-gray-900">Nothing here yet</p>
+                    <p className="text-base font-black text-gray-900">No safety modules yet</p>
                     <p className="text-sm text-gray-600 mt-1 leading-relaxed max-w-[300px] mx-auto">
-                      Safety content appears automatically once an SOP is filed under the Safety
-                      category, or once any SOP or training module lists PPE.
+                      {isAdmin
+                        ? 'Use Add to publish your first safety overview or toolbox talk.'
+                        : 'Safety overviews will appear here once an admin publishes them.'}
                     </p>
                   </div>
                 )}
 
+                {/* Published modules */}
+                {safetyModules.length > 0 && (
+                  <section className="space-y-3">
+                    {safetyModules.map(mod => (
+                      <article key={mod.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
+                        {mod.image_url && (
+                          <SafeImage src={mod.image_url} alt={mod.title}
+                            wrapperClassName="w-full h-40 bg-gray-100 overflow-hidden"
+                            className="object-cover w-full h-full" />
+                        )}
+                        <div className="p-4 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <h2 className="text-base font-black text-gray-900 leading-snug">{mod.title}</h2>
+                            {isAdmin && (
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={() => { setSafetyFormError(''); setSafetyDraft({ id: mod.id, title: mod.title, body: mod.body || '', imageUrl: mod.image_url || '', linkUrl: mod.link_url || '', linkLabel: mod.link_label || '' }); }}
+                                  className="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                                  title="Edit module"
+                                >
+                                  <EditIcon />
+                                </button>
+                                {safetyDeleteConfirm === mod.id ? (
+                                  <>
+                                    <button onClick={() => deleteSafetyModule(mod.id)} disabled={safetySaving}
+                                      className="h-8 px-2.5 bg-red-600 text-white rounded-lg text-sm font-black disabled:opacity-50">
+                                      Confirm
+                                    </button>
+                                    <button onClick={() => setSafetyDeleteConfirm(null)}
+                                      className="h-8 px-2 text-gray-600 rounded-lg text-sm font-black">
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button onClick={() => setSafetyDeleteConfirm(mod.id)}
+                                    className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Delete module">
+                                    <TrashIcon />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {mod.body && <RichText className="text-sm text-gray-700 leading-relaxed" text={mod.body} />}
+
+                          {mod.link_url && (
+                            <a href={mod.link_url} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-2 bg-blue-50 border border-blue-100 hover:bg-blue-100 rounded-xl px-3 py-2 text-sm font-bold text-blue-800 transition-colors">
+                              <LinkIcon />
+                              <span className="truncate flex-1">{mod.link_label || mod.link_url}</span>
+                              <span>&#8599;</span>
+                            </a>
+                          )}
+
+                          {mod.created_by && (
+                            <p className="text-xs text-gray-500 pt-0.5">Posted by {mod.created_by}</p>
+                          )}
+                        </div>
+                      </article>
+                    ))}
+                  </section>
+                )}
+
+                {/* SOPs filed under the Safety category stay reachable here */}
                 {safetySops.length > 0 && (
                   <section className="space-y-2">
                     <h2 className="text-xs font-black text-gray-600 uppercase tracking-widest">
-                      Safety procedures ({safetySops.length})
+                      Safety SOPs ({safetySops.length})
                     </h2>
                     {safetySops.map(doc => (
                       <button
                         key={doc.id}
                         type="button"
-                        className={card}
+                        className="w-full text-left bg-white border border-gray-200 hover:border-red-300 hover:shadow-md rounded-2xl p-4 transition-all active:scale-[0.99]"
                         onClick={() => { setSelectedDoc(doc); setCompletedSteps({}); setDocTab('checklist'); setCurrentView('document'); }}
                       >
                         <span className="block text-base font-black text-gray-900 leading-snug">{doc.title}</span>
                         {doc.summary && <span className="block text-sm text-gray-600 leading-relaxed mt-0.5 line-clamp-2">{doc.summary}</span>}
-                      </button>
-                    ))}
-                  </section>
-                )}
-
-                {(sopPpe.length > 0 || trainingPpe.length > 0) && (
-                  <section className="space-y-2">
-                    <h2 className="text-xs font-black text-gray-600 uppercase tracking-widest">
-                      PPE by procedure ({sopPpe.length + trainingPpe.length})
-                    </h2>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      Check the gear you need before starting — tap any entry to open it.
-                    </p>
-                    {sopPpe.map(doc => (
-                      <button
-                        key={`sop-${doc.id}`}
-                        type="button"
-                        className={`${card} border-l-4 border-l-red-600`}
-                        onClick={() => { setSelectedDoc(doc); setCompletedSteps({}); setDocTab('checklist'); setCurrentView('document'); }}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-red-800 bg-red-50 px-1.5 py-0.5 rounded">SOP</span>
-                          <span className="text-base font-black text-gray-900 leading-snug">{doc.title}</span>
-                        </span>
-                        <RichText className="text-sm text-gray-700 leading-relaxed mt-1.5" text={doc.ppe ?? ''} />
-                      </button>
-                    ))}
-                    {trainingPpe.map(mod => (
-                      <button
-                        key={`mod-${mod.id}`}
-                        type="button"
-                        className={`${card} border-l-4 border-l-red-600`}
-                        onClick={() => { setOpenTraining(mod); setCurrentView('training'); }}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-violet-800 bg-violet-50 px-1.5 py-0.5 rounded">Training</span>
-                          <span className="text-base font-black text-gray-900 leading-snug">{mod.title}</span>
-                        </span>
-                        <RichText className="text-sm text-gray-700 leading-relaxed mt-1.5" text={mod.ppe ?? ''} />
                       </button>
                     ))}
                   </section>
