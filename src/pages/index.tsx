@@ -623,7 +623,8 @@ export default function App() {
       .then(data => {
         if (data?.user) {
           setCurrentUser(data.user);
-          setCurrentView('home');
+          // Admins land on their dashboard; crew land on the launcher
+          setCurrentView(data.user.userType === 'admin' ? 'adminConsole' : 'home');
         }
       })
       .catch(() => {}) // network error — remain on login screen
@@ -872,7 +873,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if ((currentView === 'handbook' || currentView === 'search') && handbookSections.length === 0 && !handbookLoading) {
+    if ((currentView === 'handbook' || currentView === 'search' || currentView === 'adminConsole') && handbookSections.length === 0 && !handbookLoading) {
       loadHandbook();
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -927,14 +928,14 @@ export default function App() {
   // milestones a module counts toward), and training data in career
   // views (to show a milestone's linked training).
   useEffect(() => {
-    if ((currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'search') && currentUser && careerTracks.length === 0 && !careerLoading) {
+    if ((currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'search' || currentView === 'adminConsole') && currentUser && careerTracks.length === 0 && !careerLoading) {
       loadCareerData();
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load training modules on first visit to a training or career view
   useEffect(() => {
-    if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'search' || currentView === 'safety') && currentUser && !trainingLoaded && !trainingLoading) {
+    if ((currentView === 'training' || currentView === 'trainingAdmin' || currentView === 'careerLadder' || currentView === 'careerAdmin' || currentView === 'search' || currentView === 'safety' || currentView === 'adminConsole') && currentUser && !trainingLoaded && !trainingLoading) {
       loadTraining();
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1493,7 +1494,7 @@ export default function App() {
         clearAttempts(nameKey);
         setAttemptsLeft(null);
         setCurrentUser(user);
-        setCurrentView('home');
+        setCurrentView(user.userType === 'admin' ? 'adminConsole' : 'home');
       } else if (response.status === 429) {
         setLoginError('Too many requests from your network. Please wait a moment.');
       } else {
@@ -3385,60 +3386,176 @@ export default function App() {
               {/* Back nav header */}
               <div className="flex items-center gap-2 -ml-1 border-b border-gray-100 pb-3">
                 <button
-                  onClick={() => setCurrentView('dashboard')}
-                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                  onClick={() => setCurrentView('home')}
+                  aria-label="Home"
+                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-600 transition-colors"
                 >
                   <ArrowLeftIcon />
                 </button>
                 <div>
                   <span className="text-xs uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
-                    <ShieldIcon /> ADMINISTRATOR CONSOLE
+                    <ShieldIcon /> ADMIN
                   </span>
-                  <h1 className="text-base font-black text-gray-950 leading-tight">Oversight & Compliance Matrix</h1>
+                  <h1 className="text-xl font-black text-gray-950 leading-tight">Dashboard</h1>
                 </div>
               </div>
 
-              {/* Top Analytical Progress Indicators */}
-              <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-4 text-white space-y-4 shadow-lg">
-                <div className="flex justify-between items-center border-b border-gray-700/60 pb-3">
-                  <div>
-                    <span className="text-xs font-extrabold text-gray-500 tracking-wider uppercase">OVERALL WORKSPACE HEALTH</span>
-                    <h3 className="text-xl font-black mt-0.5">{aggregateComplianceRate}% Compliance</h3>
-                  </div>
-                  <span className="text-sm bg-blue-600 text-white font-black px-2.5 py-1 rounded-xl">
-                    Active Audit
+              {/* ---------- Dashboard ---------- */}
+              {(() => {
+                const members = effectiveUsers.filter(u => u.userType !== 'admin' || effectiveUsers.length === 1);
+                const roster = members.length ? members : effectiveUsers;
+                const sopTotal = documents.length;
+                const sectionTotal = handbookSections.length;
+                const moduleTotal = trainingModules.length;
+                const currentVersion = (d: SOP) => d.revisionHistory?.[0]?.version || 'v1.0';
+
+                // Per-person usage across every part of the app
+                const rows = roster.map(u => {
+                  const signed = documents.filter(d =>
+                    d.readLogs?.some(l => l.userName === u.name && l.versionRead === currentVersion(d))
+                  ).length;
+                  const acked = handbookSections.filter(s =>
+                    handbookAcks.some(a => a.user_name === u.name && a.section_id === s.id)
+                  ).length;
+                  const comps = trainingCompletions.filter(c => c.user_name === u.name);
+                  const validated = comps.filter(c => c.verified_by).length;
+                  const pending = comps.length - validated;
+                  const milestones = allCareerCompletions.filter(c => c.user_name === u.name).length;
+                  const stamps = documents
+                    .flatMap(d => (d.readLogs ?? []).filter(l => l.userName === u.name).map(l => l.timestamp))
+                    .concat(comps.map(c => c.completed_at).filter(Boolean) as string[]);
+                  const last = stamps
+                    .map(t => new Date(t).getTime())
+                    .filter(t => !Number.isNaN(t))
+                    .sort((a, b) => b - a)[0];
+                  return { user: u, signed, acked, validated, pending, milestones, last, active: stamps.length > 0 };
+                }).sort((a, b) => (b.signed + b.acked + b.validated) - (a.signed + a.acked + a.validated));
+
+                const pendingValidation = trainingCompletions.filter(c => !c.verified_by).length;
+                const ackRate = sectionTotal && roster.length
+                  ? Math.round((rows.reduce((n, r) => n + r.acked, 0) / (sectionTotal * roster.length)) * 100)
+                  : 0;
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const overdue = documents.filter(d => {
+                  const t = new Date(d.nextReviewDate ?? '').getTime();
+                  return !Number.isNaN(t) && t < today.getTime();
+                });
+                const neverActive = rows.filter(r => !r.active);
+
+                const kpi = 'bg-white border border-gray-200 rounded-2xl p-3 shadow-xs';
+                const kpiLabel = 'text-xs font-bold text-gray-600 leading-tight';
+                const kpiValue = 'text-2xl font-black text-gray-950 leading-none mt-1';
+                const Bar = ({ value, total, tone }: { value: number; total: number; tone: string }) => (
+                  <span className="block w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">
+                    <span className={`block h-full ${tone} transition-all duration-500`}
+                      style={{ width: `${total ? Math.round((value / total) * 100) : 0}%` }} />
                   </span>
-                </div>
+                );
 
-                {/* Progress compliance bar */}
-                <div className="space-y-1">
-                  <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-500 transition-all duration-500"
-                      style={{ width: `${aggregateComplianceRate}%` }}
-                    ></div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500 font-bold">
-                    <span>Incomplete (Gaps)</span>
-                    <span>100% Fully Compliant</span>
-                  </div>
-                </div>
+                return (
+                  <div className="space-y-5">
+                    {/* Headline numbers, biggest first */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className={kpi}>
+                        <p className={kpiLabel}>SOP compliance</p>
+                        <p className={kpiValue}>{aggregateComplianceRate}%</p>
+                        <Bar value={aggregateComplianceRate} total={100} tone="bg-emerald-600" />
+                        <p className="text-xs text-gray-600 mt-1.5">{actualReadLogsCount} sign-offs recorded</p>
+                      </div>
+                      <div className={kpi}>
+                        <p className={kpiLabel}>Handbook acknowledged</p>
+                        <p className={kpiValue}>{ackRate}%</p>
+                        <Bar value={ackRate} total={100} tone="bg-blue-600" />
+                        <p className="text-xs text-gray-600 mt-1.5">{sectionTotal} sections · {roster.length} people</p>
+                      </div>
+                      <div className={kpi}>
+                        <p className={kpiLabel}>Awaiting validation</p>
+                        <p className={`${kpiValue} ${pendingValidation ? 'text-amber-700' : ''}`}>{pendingValidation}</p>
+                        <p className="text-xs text-gray-600 mt-1.5">training completions</p>
+                      </div>
+                      <div className={kpi}>
+                        <p className={kpiLabel}>Library</p>
+                        <p className={kpiValue}>{sopTotal}</p>
+                        <p className="text-xs text-gray-600 mt-1.5">SOPs · {moduleTotal} modules</p>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-                  <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-xs text-gray-500 font-bold leading-none">Total SOPs</p>
-                    <p className="text-base font-black mt-1 leading-none">{totalSOPsCount}</p>
+                    {/* Only shown when something genuinely needs a decision */}
+                    {(overdue.length > 0 || pendingValidation > 0 || neverActive.length > 0) && (
+                      <section className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 space-y-2">
+                        <h2 className="text-xs font-black text-amber-900 uppercase tracking-widest">Needs attention</h2>
+                        {overdue.length > 0 && (
+                          <button onClick={() => setCurrentView('dashboard')} className="w-full text-left text-sm text-amber-900 font-bold hover:underline">
+                            {overdue.length} SOP{overdue.length === 1 ? '' : 's'} past their review date
+                          </button>
+                        )}
+                        {pendingValidation > 0 && (
+                          <button onClick={() => setCurrentView('trainingAdmin')} className="w-full text-left text-sm text-amber-900 font-bold hover:underline">
+                            {pendingValidation} training completion{pendingValidation === 1 ? '' : 's'} awaiting your validation
+                          </button>
+                        )}
+                        {neverActive.length > 0 && (
+                          <p className="text-sm text-amber-900 font-bold">
+                            {neverActive.length} teammate{neverActive.length === 1 ? '' : 's'} with no recorded activity yet
+                          </p>
+                        )}
+                      </section>
+                    )}
+
+                    {/* Usage by user — the question admins actually open this for */}
+                    <section className="space-y-2">
+                      <h2 className="text-xs font-black text-gray-600 uppercase tracking-widest">Usage by teammate</h2>
+                      {rows.length === 0 && <p className="text-sm text-gray-600">No teammates on file yet.</p>}
+                      <div className="space-y-2">
+                        {rows.map(r => (
+                          <div key={r.user.name} className="bg-white border border-gray-200 rounded-2xl p-3.5 shadow-xs">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <p className="text-base font-black text-gray-900 leading-tight">{r.user.name}</p>
+                              <p className="text-xs text-gray-600 flex-shrink-0">
+                                {r.last ? `Active ${new Date(r.last).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'No activity'}
+                              </p>
+                            </div>
+                            <p className="text-xs text-gray-600 mt-0.5">{r.user.role}</p>
+
+                            <div className="grid grid-cols-3 gap-3 mt-3">
+                              <div>
+                                <p className="text-xs font-bold text-gray-600">SOPs</p>
+                                <p className="text-sm font-black text-gray-900 mt-0.5">{r.signed}<span className="text-gray-500 font-bold">/{sopTotal}</span></p>
+                                <Bar value={r.signed} total={sopTotal} tone="bg-emerald-600" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-gray-600">Handbook</p>
+                                <p className="text-sm font-black text-gray-900 mt-0.5">{r.acked}<span className="text-gray-500 font-bold">/{sectionTotal}</span></p>
+                                <Bar value={r.acked} total={sectionTotal} tone="bg-blue-600" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-gray-600">Training</p>
+                                <p className="text-sm font-black text-gray-900 mt-0.5">{r.validated}<span className="text-gray-500 font-bold">/{moduleTotal}</span></p>
+                                <Bar value={r.validated} total={moduleTotal} tone="bg-violet-600" />
+                              </div>
+                            </div>
+
+                            {(r.pending > 0 || r.milestones > 0) && (
+                              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                                {r.pending > 0 && (
+                                  <span className="text-xs font-black bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
+                                    {r.pending} awaiting validation
+                                  </span>
+                                )}
+                                {r.milestones > 0 && (
+                                  <span className="text-xs font-black bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full">
+                                    {r.milestones} career milestone{r.milestones === 1 ? '' : 's'}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
                   </div>
-                  <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-xs text-gray-500 font-bold leading-none">Total Team</p>
-                    <p className="text-base font-black mt-1 leading-none">{totalTeamSize}</p>
-                  </div>
-                  <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-xs text-gray-500 font-bold leading-none">Sign-offs</p>
-                    <p className="text-base font-black mt-1 leading-none">{actualReadLogsCount}</p>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Admin Pending Notifications viewport */}
               <div className="space-y-2">
