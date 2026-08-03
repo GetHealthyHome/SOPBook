@@ -1,3 +1,93 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Design foundations. These sit outside @layer on purpose so they win over
+   utilities where that matters for accessibility (focus rings, motion).
+   --------------------------------------------------------------------------- */
+
+html {
+  -webkit-text-size-adjust: 100%; /* no surprise scaling in landscape */
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tapping a control shouldn't flash a grey box on mobile — the components
+   provide their own press feedback. */
+button,
+label,
+a,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: #a7f3d0;
+  color: #064e3b;
+}
+
+/* Keyboard focus must always be visible. The app uses `focus:outline-none`
+   in ~34 places, which is more specific than a bare `:focus-visible` rule,
+   so this is deliberately forced. Pointer users never see it — only
+   keyboard/AT navigation triggers :focus-visible. */
+:focus-visible {
+  outline: 3px solid #047857 !important;
+  outline-offset: 2px !important;
+}
+
+/* Inputs get an inner ring too, so focus reads clearly against the field. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: 0 !important;
+  box-shadow: 0 0 0 4px rgba(4, 120, 87, 0.15);
+}
+
+/* Skeleton shimmer used by loading placeholders */
+@keyframes sop-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: #e5e7eb;
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.6) 60%,
+    rgba(255, 255, 255, 0)
+  );
+  animation: sop-shimmer 1.6s infinite;
+}
+
+/* Respect users who ask the OS to reduce motion: keep state changes
+   instant instead of animating scale/shimmer/pulse. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .skeleton::after {
+    display: none;
+  }
+}
