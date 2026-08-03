@@ -2232,7 +2232,7 @@ export default function App() {
               <div className="text-center space-y-1.5">
                 <img src="/logo.svg" alt="Healthy Home Field Guide logo" className="w-24 h-24 mx-auto mb-3" />
                 <h1 className="text-2xl font-black tracking-tight text-emerald-800 leading-tight block px-2">
-                  Healthy Home<br />Energy &amp; Consulting
+                  Healthy Home
                 </h1>
                 <p className="text-lg font-bold tracking-widest text-gray-500 uppercase block">
                   Field Guide
@@ -2645,52 +2645,50 @@ export default function App() {
           {/* VIEW: HOME LAUNCHER */}
           {currentView === 'home' && currentUser && (() => {
             const unread = userNotifications.filter(n => !n.read_at).length;
-            // Circular icon button with the label sitting below the circle
-            const tile = 'flex flex-col items-center gap-2 active:scale-95 transition-transform';
-            // Each section gets its own colour so the circles are quick to
-            // tell apart at a glance; all are dark enough for white icons.
-            // Fixed 40px circle (60% smaller than the full-column version).
-            // The button itself still fills the column, so the tap target
-            // stays comfortably large even though the circle is small.
+            // Same shape as the SOP division tiles: a 2:1 card on a grid whose
+            // column count steps up with the viewport, icon beside the label.
+            const tile = 'aspect-[2/1] bg-white border border-gray-200 hover:border-gray-300 hover:shadow-md rounded-2xl p-3 text-left transition-all active:scale-[0.99] flex items-center gap-2.5 overflow-hidden';
+            // Each section keeps its own colour so they stay quick to tell
+            // apart; all are dark enough for white icons.
             const circle = (colour: string) =>
-              `relative w-10 h-10 rounded-full ${colour} flex items-center justify-center text-white shadow-md transition-colors`;
-            const label = 'text-[11px] leading-tight font-black uppercase tracking-wide text-center text-gray-700';
+              `relative w-10 h-10 rounded-full ${colour} flex items-center justify-center text-white shadow-md transition-colors flex-shrink-0`;
+            const label = 'block text-sm leading-tight font-black text-gray-900';
             const icon = 'w-1/2 h-1/2';
             return (
               <div className="space-y-6 py-6">
                 <h1 className="text-2xl font-black text-gray-950 tracking-tight text-center">
                   Welcome back {currentUser.name.split(' ')[0]}!
                 </h1>
-                <div className="grid grid-cols-3 gap-x-4 gap-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                   <button onClick={() => setCurrentView('dashboard')} className={tile}>
                     <span className={circle('bg-emerald-900 hover:bg-emerald-800')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
                     </span>
-                    <span className={label}>SOPs</span>
+                    <span className="min-w-0"><span className={label}>SOPs</span></span>
                   </button>
                   <button onClick={() => setCurrentView('handbook')} className={tile}>
                     <span className={circle('bg-blue-800 hover:bg-blue-700')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
                     </span>
-                    <span className={label}>Handbook</span>
+                    <span className="min-w-0"><span className={label}>Handbook</span></span>
                   </button>
                   <button onClick={() => setCurrentView('careerLadder')} className={tile}>
                     <span className={circle('bg-amber-600 hover:bg-amber-500')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                     </span>
-                    <span className={label}>Career Ladder</span>
+                    <span className="min-w-0"><span className={label}>Career Ladder</span></span>
                   </button>
                   <button onClick={() => { setOpenTraining(null); setCurrentView('training'); }} className={tile}>
                     <span className={circle('bg-violet-800 hover:bg-violet-700')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-6 4v-3.5"/></svg>
                     </span>
-                    <span className={label}>Training</span>
+                    <span className="min-w-0"><span className={label}>Training</span></span>
                   </button>
                   <button onClick={() => setCurrentView('safety')} className={tile}>
                     <span className={circle('bg-red-700 hover:bg-red-600')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                     </span>
-                    <span className={label}>Safety</span>
+                    <span className="min-w-0"><span className={label}>Safety</span></span>
                   </button>
                   <button onClick={() => setCurrentView('userNotifications')} className={tile}>
                     <span className={circle('bg-rose-700 hover:bg-rose-600')}>
@@ -2701,7 +2699,7 @@ export default function App() {
                       )}
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
                     </span>
-                    <span className={label}>Notifications</span>
+                    <span className="min-w-0"><span className={label}>Notifications</span></span>
                   </button>
                 </div>
               </div>
