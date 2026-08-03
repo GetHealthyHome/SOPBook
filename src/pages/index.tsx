@@ -483,7 +483,8 @@ export default function App() {
   const [documents, setDocuments] = useState<SOP[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<SOP | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  // '' means no division picked yet — the dashboard shows the division grid
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [docTab, setDocTab] = useState<'checklist' | 'history'>('checklist');
 
@@ -2022,7 +2023,7 @@ export default function App() {
     setCurrentView('document');
   };
 
-  const categoriesList = ["All", "HVAC", "Home Performance", "Sales", "Testing", "Safety"];
+  const categoriesList = ["HVAC", "Home Performance", "Sales", "Testing", "Safety"];
   const SOP_CATEGORY_OPTIONS = ["HVAC", "Home Performance", "Sales", "Testing", "Safety"];
 
   // A SOP's categories, tolerating the legacy single-category shape
@@ -2041,10 +2042,14 @@ export default function App() {
       const matchesSearch = doc.title?.toLowerCase().includes(q) ||
                             doc.summary?.toLowerCase().includes(q) ||
                             cats.some(c => c.toLowerCase().includes(q));
-      const matchesCategory = selectedCategory === "All" || cats.includes(selectedCategory);
+      const matchesCategory = !selectedCategory || cats.includes(selectedCategory);
       return matchesSearch && matchesCategory;
     });
   }, [documents, searchQuery, selectedCategory]);
+
+  // The SOP dashboard shows the division grid until a division is opened —
+  // or until a search is typed, which cuts across every division.
+  const showingSopList = !!selectedCategory || searchQuery.trim().length > 0;
 
   const { totalSOPsCount, totalTeamSize, actualReadLogsCount, aggregateComplianceRate } = useMemo(() => {
     const knownTeamSize = effectiveUsers.length;
@@ -2084,8 +2089,8 @@ export default function App() {
                 onClick={() => { if (currentUser) setCurrentView('home'); }}
               />
               <div>
-                <p className="text-sm font-black text-gray-900 leading-none">Field Guide</p>
-                <p className="text-xs text-gray-500 font-bold mt-0.5">Healthy Home</p>
+                <p className="text-sm font-black text-gray-900 leading-none">Healthy Home</p>
+                <p className="text-xs text-gray-500 font-bold mt-0.5">Field Guide</p>
               </div>
             </div>
           </div>
@@ -2786,38 +2791,59 @@ export default function App() {
                 />
               </div>
 
-              {/* Dynamic scrollable Category Tab selectors */}
-              <div className="space-y-2">
-                <span className="text-sm font-black text-gray-500 tracking-wider uppercase block">Scope Divisions</span>
-                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-                  {categoriesList.map(cat => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`h-8 px-4 rounded-lg text-sm font-extrabold whitespace-nowrap transition-all ${
-                        selectedCategory === cat
-                          ? 'bg-emerald-800 text-white shadow-xs'
-                          : 'bg-gray-100 text-gray-500 hover:text-gray-700'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
+              {/* Divisions are a grid you click into; a search jumps straight
+                  to matching procedures across every division. */}
+              {!showingSopList && (
+                <div className="space-y-2">
+                  <span className="text-xs font-black text-gray-600 tracking-widest uppercase block">Divisions</span>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {categoriesList.map(cat => {
+                      const count = documents.filter(d =>
+                        (d.categories?.length ? d.categories : [d.category]).includes(cat)
+                      ).length;
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => setSelectedCategory(cat)}
+                          className="bg-white border border-gray-200 hover:border-emerald-300 hover:shadow-md rounded-2xl p-4 text-left transition-all active:scale-[0.99] group"
+                        >
+                          <span className="inline-flex p-2.5 bg-emerald-50 text-emerald-800 rounded-xl group-hover:bg-emerald-800 group-hover:text-white transition-colors">
+                            <FolderIcon />
+                          </span>
+                          <span className="block text-base font-black text-gray-900 leading-snug mt-2.5">{cat}</span>
+                          <span className="block text-xs text-gray-600 font-bold mt-0.5">
+                            {count} {count === 1 ? 'procedure' : 'procedures'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Listing grid */}
+              {showingSopList && (
               <div className="space-y-3 pt-1">
-                <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">
-                  {selectedCategory} Protocols ({filteredDocs.length})
-                </h3>
+                <div className="flex items-center gap-2">
+                  {selectedCategory && (
+                    <button
+                      onClick={() => setSelectedCategory('')}
+                      className="h-8 px-2.5 rounded-lg text-xs font-black text-gray-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors flex items-center gap-1"
+                    >
+                      &#8592; Divisions
+                    </button>
+                  )}
+                  <h3 className="text-xs font-black text-gray-600 uppercase tracking-widest">
+                    {searchQuery.trim() ? `Results (${filteredDocs.length})` : `${selectedCategory} (${filteredDocs.length})`}
+                  </h3>
+                </div>
 
                 {filteredDocs.length === 0 ? (
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 text-center">
                     <div className="text-amber-500 mb-2 flex justify-center"><AlertCircleIcon /></div>
                     <h3 className="text-base font-bold text-gray-900">No guidelines found</h3>
                     <p className="text-sm text-gray-500 mt-1 max-w-[260px] mx-auto leading-relaxed">
-                      There are no protocols registered under this category tab. Click below to reload sample data.
+                      Nothing filed under this division yet.
                     </p>
                     <button
                       onClick={handleLoadSamples}
@@ -2896,6 +2922,7 @@ export default function App() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 
