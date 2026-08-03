@@ -49,6 +49,30 @@ interface Step {
 }
 
 /**
+ * Content-shaped loading placeholder. Mirrors the real card's dimensions so
+ * the layout doesn't jump when data lands, and reads as progress rather than
+ * an empty screen. Announced to screen readers via a polite live region.
+ */
+function ListSkeleton({ rows = 3, withMedia = false }: { rows?: number; withMedia?: boolean }) {
+  return (
+    <>
+      <span className="sr-only" role="status">Loading…</span>
+      <div className="space-y-3" aria-hidden="true">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-xs">
+            {withMedia && <div className="skeleton h-32 w-full" />}
+            <div className="p-4 space-y-2.5">
+              <div className="skeleton h-3.5 rounded-full" style={{ width: `${72 - i * 9}%` }} />
+              <div className="skeleton h-2.5 rounded-full w-1/2" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
  * Image that shows a visible placeholder when the source fails to load.
  * Broken photos used to hide themselves, which looked identical to "no
  * photo was ever added" — so a bad link was invisible to the author.
@@ -63,7 +87,7 @@ function SafeImage({ src, alt, className, wrapperClassName }: {
   useEffect(() => { setFailed(false); }, [src]); // retry when the URL changes
   if (failed) {
     return (
-      <div className={`${wrapperClassName ?? ''} flex flex-col items-center justify-center gap-1 bg-gray-100 text-gray-400 text-center p-3`}>
+      <div className={`${wrapperClassName ?? ''} flex flex-col items-center justify-center gap-1 bg-gray-100 text-gray-500 text-center p-3`}>
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
         <span className="text-xs font-bold leading-tight">Photo didn’t load — the link may be blocked. Upload the photo instead.</span>
       </div>
@@ -1906,9 +1930,9 @@ export default function App() {
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gray-50 flex justify-center items-start py-0 sm:py-8 font-sans antialiased text-gray-900">
-        <div className="w-full max-w-md bg-white min-h-screen sm:min-h-[840px] sm:rounded-[40px] sm:shadow-2xl sm:border-[8px] sm:border-gray-900 relative overflow-hidden flex flex-col items-center justify-center p-6 text-gray-400">
+        <div className="w-full max-w-md bg-white min-h-screen sm:min-h-[840px] sm:rounded-[40px] sm:shadow-2xl sm:border-[8px] sm:border-gray-900 relative overflow-hidden flex flex-col items-center justify-center p-6 text-gray-500">
           <img src="/logo.svg" alt="Healthy Home Field Guide" className="w-16 h-16 animate-pulse mx-auto" />
-          <span className="text-sm font-bold tracking-wide uppercase mt-4 animate-pulse text-gray-500">Loading Operational Workspace...</span>
+          <span className="text-sm font-bold tracking-wide uppercase mt-4 animate-pulse text-gray-500">Loading your Field Guide…</span>
         </div>
       </div>
     );
@@ -1931,7 +1955,7 @@ export default function App() {
               />
               <div>
                 <p className="text-sm font-black text-gray-900 leading-none">Field Guide</p>
-                <p className="text-base text-gray-400 font-bold mt-0.5">Healthy Home</p>
+                <p className="text-xs text-gray-500 font-bold mt-0.5">Healthy Home</p>
               </div>
             </div>
           </div>
@@ -1962,7 +1986,7 @@ export default function App() {
                 {icon}
                 <span className="flex-1 text-left">{label}</span>
                 {view === 'userNotifications' && userNotifications.filter(n => !n.read_at).length > 0 && (
-                  <span className="bg-red-500 text-white text-base font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                  <span className="bg-red-500 text-white text-[10px] font-black rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                     {userNotifications.filter(n => !n.read_at).length}
                   </span>
                 )}
@@ -1972,7 +1996,7 @@ export default function App() {
           <div className="px-3 py-4 border-t border-gray-100">
             <div className="px-3 py-2 mb-2">
               <p className="text-sm font-black text-gray-900 leading-none">{currentUser.name}</p>
-              <p className="text-base text-gray-400 font-medium mt-0.5">{currentUser.role}</p>
+              <p className="text-xs text-gray-500 font-medium mt-0.5">{currentUser.role}</p>
             </div>
             <button
               onClick={handleLogout}
@@ -2074,10 +2098,10 @@ export default function App() {
                 <h1 className="text-2xl font-black tracking-tight text-emerald-800 leading-tight block px-2">
                   Healthy Home<br />Energy &amp; Consulting
                 </h1>
-                <p className="text-lg font-bold tracking-widest text-gray-400 uppercase block">
+                <p className="text-lg font-bold tracking-widest text-gray-500 uppercase block">
                   Field Guide
                 </p>
-                <p className="text-sm text-gray-400 max-w-[250px] mx-auto pt-2">Access organized operational guides and sign off compliance checklists.</p>
+                <p className="text-sm text-gray-500 max-w-[250px] mx-auto pt-2">Access organized operational guides and sign off compliance checklists.</p>
               </div>
 
               {loginError && (
@@ -2091,7 +2115,7 @@ export default function App() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1">
-                  <label className="block text-sm font-bold text-gray-400 uppercase tracking-wider">Teammate Name</label>
+                  <label className="block text-sm font-bold text-gray-500 uppercase tracking-wider">Teammate Name</label>
                   <input
                     type="text"
                     required
@@ -2103,7 +2127,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-sm font-bold text-gray-400 uppercase tracking-wider">Account Password</label>
+                  <label className="block text-sm font-bold text-gray-500 uppercase tracking-wider">Account Password</label>
                   <input
                     type="password"
                     required
@@ -2169,17 +2193,17 @@ export default function App() {
             ) : [];
             const total = sopHits.length + trainingHits.length + handbookHits.length + careerHits.length;
             const row = 'w-full text-left bg-white border border-gray-100 hover:border-emerald-200 rounded-xl px-3.5 py-2.5 shadow-xs transition-colors';
-            const heading = 'text-sm font-black text-gray-400 uppercase tracking-wider';
+            const heading = 'text-sm font-black text-gray-500 uppercase tracking-wider';
 
             return (
               <div className="space-y-4">
                 <div>
                   <h1 className="text-2xl font-black text-gray-950 tracking-tight">Search</h1>
-                  <p className="text-sm text-gray-400 mt-0.5">Find any SOP, training, handbook section, or milestone.</p>
+                  <p className="text-sm text-gray-500 mt-0.5">Find any SOP, training, handbook section, or milestone.</p>
                 </div>
 
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"><SearchIcon /></span>
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500"><SearchIcon /></span>
                   <input
                     autoFocus
                     type="text"
@@ -2190,15 +2214,15 @@ export default function App() {
                   />
                   {globalQuery && (
                     <button onClick={() => setGlobalQuery('')} aria-label="Clear search"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 font-black">✕</button>
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 font-black">✕</button>
                   )}
                 </div>
 
                 {!q && (
-                  <p className="text-sm text-gray-400 text-center py-8">Start typing to search across the whole Field Guide.</p>
+                  <p className="text-sm text-gray-500 text-center py-8">Start typing to search across the whole Field Guide.</p>
                 )}
                 {q && total === 0 && (
-                  <p className="text-sm text-gray-400 text-center py-8">No matches for &ldquo;{globalQuery}&rdquo;.</p>
+                  <p className="text-sm text-gray-500 text-center py-8">No matches for &ldquo;{globalQuery}&rdquo;.</p>
                 )}
 
                 {sopHits.length > 0 && (
@@ -2208,7 +2232,7 @@ export default function App() {
                       <button key={doc.id} className={row}
                         onClick={() => { setSelectedDoc(doc); setCompletedSteps({}); setCurrentView('document'); }}>
                         <span className="block text-sm font-black text-gray-900 leading-snug">{doc.title}</span>
-                        {doc.summary && <span className="block text-sm text-gray-400 truncate">{doc.summary}</span>}
+                        {doc.summary && <span className="block text-sm text-gray-500 truncate">{doc.summary}</span>}
                       </button>
                     ))}
                   </div>
@@ -2221,7 +2245,7 @@ export default function App() {
                       <button key={mod.id} className={row}
                         onClick={() => { setOpenTraining(mod); setCurrentView('training'); }}>
                         <span className="block text-sm font-black text-gray-900 leading-snug">{mod.title}</span>
-                        {mod.description && <span className="block text-sm text-gray-400 truncate">{mod.description}</span>}
+                        {mod.description && <span className="block text-sm text-gray-500 truncate">{mod.description}</span>}
                       </button>
                     ))}
                   </div>
@@ -2246,7 +2270,7 @@ export default function App() {
                       <button key={task.id} className={row}
                         onClick={() => { setExpandedTask(task.id); setCurrentView('careerLadder'); }}>
                         <span className="block text-sm font-black text-gray-900 leading-snug">{task.title}</span>
-                        <span className="block text-sm text-gray-400 truncate">{track.name}</span>
+                        <span className="block text-sm text-gray-500 truncate">{track.name}</span>
                       </button>
                     ))}
                   </div>
@@ -2327,7 +2351,7 @@ export default function App() {
                   </div>
                   <div>
                     <h4 className="text-sm font-black text-gray-950 leading-none">{currentUser.name}</h4>
-                    <span className="text-base text-gray-400 font-bold mt-0.5 flex items-center gap-1 tracking-wide">
+                    <span className="text-xs text-gray-500 font-bold mt-0.5 flex items-center gap-1 tracking-wide">
                       {currentUser.userType === 'admin' && <ShieldIcon />}
                       <span className="capitalize">{currentUser.userType}</span> — {currentUser.role}
                     </span>
@@ -2342,7 +2366,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                  className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                   title="Sign Out"
                 >
                   <LogOutIcon />
@@ -2386,7 +2410,7 @@ export default function App() {
 
               {/* Search guidelines filter */}
               <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
                   <SearchIcon />
                 </span>
                 <input
@@ -2400,7 +2424,7 @@ export default function App() {
 
               {/* Dynamic scrollable Category Tab selectors */}
               <div className="space-y-2">
-                <span className="text-sm font-black text-gray-400 tracking-wider uppercase block">Scope Divisions</span>
+                <span className="text-sm font-black text-gray-500 tracking-wider uppercase block">Scope Divisions</span>
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
                   {categoriesList.map(cat => (
                     <button
@@ -2420,15 +2444,15 @@ export default function App() {
 
               {/* Listing grid */}
               <div className="space-y-3 pt-1">
-                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">
+                <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">
                   {selectedCategory} Protocols ({filteredDocs.length})
                 </h3>
 
                 {filteredDocs.length === 0 ? (
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl p-6 text-center">
                     <div className="text-amber-500 mb-2 flex justify-center"><AlertCircleIcon /></div>
-                    <h3 className="text-base font-bold text-gray-900">No guidelines found</h3>
-                    <p className="text-sm text-gray-400 mt-1 max-w-[260px] mx-auto leading-relaxed">
+                    <h3 className="text-xs font-bold text-gray-900">No guidelines found</h3>
+                    <p className="text-sm text-gray-500 mt-1 max-w-[260px] mx-auto leading-relaxed">
                       There are no protocols registered under this category tab. Click below to reload sample data.
                     </p>
                     <button
@@ -2458,21 +2482,21 @@ export default function App() {
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               {sopCats(doc).map(cat => (
-                                <span key={cat} className="inline-flex items-center gap-1 text-base font-black tracking-widest uppercase text-emerald-800 bg-emerald-50/70 px-1.5 py-0.5 rounded-xs">
+                                <span key={cat} className="inline-flex items-center gap-1 text-xs font-black tracking-widest uppercase text-emerald-800 bg-emerald-50/70 px-1.5 py-0.5 rounded-xs">
                                   <TagIcon /> {cat}
                                 </span>
                               ))}
-                              <span className="text-base font-bold text-gray-400">
+                              <span className="text-xs font-bold text-gray-500">
                                 {doc.revisionHistory[0]?.version || 'v1.0'}
                               </span>
                             </div>
                             <h4 className="text-sm font-black text-gray-900 leading-snug line-clamp-1 group-hover:text-emerald-800 transition-colors">
                               {doc.title}
                             </h4>
-                            <p className="text-base text-gray-400 font-semibold leading-relaxed line-clamp-2">
+                            <p className="text-xs text-gray-500 font-semibold leading-relaxed line-clamp-2">
                               {doc.summary}
                             </p>
-                            <div className="flex items-center gap-2 text-base text-gray-400 font-bold">
+                            <div className="flex items-center gap-2 text-xs text-gray-500 font-bold">
                               <span>By {doc.lastUpdatedBy}</span>
                               <span>•</span>
                               <span>{doc.lastUpdated}</span>
@@ -2503,7 +2527,7 @@ export default function App() {
                 <div>
                   <h1 className="text-lg font-black text-gray-950 leading-tight">{editingSopId ? 'Edit SOP' : 'Draft New SOP'}</h1>
                   {editingSopId && (
-                    <p className="text-base text-gray-400 font-bold leading-tight">Changes are version-logged and announced to the whole team.</p>
+                    <p className="text-xs text-gray-500 font-bold leading-tight">Changes are version-logged and announced to the whole team.</p>
                   )}
                 </div>
               </div>
@@ -2516,7 +2540,7 @@ export default function App() {
                       <p className="text-sm font-black text-blue-900 flex items-center gap-1.5">
                         <CloudUploadIcon /> Import Existing SOP
                       </p>
-                      <p className="text-base text-blue-800/70 font-medium leading-snug mt-0.5">
+                      <p className="text-xs text-blue-800/70 font-medium leading-snug mt-0.5">
                         Have this SOP as a Word, PDF, text, or Markdown file? Upload it and the form fills itself in for review.
                       </p>
                     </div>
@@ -2545,7 +2569,7 @@ export default function App() {
               <form onSubmit={handlePublishSOP} className="space-y-5">
                 <div className="space-y-3.5">
                   <div>
-                    <label className={`block text-sm font-black uppercase tracking-wider mb-1 ${formErrorFields.has('categories') ? 'text-red-600' : 'text-gray-500'}`}>Scope Categories <span className="text-gray-400 normal-case font-bold">(pick one or more)</span></label>
+                    <label className={`block text-sm font-black uppercase tracking-wider mb-1 ${formErrorFields.has('categories') ? 'text-red-600' : 'text-gray-500'}`}>Scope Categories <span className="text-gray-500 normal-case font-bold">(pick one or more)</span></label>
                     <div className={`flex flex-wrap gap-2 ${formErrorFields.has('categories') ? 'p-2 rounded-xl border-2 border-red-400 bg-red-50/60' : ''}`}>
                       {SOP_CATEGORY_OPTIONS.map(cat => {
                         const active = newCategories.includes(cat);
@@ -2568,12 +2592,12 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-black text-gray-400 uppercase tracking-wider mb-1">Author Identity</label>
+                    <label className="block text-sm font-black text-gray-500 uppercase tracking-wider mb-1">Author Identity</label>
                     <input
                       type="text"
                       disabled
                       value={`${currentUser.name} (Admin)`}
-                      className="w-full h-11 px-3.5 bg-gray-50 border border-gray-200 text-gray-400 rounded-xl text-sm font-extrabold focus:outline-none shadow-xs"
+                      className="w-full h-11 px-3.5 bg-gray-50 border border-gray-200 text-gray-500 rounded-xl text-sm font-extrabold focus:outline-none shadow-xs"
                     />
                   </div>
 
@@ -2631,12 +2655,12 @@ export default function App() {
                     {newSteps.map((step, index) => (
                       <div key={index} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3 relative">
                         <div className="flex justify-between items-center">
-                          <span className="text-base font-black text-gray-400 tracking-wider">STEP CHECKLIST {index + 1}</span>
+                          <span className="text-xs font-black text-gray-500 tracking-wider">STEP CHECKLIST {index + 1}</span>
                           {newSteps.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleRemoveCreatorStep(index)}
-                              className="text-gray-400 hover:text-red-500 p-1 bg-white border border-gray-100 rounded-lg hover:shadow-xs transition-colors"
+                              className="text-gray-500 hover:text-red-500 p-1 bg-white border border-gray-100 rounded-lg hover:shadow-xs transition-colors"
                             >
                               <TrashIcon />
                             </button>
@@ -2662,7 +2686,7 @@ export default function App() {
 
                           {/* Image Insertion Options */}
                           <div className="bg-white border border-gray-100 p-2.5 rounded-xl space-y-2 shadow-xs">
-                            <div className="flex justify-between items-center text-base font-bold text-gray-400 uppercase tracking-wide">
+                            <div className="flex justify-between items-center text-xs font-bold text-gray-500 uppercase tracking-wide">
                               <span>Step Photography</span>
                               {step.imageUrl && <span className="text-green-600">✓ Assigned</span>}
                             </div>
@@ -2727,7 +2751,7 @@ export default function App() {
                 {editingSopId && (
                   <div className="bg-emerald-50/50 border border-emerald-100/50 rounded-2xl p-3.5 space-y-1.5 shadow-xs">
                     <label className="block text-sm font-black text-emerald-900 uppercase tracking-wider">What changed? (Revision Note)</label>
-                    <p className="text-base text-emerald-800 font-medium leading-snug">
+                    <p className="text-xs text-emerald-800 font-medium leading-snug">
                       Saved to the version changelog and pushed as a notification to every teammate.
                     </p>
                     <textarea
@@ -2775,10 +2799,10 @@ export default function App() {
                     <ArrowLeftIcon />
                   </button>
                   <div>
-                    <span className="text-base uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
+                    <span className="text-xs uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
                       <TagIcon /> {sopCats(selectedDoc).join(' · ') || 'Uncategorized'} SOP
                     </span>
-                    <h1 className="text-base font-black text-gray-950 leading-tight line-clamp-1">{selectedDoc.title}</h1>
+                    <h1 className="text-xs font-black text-gray-950 leading-tight line-clamp-1">{selectedDoc.title}</h1>
                   </div>
                 </div>
 
@@ -2813,7 +2837,7 @@ export default function App() {
                         </button>
                         <button
                           onClick={() => setSopDeleteConfirm(null)}
-                          className="h-8 px-2 text-gray-400 hover:text-gray-600 rounded-lg text-sm font-black"
+                          className="h-8 px-2 text-gray-500 hover:text-gray-600 rounded-lg text-sm font-black"
                         >
                           Cancel
                         </button>
@@ -2821,7 +2845,7 @@ export default function App() {
                     ) : (
                       <button
                         onClick={() => setSopDeleteConfirm(selectedDoc.id)}
-                        className="h-8 w-8 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        className="h-8 w-8 flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                         title="Delete SOP"
                       >
                         <TrashIcon />
@@ -2835,11 +2859,11 @@ export default function App() {
               <div className="bg-gray-50 rounded-2xl p-3.5 flex justify-between items-center text-sm shadow-xs">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-400 font-extrabold uppercase">Current Standard</span>
+                    <span className="text-gray-500 font-extrabold uppercase">Current Standard</span>
                     <span className="text-emerald-800 font-black">{selectedDoc.revisionHistory[0]?.version || 'v1.0'}</span>
                   </div>
                   <p className="text-gray-800 font-extrabold leading-none mt-1">Updated by {selectedDoc.lastUpdatedBy}</p>
-                  <p className="text-gray-400 font-bold mt-1">Role: {selectedDoc.lastUpdatedByRole} • {selectedDoc.lastUpdated}</p>
+                  <p className="text-gray-500 font-bold mt-1">Role: {selectedDoc.lastUpdatedByRole} • {selectedDoc.lastUpdated}</p>
                   
                   {/* Scheduled review date */}
                   <div className="flex items-center gap-1 text-base text-amber-600 font-bold pt-1.5">
@@ -2939,8 +2963,8 @@ export default function App() {
                               }`}>
                                 {step.title}
                               </h3>
-                              <RichText className={`text-base leading-relaxed pt-1 ${
-                                isStepDone ? 'text-gray-400 font-normal' : 'text-gray-600 font-medium'
+                              <RichText className={`text-xs leading-relaxed pt-1 ${
+                                isStepDone ? 'text-gray-500 font-normal' : 'text-gray-600 font-medium'
                               }`} text={step.body} />
                             </div>
                           </article>
@@ -2960,10 +2984,10 @@ export default function App() {
                   <div className="bg-emerald-50/20 border border-emerald-100/50 rounded-2xl p-4 space-y-3.5 shadow-xs">
                     <div className="flex justify-between items-start gap-2">
                       <div className="space-y-0.5">
-                        <h4 className="text-base font-black text-gray-900 leading-none flex items-center gap-1">
+                        <h4 className="text-xs font-black text-gray-900 leading-none flex items-center gap-1">
                           <SparklesIcon /> Spot an issue with this SOP?
                         </h4>
-                        <p className="text-base text-gray-400 mt-1 leading-snug">
+                        <p className="text-xs text-gray-500 mt-1 leading-snug">
                           Recommend standard operating procedure updates directly to administrators.
                         </p>
                       </div>
@@ -2999,8 +3023,8 @@ export default function App() {
                   {/* Bottom validation button panel */}
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
                     <div className="max-w-[55%]">
-                      <h4 className="text-base font-bold text-gray-900 leading-none">Compliance Registry</h4>
-                      <p className="text-base text-gray-400 mt-1 leading-snug">
+                      <h4 className="text-xs font-bold text-gray-900 leading-none">Compliance Registry</h4>
+                      <p className="text-xs text-gray-500 mt-1 leading-snug">
                         Validating certifies full execution of procedural version {currentVersion}.
                       </p>
                     </div>
@@ -3012,7 +3036,7 @@ export default function App() {
                         alreadySigned
                           ? 'bg-green-100 text-green-700 cursor-not-allowed'
                           : completedCount < totalStepsCount
-                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed font-bold'
+                          ? 'bg-gray-200 text-gray-500 cursor-not-allowed font-bold'
                           : 'bg-emerald-800 text-white hover:bg-emerald-900 active:scale-95 shadow-md shadow-emerald-100'
                       }`}
                     >
@@ -3035,7 +3059,7 @@ export default function App() {
               {docTab === 'history' && (
                 <div className="space-y-5">
                   <div className="space-y-2">
-                    <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
                       <HistoryIcon /> Version Revision Changelog
                     </h3>
                     <div className="space-y-3">
@@ -3043,10 +3067,10 @@ export default function App() {
                         <div key={i} className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1 shadow-xs">
                           <div className="flex justify-between items-center text-sm font-black text-gray-900">
                             <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded-md">{rev.version}</span>
-                            <span className="text-gray-400">{rev.date}</span>
+                            <span className="text-gray-500">{rev.date}</span>
                           </div>
-                          <p className="text-base text-gray-800 font-bold mt-1">&ldquo;{rev.notes}&rdquo;</p>
-                          <p className="text-base text-gray-400 font-bold">
+                          <p className="text-xs text-gray-800 font-bold mt-1">&ldquo;{rev.notes}&rdquo;</p>
+                          <p className="text-xs text-gray-500 font-bold">
                             Revised by: {rev.updatedBy} ({rev.userRole})
                           </p>
                         </div>
@@ -3055,14 +3079,14 @@ export default function App() {
                   </div>
 
                   <div className="space-y-2 pt-2 border-t border-gray-100">
-                    <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
                       <AwardIcon /> Live Sign-off verification log ({selectedDoc.readLogs?.length})
                     </h3>
                     
                     {selectedDoc.readLogs && selectedDoc.readLogs.length === 0 ? (
                       <div className="bg-gray-50 text-center py-6 rounded-xl border border-dashed border-gray-200">
-                        <p className="text-base text-gray-400 font-bold">No compliance sign-offs registered yet.</p>
-                        <p className="text-base text-gray-400">Mark this document as read to log your verification.</p>
+                        <p className="text-xs text-gray-500 font-bold">No compliance sign-offs registered yet.</p>
+                        <p className="text-xs text-gray-500">Mark this document as read to log your verification.</p>
                       </div>
                     ) : (
                       <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -3070,9 +3094,9 @@ export default function App() {
                           <div key={i} className="bg-white border border-gray-100 p-2.5 rounded-xl flex items-center justify-between text-sm">
                             <div className="space-y-0.5">
                               <p className="text-gray-900 font-black">{log.userName}</p>
-                              <p className="text-gray-400 font-medium">{log.userRole} • verified version {log.versionRead}</p>
+                              <p className="text-gray-500 font-medium">{log.userRole} • verified version {log.versionRead}</p>
                             </div>
-                            <span className="text-base font-bold text-gray-400">{log.timestamp}</span>
+                            <span className="text-xs font-bold text-gray-500">{log.timestamp}</span>
                           </div>
                         ))}
                       </div>
@@ -3128,7 +3152,7 @@ export default function App() {
                     a.click();
                     URL.revokeObjectURL(url);
                   }}
-                  className="w-full h-11 rounded-xl border border-gray-200 text-base font-black text-gray-500 hover:text-emerald-800 hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
+                  className="w-full h-11 rounded-xl border border-gray-200 text-xs font-black text-gray-500 hover:text-emerald-800 hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                   Export SOP
@@ -3157,8 +3181,8 @@ export default function App() {
                   <ArrowLeftIcon />
                 </button>
                 <div>
-                  <span className="text-base uppercase tracking-wider text-gray-400 font-bold">SOP Revision Journal</span>
-                  <h1 className="text-base font-black text-gray-900 leading-none">Drafting Version Changelog</h1>
+                  <span className="text-xs uppercase tracking-wider text-gray-500 font-bold">SOP Revision Journal</span>
+                  <h1 className="text-xs font-black text-gray-900 leading-none">Drafting Version Changelog</h1>
                 </div>
               </div>
 
@@ -3183,14 +3207,14 @@ export default function App() {
 
               <form onSubmit={handlePublishRevision} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="block text-sm font-black text-gray-400 uppercase tracking-wider">Revision Action Notes</label>
+                  <label className="block text-sm font-black text-gray-500 uppercase tracking-wider">Revision Action Notes</label>
                   <textarea
                     rows={4}
                     required
                     placeholder="e.g., Updated safe micron boundaries for coil vacuums to align with updated field equipment protocols..."
                     value={revisionNotes}
                     onChange={(e) => setRevisionNotes(e.target.value)}
-                    className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none transition-all text-gray-800 leading-relaxed font-semibold placeholder:text-gray-300 shadow-xs"
+                    className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none transition-all text-gray-800 leading-relaxed font-semibold placeholder:text-gray-400 shadow-xs"
                   />
                 </div>
 
@@ -3226,10 +3250,10 @@ export default function App() {
                   <ArrowLeftIcon />
                 </button>
                 <div>
-                  <span className="text-base uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
+                  <span className="text-xs uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
                     <ShieldIcon /> ADMINISTRATOR CONSOLE
                   </span>
-                  <h1 className="text-base font-black text-gray-950 leading-tight">Oversight & Compliance Matrix</h1>
+                  <h1 className="text-xs font-black text-gray-950 leading-tight">Oversight & Compliance Matrix</h1>
                 </div>
               </div>
 
@@ -3237,7 +3261,7 @@ export default function App() {
               <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-4 text-white space-y-4 shadow-lg">
                 <div className="flex justify-between items-center border-b border-gray-700/60 pb-3">
                   <div>
-                    <span className="text-base font-extrabold text-gray-400 tracking-wider uppercase">OVERALL WORKSPACE HEALTH</span>
+                    <span className="text-xs font-extrabold text-gray-500 tracking-wider uppercase">OVERALL WORKSPACE HEALTH</span>
                     <h3 className="text-xl font-black mt-0.5">{aggregateComplianceRate}% Compliance</h3>
                   </div>
                   <span className="text-sm bg-blue-600 text-white font-black px-2.5 py-1 rounded-xl">
@@ -3253,7 +3277,7 @@ export default function App() {
                       style={{ width: `${aggregateComplianceRate}%` }}
                     ></div>
                   </div>
-                  <div className="flex justify-between text-base text-gray-400 font-bold">
+                  <div className="flex justify-between text-xs text-gray-500 font-bold">
                     <span>Incomplete (Gaps)</span>
                     <span>100% Fully Compliant</span>
                   </div>
@@ -3261,15 +3285,15 @@ export default function App() {
 
                 <div className="grid grid-cols-3 gap-2 pt-1 text-center">
                   <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-base text-gray-400 font-bold leading-none">Total SOPs</p>
+                    <p className="text-xs text-gray-500 font-bold leading-none">Total SOPs</p>
                     <p className="text-base font-black mt-1 leading-none">{totalSOPsCount}</p>
                   </div>
                   <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-base text-gray-400 font-bold leading-none">Total Team</p>
+                    <p className="text-xs text-gray-500 font-bold leading-none">Total Team</p>
                     <p className="text-base font-black mt-1 leading-none">{totalTeamSize}</p>
                   </div>
                   <div className="bg-gray-800/80 p-2 rounded-xl">
-                    <p className="text-base text-gray-400 font-bold leading-none">Sign-offs</p>
+                    <p className="text-xs text-gray-500 font-bold leading-none">Sign-offs</p>
                     <p className="text-base font-black mt-1 leading-none">{actualReadLogsCount}</p>
                   </div>
                 </div>
@@ -3277,12 +3301,12 @@ export default function App() {
 
               {/* Admin Pending Notifications viewport */}
               <div className="space-y-2">
-                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
                   🔔 SOP Update Suggestions ({notifications.length})
                 </h3>
                 {notifications.length === 0 ? (
                   <div className="bg-gray-50 border border-gray-100 text-center py-5 rounded-2xl shadow-xs">
-                    <p className="text-base text-gray-400 font-bold">No update recommendations pending.</p>
+                    <p className="text-xs text-gray-500 font-bold">No update recommendations pending.</p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -3303,13 +3327,13 @@ export default function App() {
                         >
                           ✕
                         </button>
-                        <p className="text-base font-black text-emerald-800 uppercase tracking-wider leading-none">
+                        <p className="text-xs font-black text-emerald-800 uppercase tracking-wider leading-none">
                           ALERT FOR: {notif.docTitle}
                         </p>
-                        <p className="text-base text-gray-850 font-semibold leading-relaxed pt-0.5">
+                        <p className="text-xs text-gray-850 font-semibold leading-relaxed pt-0.5">
                           &ldquo;{notif.notes}&rdquo;
                         </p>
-                        <div className="flex justify-between items-center text-sm text-gray-400 font-bold pt-1">
+                        <div className="flex justify-between items-center text-sm text-gray-500 font-bold pt-1">
                           <span>By: {notif.suggestedBy} ({notif.suggestedByRole})</span>
                           <span>{notif.timestamp}</span>
                         </div>
@@ -3328,7 +3352,7 @@ export default function App() {
                   <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl"><CareerIcon /></div>
                   <div className="text-left">
                     <p className="text-sm font-black text-gray-900">Career Ladder Manager</p>
-                    <p className="text-base text-gray-400 font-medium">Add levels &amp; milestones, assign paths, track team progress.</p>
+                    <p className="text-xs text-gray-500 font-medium">Add levels &amp; milestones, assign paths, track team progress.</p>
                   </div>
                 </div>
                 <ChevronRightIcon />
@@ -3343,7 +3367,7 @@ export default function App() {
                   <div className="p-3 bg-blue-50 text-blue-700 rounded-xl"><TrainingIcon /></div>
                   <div className="text-left">
                     <p className="text-sm font-black text-gray-900">Training Builder</p>
-                    <p className="text-base text-gray-400 font-medium">Create multi-step training with photos &amp; resource links.</p>
+                    <p className="text-xs text-gray-500 font-medium">Create multi-step training with photos &amp; resource links.</p>
                   </div>
                 </div>
                 <ChevronRightIcon />
@@ -3355,7 +3379,7 @@ export default function App() {
               {/* Team Member Management */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">👥 Team Members</h3>
+                  <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">👥 Team Members</h3>
                   <button
                     onClick={() => { setShowAddUser(v => !v); setNewUserError(''); }}
                     className="text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
@@ -3370,11 +3394,11 @@ export default function App() {
                     {newUserError && <p className="text-sm text-red-600 font-bold">{newUserError}</p>}
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-base font-black text-gray-400 uppercase tracking-wider mb-1">Full Name</label>
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Full Name</label>
                         <input value={newUserName} onChange={e => setNewUserName(e.target.value)} placeholder="e.g., Jordan Blake" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none" />
                       </div>
                       <div>
-                        <label className="block text-base font-black text-gray-400 uppercase tracking-wider mb-1">Division</label>
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Division</label>
                         <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900">
                           <option value="">Select division…</option>
                           <option value="HVAC">HVAC</option>
@@ -3386,11 +3410,11 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-base font-black text-gray-400 uppercase tracking-wider mb-1">Password</label>
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Password</label>
                         <input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} placeholder="Min 8 characters" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none" />
                       </div>
                       <div>
-                        <label className="block text-base font-black text-gray-400 uppercase tracking-wider mb-1">Access Level</label>
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Access Level</label>
                         <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
                           <button onClick={() => setNewUserType('user')} className={`flex-1 text-sm font-black transition-colors ${newUserType === 'user' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>User</button>
                           <button onClick={() => setNewUserType('admin')} className={`flex-1 text-sm font-black transition-colors ${newUserType === 'admin' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>Admin</button>
@@ -3428,12 +3452,12 @@ export default function App() {
                             {u.name}
                             <span className={`text-sm px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${u.userType === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>{u.userType}</span>
                           </p>
-                          <p className="text-sm text-gray-400 font-medium mt-0.5">{u.role}</p>
+                          <p className="text-sm text-gray-500 font-medium mt-0.5">{u.role}</p>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => { setResetPwFor(resetPwFor === u.name ? null : u.name); setResetPwValue(''); setResetPwMsg(''); }}
-                            className="p-1.5 text-gray-300 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all"
+                            className="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all"
                             title={`Reset ${u.name}'s password`}
                           >
                             🔑
@@ -3451,7 +3475,7 @@ export default function App() {
                                   setAllBadges(prev => prev.filter(b => b.user_name !== u.name));
                                 }
                               }}
-                              className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                               title={`Remove ${u.name}`}
                             >
                               <TrashIcon />
@@ -3470,7 +3494,7 @@ export default function App() {
                             placeholder="New password (min 8 characters)"
                             className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none font-mono"
                           />
-                          <p className="text-sm text-gray-400 leading-snug">Share this with {u.name.split(' ')[0]} directly — they can change it later from their own account.</p>
+                          <p className="text-sm text-gray-500 leading-snug">Share this with {u.name.split(' ')[0]} directly — they can change it later from their own account.</p>
                           {resetPwMsg && <p className={`text-sm font-bold ${resetPwMsg.startsWith('✓') ? 'text-emerald-700' : 'text-red-600'}`}>{resetPwMsg}</p>}
                           <div className="flex gap-2">
                             <button
@@ -3505,7 +3529,7 @@ export default function App() {
 
               {/* Badge Management Panel */}
               <div className="space-y-3">
-                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
                   🏅 Badge Management
                 </h3>
                 <div className="space-y-3">
@@ -3517,7 +3541,7 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-black text-gray-900">{account.name}</p>
-                            <p className="text-base text-gray-400 font-bold">{account.role}</p>
+                            <p className="text-xs text-gray-500 font-bold">{account.role}</p>
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-1.5 pt-1">
@@ -3544,7 +3568,7 @@ export default function App() {
                                   if (data?.badge) setAllBadges(prev => [...prev, data.badge]);
                                 });
                               }}
-                              className="inline-flex items-center gap-1 text-base font-black px-1.5 py-0.5 rounded-md border border-dashed border-gray-300 text-gray-400 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
+                              className="inline-flex items-center gap-1 text-xs font-black px-1.5 py-0.5 rounded-md border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
                             >
                               + {badge}
                             </button>
@@ -3587,7 +3611,7 @@ export default function App() {
 
               {/* Matrix List of SOP Read Statuses */}
               <div className="space-y-3">
-                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">SOP Readers Audit Matrix</h3>
+                <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">SOP Readers Audit Matrix</h3>
                 <div className="space-y-3">
                   {documents.map(doc => {
                     const readCount = doc.readLogs?.length || 0;
@@ -3613,7 +3637,7 @@ export default function App() {
 
                         {/* Progress Bar for individual SOP */}
                         <div className="space-y-1 pt-1">
-                          <div className="flex justify-between text-base text-gray-400 font-bold leading-none mb-1">
+                          <div className="flex justify-between text-xs text-gray-500 font-bold leading-none mb-1">
                             <span>{readCount} of {totalTeamSize} Teammates Verified</span>
                             <span className="text-gray-700 font-extrabold">{completionPct}% Read</span>
                           </div>
@@ -3629,7 +3653,7 @@ export default function App() {
 
                         {/* Display list of readers/non-readers */}
                         <div className="pt-2.5 border-t border-gray-50 space-y-1">
-                          <span className="text-sm font-black text-gray-400 tracking-wider uppercase block">Compliance Signature Roster</span>
+                          <span className="text-sm font-black text-gray-500 tracking-wider uppercase block">Compliance Signature Roster</span>
                           <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pt-0.5">
                             {doc.readLogs.length === 0 ? (
                               <span className="text-base text-red-500 font-extrabold italic bg-red-50 px-1.5 py-0.5 rounded-md">
@@ -3655,14 +3679,14 @@ export default function App() {
 
               {/* Notification Settings Panel */}
               <div className="space-y-3">
-                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
                   🔔 Notification Settings
                 </h3>
                 <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-gray-900">Auto-Notify on Updates</p>
-                      <p className="text-sm text-gray-400 mt-0.5 leading-relaxed">When enabled, all team members receive a notification whenever an SOP or Handbook section is updated. Disable during bulk changes to prevent notification spam.</p>
+                      <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">When enabled, all team members receive a notification whenever an SOP or Handbook section is updated. Disable during bulk changes to prevent notification spam.</p>
                     </div>
                     <button
                       onClick={async () => {
@@ -3679,7 +3703,7 @@ export default function App() {
                       <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${notificationsEnabled ? 'left-5' : 'left-0.5'}`} />
                     </button>
                   </div>
-                  <p className={`text-sm font-bold ${notificationsEnabled ? 'text-emerald-700' : 'text-gray-400'}`}>
+                  <p className={`text-sm font-bold ${notificationsEnabled ? 'text-emerald-700' : 'text-gray-500'}`}>
                     {notificationsEnabled ? 'Notifications are ON — team members will be notified of updates.' : 'Notifications are OFF — updates will be silent.'}
                   </p>
                 </div>
@@ -3696,7 +3720,7 @@ export default function App() {
                 <div>
                   <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Company Resource</span>
                   <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Handbook</h1>
-                  <p className="text-sm text-gray-400 mt-1">Policies, culture guidelines, and team expectations.</p>
+                  <p className="text-sm text-gray-500 mt-1">Policies, culture guidelines, and team expectations.</p>
                 </div>
                 {currentUser.userType === 'admin' && !handbookLoading && (
                   <div className="flex gap-2 flex-shrink-0 mt-1">
@@ -3730,9 +3754,7 @@ export default function App() {
               </div>
 
               {handbookLoading && (
-                <div className="flex items-center justify-center py-16">
-                  <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
-                </div>
+                <ListSkeleton rows={4} />
               )}
 
               {handbookError && (
@@ -3786,8 +3808,8 @@ export default function App() {
                   <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
                     <HandbookIcon />
                   </div>
-                  <p className="text-base font-black text-gray-900">No Content Yet</p>
-                  <p className="text-sm text-gray-400 max-w-[220px] mx-auto leading-relaxed">
+                  <p className="text-xs font-black text-gray-900">No Content Yet</p>
+                  <p className="text-sm text-gray-500 max-w-[220px] mx-auto leading-relaxed">
                     {currentUser.userType === 'admin' ? 'Click "Edit Handbook" to add the first section.' : 'Handbook sections have not been loaded. Contact your administrator.'}
                   </p>
                 </div>
@@ -3865,7 +3887,7 @@ export default function App() {
                                     onClick={() => moveHandbookSection(sectionIndex, -1)}
                                     disabled={sectionIndex === 0}
                                     title="Move up"
-                                    className="w-6 h-5 flex items-center justify-center text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded disabled:opacity-25 disabled:hover:bg-transparent"
+                                    className="w-6 h-5 flex items-center justify-center text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded disabled:opacity-25 disabled:hover:bg-transparent"
                                   >
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7"/></svg>
                                   </button>
@@ -3873,7 +3895,7 @@ export default function App() {
                                     onClick={() => moveHandbookSection(sectionIndex, 1)}
                                     disabled={sectionIndex === handbookSections.length - 1}
                                     title="Move down"
-                                    className="w-6 h-5 flex items-center justify-center text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded disabled:opacity-25 disabled:hover:bg-transparent"
+                                    className="w-6 h-5 flex items-center justify-center text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded disabled:opacity-25 disabled:hover:bg-transparent"
                                   >
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"/></svg>
                                   </button>
@@ -3898,7 +3920,7 @@ export default function App() {
                                   onClick={() => setEditingSection({ id: section.id, title: section.title, content: section.content, change_note: '' })}
                                   className="flex-1 flex items-center justify-between text-left min-w-0"
                                 >
-                                  <span className="text-base font-bold text-gray-900 leading-snug pr-3 truncate">{section.title}</span>
+                                  <span className="text-xs font-bold text-gray-900 leading-snug pr-3 truncate">{section.title}</span>
                                   <span className="flex-shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg">Edit</span>
                                 </button>
                               </div>
@@ -3907,7 +3929,7 @@ export default function App() {
                                 onClick={() => setExpandedSection(isOpen ? null : section.id)}
                                 className="w-full flex items-center justify-between px-4 py-3.5 text-left"
                               >
-                                <span className="text-base font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
+                                <span className="text-xs font-bold text-gray-900 leading-snug pr-3">{section.title}</span>
                                 <span className={`flex-shrink-0 w-5 h-5 text-emerald-800 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
                                   <ChevronRightIcon />
                                 </span>
@@ -3959,7 +3981,7 @@ export default function App() {
                                       <span className="text-sm font-black text-gray-500 uppercase tracking-wider">
                                         Acknowledged: {ackedCurrentCount} of {teamMembers.length}
                                       </span>
-                                      <span className={`w-4 h-4 text-gray-400 transition-transform ${ackRosterFor === section.id ? 'rotate-90' : ''}`}><ChevronRightIcon /></span>
+                                      <span className={`w-4 h-4 text-gray-500 transition-transform ${ackRosterFor === section.id ? 'rotate-90' : ''}`}><ChevronRightIcon /></span>
                                     </button>
                                     {ackRosterFor === section.id && (
                                       <div className="mt-2 space-y-1">
@@ -3974,7 +3996,7 @@ export default function App() {
                                               ) : ua ? (
                                                 <span className="text-amber-600 font-bold">⚠ needs re-ack</span>
                                               ) : (
-                                                <span className="text-gray-300 font-bold">— pending</span>
+                                                <span className="text-gray-500 font-bold">— pending</span>
                                               )}
                                             </div>
                                           );
@@ -3998,15 +4020,15 @@ export default function App() {
               {!handbookLoading && currentUser.userType === 'admin' && handbookRevisions.length > 0 && (
                 <div className="mt-8 pt-6 border-t border-gray-100">
                   <div className="mb-3">
-                    <span className="text-sm font-black text-gray-400 uppercase tracking-widest">Addendum</span>
-                    <h2 className="text-base font-black text-gray-700 mt-0.5">Version History</h2>
+                    <span className="text-sm font-black text-gray-500 uppercase tracking-widest">Addendum</span>
+                    <h2 className="text-xs font-black text-gray-700 mt-0.5">Version History</h2>
                   </div>
                   <div className="space-y-2">
                     {handbookRevisions.map((rev) => (
                       <div key={rev.id} className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-bold text-gray-800">{rev.section_title}</p>
-                          <p className="text-sm text-gray-400 flex-shrink-0">{new Date(rev.edited_at).toLocaleDateString()}</p>
+                          <p className="text-sm text-gray-500 flex-shrink-0">{new Date(rev.edited_at).toLocaleDateString()}</p>
                         </div>
                         <p className="text-sm text-gray-500 mt-0.5">by {rev.edited_by}{rev.change_note ? ` — ${rev.change_note}` : ''}</p>
                       </div>
@@ -4024,7 +4046,7 @@ export default function App() {
                 <div>
                   <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Inbox</span>
                   <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Notifications</h1>
-                  <p className="text-sm text-gray-400 mt-1">Updates from SOPs and the Employee Handbook.</p>
+                  <p className="text-sm text-gray-500 mt-1">Updates from SOPs and the Employee Handbook.</p>
                 </div>
                 {userNotifications.filter(n => !n.read_at).length > 0 && (
                   <button
@@ -4042,11 +4064,11 @@ export default function App() {
 
               {userNotifications.length === 0 && (
                 <div className="bg-gray-50 border border-gray-100 rounded-2xl p-8 text-center space-y-2">
-                  <div className="w-12 h-12 bg-gray-100 text-gray-400 rounded-2xl flex items-center justify-center mx-auto">
+                  <div className="w-12 h-12 bg-gray-100 text-gray-500 rounded-2xl flex items-center justify-center mx-auto">
                     <BellIcon />
                   </div>
-                  <p className="text-base font-black text-gray-700">All caught up</p>
-                  <p className="text-sm text-gray-400">You have no notifications yet.</p>
+                  <p className="text-xs font-black text-gray-700">All caught up</p>
+                  <p className="text-sm text-gray-500">You have no notifications yet.</p>
                 </div>
               )}
 
@@ -4056,13 +4078,13 @@ export default function App() {
                     key={notif.id}
                     className={`rounded-2xl border px-4 py-3.5 flex items-start gap-3 ${notif.read_at ? 'bg-white border-gray-100' : 'bg-emerald-50 border-emerald-200'}`}
                   >
-                    <div className={`mt-0.5 flex-shrink-0 ${notif.read_at ? 'text-gray-300' : 'text-emerald-600'}`}>
+                    <div className={`mt-0.5 flex-shrink-0 ${notif.read_at ? 'text-gray-500' : 'text-emerald-600'}`}>
                       {notif.type === 'handbook' ? <HandbookIcon /> : <FileTextIcon />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-black leading-snug ${notif.read_at ? 'text-gray-700' : 'text-gray-900'}`}>{notif.title}</p>
-                      <p className="text-base text-gray-500 mt-0.5 leading-relaxed">{notif.message}</p>
-                      <p className="text-sm text-gray-400 mt-1">{new Date(notif.created_at).toLocaleString()}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{notif.message}</p>
+                      <p className="text-sm text-gray-500 mt-1">{new Date(notif.created_at).toLocaleString()}</p>
                     </div>
                     <button
                       onClick={() => {
@@ -4072,7 +4094,7 @@ export default function App() {
                           body: JSON.stringify({ id: notif.id }),
                         }).then(r => { if (r.ok) setUserNotifications(prev => prev.filter(n => n.id !== notif.id)); });
                       }}
-                      className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors mt-0.5"
+                      className="flex-shrink-0 text-gray-500 hover:text-red-400 transition-colors mt-0.5"
                       title="Dismiss"
                     >
                       <TrashIcon />
@@ -4119,7 +4141,7 @@ export default function App() {
                     </button>
                     <div className="flex-1 min-w-0">
                       <button onClick={() => hasDetail && setExpandedTask(isTaskOpen ? null : task.id)} className="text-left w-full">
-                        <p className={`${isSub ? 'text-sm' : 'text-base'} font-semibold leading-snug ${isVerified ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
+                        <p className={`${isSub ? 'text-sm' : 'text-xs'} font-semibold leading-snug ${isVerified ? 'line-through text-gray-500' : 'text-gray-900'}`}>{task.title}</p>
                         {isVerified && completion && (
                           <p className="text-sm text-emerald-600 mt-0.5 font-bold">
                             ✓ Verified by {completion.verified_by}{completion.verified_at ? ` · ${new Date(completion.verified_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
@@ -4151,7 +4173,7 @@ export default function App() {
                           {task.sop_title && !linkedSop && (
                             <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
                               <BookOpenIcon />
-                              <span className="text-sm text-gray-400 truncate">SOP ref: {task.sop_title}</span>
+                              <span className="text-sm text-gray-500 truncate">SOP ref: {task.sop_title}</span>
                             </div>
                           )}
                           {linkedTraining && (
@@ -4168,7 +4190,7 @@ export default function App() {
                       )}
                     </div>
                     {hasDetail && (
-                      <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-300 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
+                      <button onClick={() => setExpandedTask(isTaskOpen ? null : task.id)} className={`flex-shrink-0 text-gray-500 transition-transform duration-150 ${isTaskOpen ? 'rotate-90' : ''}`}>
                         <ChevronRightIcon />
                       </button>
                     )}
@@ -4182,7 +4204,7 @@ export default function App() {
                   <div>
                     <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Growth & Development</span>
                     <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Career Ladder</h1>
-                    <p className="text-sm text-gray-400 mt-1">Check off skills as you master them — an admin verifies each one.</p>
+                    <p className="text-sm text-gray-500 mt-1">Check off skills as you master them — an admin verifies each one.</p>
                   </div>
                   {currentUser.userType === 'admin' && (
                     <button
@@ -4215,8 +4237,8 @@ export default function App() {
                     <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto">
                       <CareerIcon />
                     </div>
-                    <p className="text-base font-black text-gray-900">Path Not Assigned Yet</p>
-                    <p className="text-sm text-gray-400 max-w-[220px] mx-auto leading-relaxed">Your admin will assign your career path and starting level. Check back soon.</p>
+                    <p className="text-xs font-black text-gray-900">Path Not Assigned Yet</p>
+                    <p className="text-sm text-gray-500 max-w-[220px] mx-auto leading-relaxed">Your admin will assign your career path and starting level. Check back soon.</p>
                   </div>
                 )}
 
@@ -4228,8 +4250,8 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-black text-emerald-700 uppercase tracking-widest">{assignedTrack.department}</p>
-                          <p className="text-base font-black text-gray-900 mt-0.5">{assignedTrack.name}</p>
-                          {myAssignment && <p className="text-sm text-gray-400 mt-0.5">Assigned by {myAssignment.assigned_by}</p>}
+                          <p className="text-xs font-black text-gray-900 mt-0.5">{assignedTrack.name}</p>
+                          {myAssignment && <p className="text-sm text-gray-500 mt-0.5">Assigned by {myAssignment.assigned_by}</p>}
                         </div>
                         <span className="text-2xl font-black text-emerald-800">{pct}%</span>
                       </div>
@@ -4244,7 +4266,7 @@ export default function App() {
                     {/* Task list — top-level tasks with nested sub-tasks */}
                     <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden divide-y divide-gray-50">
                       {assignedTrack.tasks.length === 0 && (
-                        <p className="text-sm text-gray-400 px-4 py-6 text-center">No tasks added to this level yet.</p>
+                        <p className="text-sm text-gray-500 px-4 py-6 text-center">No tasks added to this level yet.</p>
                       )}
                       {topTasks.map(task => (
                         <React.Fragment key={task.id}>
@@ -4286,7 +4308,7 @@ export default function App() {
                         <p className="text-sm font-black text-emerald-800 uppercase tracking-wider">New Level</p>
                         <div className="flex gap-2">
                           {(['Home Performance', 'HVAC'] as const).map(d => (
-                            <button key={d} onClick={() => setNewTrackDept(d)} className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${newTrackDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
+                            <button key={d} onClick={() => setNewTrackDept(d)} className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${newTrackDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-500'}`}>{d}</button>
                           ))}
                         </div>
                         <input value={newTrackName} onChange={e => setNewTrackName(e.target.value)} placeholder="Level name (e.g. Apprentice, Jr Tech)" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base" />
@@ -4297,7 +4319,7 @@ export default function App() {
                         </div>
                       </div>
                     ) : (
-                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-sm font-bold">
+                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-500 text-sm font-bold">
                         <PlusIcon /> Add New Level
                       </button>
                     )}
@@ -4311,7 +4333,7 @@ export default function App() {
           {currentView === 'careerAdmin' && currentUser && currentUser.userType === 'admin' && (
             <div className="space-y-5">
               <div className="flex items-center gap-3">
-                <button onClick={() => setCurrentView('careerLadder')} className="text-gray-400">
+                <button onClick={() => setCurrentView('careerLadder')} className="text-gray-500">
                   <ArrowLeftIcon />
                 </button>
                 <div>
@@ -4321,15 +4343,13 @@ export default function App() {
               </div>
 
               {careerLoading && (
-                <div className="flex items-center justify-center py-16">
-                  <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
-                </div>
+                <ListSkeleton rows={4} />
               )}
 
               {/* LADDER BUILDER — manage levels (sections) & milestones */}
               {!careerLoading && (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">🪜 Ladder Builder</h3>
+                  <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">🪜 Ladder Builder</h3>
 
                   {/* Department tabs */}
                   <div className="flex gap-2">
@@ -4337,7 +4357,7 @@ export default function App() {
                       <button
                         key={d}
                         onClick={() => { setBuilderDept(d); setExpandedBuilderTrack(null); setEditingTrack(null); setEditingTask(null); setTrackDeleteConfirm(null); setTaskDeleteConfirm(null); }}
-                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${builderDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${builderDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-500'}`}
                       >
                         {d}
                       </button>
@@ -4345,7 +4365,7 @@ export default function App() {
                   </div>
 
                   {careerTracks.filter(t => t.department === builderDept).length === 0 && (
-                    <p className="text-sm text-gray-400 text-center py-3">No levels in this department yet — add the first one below.</p>
+                    <p className="text-sm text-gray-500 text-center py-3">No levels in this department yet — add the first one below.</p>
                   )}
 
                   {careerTracks.filter(t => t.department === builderDept).map(track => {
@@ -4378,9 +4398,9 @@ export default function App() {
                         <div key={task.id}>
                         <div className={`py-2.5 flex items-center gap-2 ${isSub ? 'pl-10 pr-4 bg-gray-50/50' : 'px-4'}`}>
                           <div className="flex-1 min-w-0">
-                            <p className={`${isSub ? 'text-sm' : 'text-base'} font-semibold text-gray-900 leading-snug`}>{isSub ? '↳ ' : ''}{task.title}</p>
+                            <p className={`${isSub ? 'text-sm' : 'text-xs'} font-semibold text-gray-900 leading-snug`}>{isSub ? '↳ ' : ''}{task.title}</p>
                             {(task.sop_title || task.description) && (
-                              <p className="text-sm text-gray-400 truncate">{task.sop_title ? `SOP: ${task.sop_title}` : task.description}</p>
+                              <p className="text-sm text-gray-500 truncate">{task.sop_title ? `SOP: ${task.sop_title}` : task.description}</p>
                             )}
                           </div>
                           {task.description && (
@@ -4401,16 +4421,16 @@ export default function App() {
                               + Sub
                             </button>
                           )}
-                          <button onClick={() => { setEditingTask({ id: task.id, track_id: task.track_id, title: task.title, description: task.description || '', imageUrls: (task.image_urls || []).join('\n'), sopTitle: task.sop_title || '', trainingModuleId: task.training_module_id ?? '' }); setTaskDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title={isSub ? 'Edit sub-task' : 'Edit milestone'}>
+                          <button onClick={() => { setEditingTask({ id: task.id, track_id: task.track_id, title: task.title, description: task.description || '', imageUrls: (task.image_urls || []).join('\n'), sopTitle: task.sop_title || '', trainingModuleId: task.training_module_id ?? '' }); setTaskDeleteConfirm(null); }} className="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title={isSub ? 'Edit sub-task' : 'Edit milestone'}>
                             <EditIcon />
                           </button>
                           {taskDeleteConfirm === task.id ? (
                             <div className="flex items-center gap-1">
                               <button onClick={() => deleteCareerTask(task)} disabled={builderSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
-                              <button onClick={() => setTaskDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                              <button onClick={() => setTaskDeleteConfirm(null)} className="h-8 px-1.5 text-gray-500 text-sm font-black">✕</button>
                             </div>
                           ) : (
-                            <button onClick={() => setTaskDeleteConfirm(task.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title={isSub ? 'Delete sub-task' : 'Delete milestone (also removes its sub-tasks)'}>
+                            <button onClick={() => setTaskDeleteConfirm(task.id)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg" title={isSub ? 'Delete sub-task' : 'Delete milestone (also removes its sub-tasks)'}>
                               <TrashIcon />
                             </button>
                           )}
@@ -4439,23 +4459,23 @@ export default function App() {
                         ) : (
                           <div className="p-3.5 flex items-center gap-2">
                             <button onClick={() => setExpandedBuilderTrack(isOpen ? null : track.id)} className="flex-1 text-left min-w-0">
-                              <p className="text-base font-black text-gray-900 leading-snug">{track.name}</p>
-                              <p className="text-sm text-gray-400 mt-0.5 truncate">{track.tasks.length} milestone{track.tasks.length !== 1 ? 's' : ''}{track.description ? ` — ${track.description}` : ''}</p>
+                              <p className="text-xs font-black text-gray-900 leading-snug">{track.name}</p>
+                              <p className="text-sm text-gray-500 mt-0.5 truncate">{track.tasks.length} milestone{track.tasks.length !== 1 ? 's' : ''}{track.description ? ` — ${track.description}` : ''}</p>
                             </button>
-                            <button onClick={() => { setEditingTrack({ id: track.id, name: track.name, description: track.description || '' }); setTrackDeleteConfirm(null); }} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit level">
+                            <button onClick={() => { setEditingTrack({ id: track.id, name: track.name, description: track.description || '' }); setTrackDeleteConfirm(null); }} className="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit level">
                               <EditIcon />
                             </button>
                             {trackDeleteConfirm === track.id ? (
                               <div className="flex items-center gap-1">
                                 <button onClick={() => deleteCareerTrack(track.id)} disabled={builderSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
-                                <button onClick={() => setTrackDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                                <button onClick={() => setTrackDeleteConfirm(null)} className="h-8 px-1.5 text-gray-500 text-sm font-black">✕</button>
                               </div>
                             ) : (
-                              <button onClick={() => setTrackDeleteConfirm(track.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete level (also removes its milestones)">
+                              <button onClick={() => setTrackDeleteConfirm(track.id)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete level (also removes its milestones)">
                                 <TrashIcon />
                               </button>
                             )}
-                            <button onClick={() => setExpandedBuilderTrack(isOpen ? null : track.id)} className={`p-1 text-gray-300 transition-transform ${isOpen ? 'rotate-90' : ''}`}>
+                            <button onClick={() => setExpandedBuilderTrack(isOpen ? null : track.id)} className={`p-1 text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`}>
                               <ChevronRightIcon />
                             </button>
                           </div>
@@ -4464,7 +4484,7 @@ export default function App() {
                         {/* Milestones */}
                         {isOpen && (
                           <div className="border-t border-gray-50 divide-y divide-gray-50">
-                            {track.tasks.length === 0 && <p className="text-sm text-gray-400 px-4 py-3 text-center">No milestones yet.</p>}
+                            {track.tasks.length === 0 && <p className="text-sm text-gray-500 px-4 py-3 text-center">No milestones yet.</p>}
                             {builderTopTasks.map(task => (
                               <React.Fragment key={task.id}>
                                 {renderBuilderTask(task, false)}
@@ -4538,7 +4558,7 @@ export default function App() {
                         </div>
                       </div>
                     ) : (
-                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-400 text-sm font-bold">
+                      <button onClick={() => setShowAddTrack(true)} className="flex items-center justify-center gap-2 w-full text-gray-500 text-sm font-bold">
                         <PlusIcon /> Add New Level
                       </button>
                     )}
@@ -4548,7 +4568,7 @@ export default function App() {
 
               {!careerLoading && (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest pt-2">📊 Team Progress</h3>
+                  <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest pt-2">📊 Team Progress</h3>
                   {effectiveUsers.filter(a => a.userType !== 'admin').map(account => {
                     const assignment = allAssignments.find(a => a.user_name === account.name);
                     const assignedTrack = assignment ? careerTracks.find(t => t.id === assignment.track_id) : null;
@@ -4567,8 +4587,8 @@ export default function App() {
                         {/* Header */}
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="text-base font-bold text-gray-900">{account.name}</p>
-                            <p className="text-base text-gray-400">{account.role}</p>
+                            <p className="text-xs font-bold text-gray-900">{account.name}</p>
+                            <p className="text-xs text-gray-500">{account.role}</p>
                           </div>
                           <button
                             onClick={() => { setAssigningUser(isAssigning ? null : account.name); setAssignDept(assignedTrack?.department as any || 'Home Performance'); setAssignTrackId(assignedTrack?.id || null); }}
@@ -4584,7 +4604,7 @@ export default function App() {
                             <p className="text-sm font-black text-gray-500 uppercase tracking-wider">Assign Career Path</p>
                             <div className="flex gap-2">
                               {(['Home Performance', 'HVAC'] as const).map(d => (
-                                <button key={d} onClick={() => { setAssignDept(d); setAssignTrackId(null); }} className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${assignDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}>{d}</button>
+                                <button key={d} onClick={() => { setAssignDept(d); setAssignTrackId(null); }} className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${assignDept === d ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-500'}`}>{d}</button>
                               ))}
                             </div>
                             <select
@@ -4622,7 +4642,7 @@ export default function App() {
                                     <p className="text-sm font-bold text-gray-800 leading-snug">
                                       {pendingTask?.parent_task_id ? '↳ ' : ''}{pendingTask?.title ?? `Task #${c.task_id}`}
                                     </p>
-                                    <p className="text-sm text-gray-400">Completed {new Date(c.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                    <p className="text-sm text-gray-500">Completed {new Date(c.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                                   </div>
                                   <button
                                     onClick={() => signOffCompletion(c.id)}
@@ -4654,18 +4674,18 @@ export default function App() {
                                 <p className="text-sm text-emerald-700 font-black uppercase tracking-wider">{assignedTrack.department}</p>
                                 <p className="text-sm font-bold text-gray-700">{assignedTrack.name}</p>
                               </div>
-                              <span className="text-base font-black text-emerald-800">{pct}%</span>
+                              <span className="text-xs font-black text-emerald-800">{pct}%</span>
                             </div>
                             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                               <div className="h-full bg-emerald-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                             </div>
-                            <div className="flex items-center justify-between text-sm text-gray-400">
+                            <div className="flex items-center justify-between text-sm text-gray-500">
                               <span>{doneTasks} of {totalTasks} verified</span>
                               {lastActivity && <span>Last: {new Date(lastActivity.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
                             </div>
                           </>
                         ) : (
-                          <p className="text-sm text-gray-400 italic">No path assigned yet.</p>
+                          <p className="text-sm text-gray-500 italic">No path assigned yet.</p>
                         )}
                       </div>
                     );
@@ -4761,7 +4781,7 @@ export default function App() {
                         </span>
                         <article className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs space-y-3">
                           <h3 className="text-sm font-black text-gray-900 leading-snug">{step.title}</h3>
-                          {step.body && <RichText className="text-base text-gray-600 leading-relaxed" text={step.body} />}
+                          {step.body && <RichText className="text-xs text-gray-600 leading-relaxed" text={step.body} />}
                           {step.image_urls && step.image_urls.length > 0 && (
                             <div className="flex gap-2 overflow-x-auto pb-1">
                               {step.image_urls.map((url, j) => (
@@ -4838,7 +4858,7 @@ export default function App() {
                     <div>
                       <span className="text-sm font-black text-emerald-800 uppercase tracking-widest">Learn & Grow</span>
                       <h1 className="text-2xl font-black text-gray-950 mt-0.5 tracking-tight">Training</h1>
-                      <p className="text-sm text-gray-400 mt-1">Step-by-step training for your trade.</p>
+                      <p className="text-sm text-gray-500 mt-1">Step-by-step training for your trade.</p>
                     </div>
                     {currentUser.userType === 'admin' && (
                       <button
@@ -4856,7 +4876,7 @@ export default function App() {
                       <button
                         key={cat}
                         onClick={() => setTrainingCategory(cat)}
-                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${trainingCategory === cat ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${trainingCategory === cat ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-500'}`}
                       >
                         {cat}
                       </button>
@@ -4864,9 +4884,7 @@ export default function App() {
                   </div>
 
                   {trainingLoading && (
-                    <div className="flex items-center justify-center py-16">
-                      <div className="w-8 h-8 border-4 border-emerald-800 border-t-transparent rounded-full animate-spin" />
-                    </div>
+                    <ListSkeleton rows={3} withMedia />
                   )}
 
                   {trainingError && !trainingLoading && (
@@ -4879,8 +4897,8 @@ export default function App() {
                   {!trainingLoading && !trainingError && trainingModules.filter(m => m.category === trainingCategory).length === 0 && (
                     <div className="bg-gray-50 border border-gray-100 rounded-2xl p-8 text-center space-y-2">
                       <div className="w-12 h-12 bg-emerald-800 text-white rounded-2xl flex items-center justify-center mx-auto"><TrainingIcon /></div>
-                      <p className="text-base font-black text-gray-900">No {trainingCategory} training yet</p>
-                      <p className="text-sm text-gray-400 max-w-[240px] mx-auto leading-relaxed">Training modules published by your admins will appear here.</p>
+                      <p className="text-xs font-black text-gray-900">No {trainingCategory} training yet</p>
+                      <p className="text-sm text-gray-500 max-w-[240px] mx-auto leading-relaxed">Training modules published by your admins will appear here.</p>
                     </div>
                   )}
 
@@ -4902,8 +4920,8 @@ export default function App() {
                         <div className="p-4 flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <h4 className="text-sm font-black text-gray-900 leading-snug group-hover:text-emerald-800 transition-colors">{mod.title}</h4>
-                            {mod.description && <p className="text-base text-gray-400 font-medium leading-relaxed line-clamp-2 mt-0.5">{mod.description}</p>}
-                            <p className="text-sm text-gray-400 font-bold mt-1">{mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}</p>
+                            {mod.description && <p className="text-xs text-gray-500 font-medium leading-relaxed line-clamp-2 mt-0.5">{mod.description}</p>}
+                            <p className="text-sm text-gray-500 font-bold mt-1">{mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}</p>
                           </div>
                           <ChevronRightIcon />
                         </div>
@@ -4940,7 +4958,7 @@ export default function App() {
                         <p className="text-sm font-black text-blue-900 flex items-center gap-1.5">
                           <CloudUploadIcon /> Import Training Document
                         </p>
-                        <p className="text-base text-blue-800/70 font-medium leading-snug mt-0.5">
+                        <p className="text-xs text-blue-800/70 font-medium leading-snug mt-0.5">
                           Upload step-by-step instructions as a PDF, text, Markdown, or Word file — the module form fills itself in for review.
                         </p>
                       </div>
@@ -4973,9 +4991,9 @@ export default function App() {
 
                   {(['Home Performance', 'HVAC'] as const).map(cat => (
                     <div key={cat} className="space-y-2">
-                      <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">{cat} ({trainingModules.filter(m => m.category === cat).length})</h3>
+                      <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">{cat} ({trainingModules.filter(m => m.category === cat).length})</h3>
                       {trainingModules.filter(m => m.category === cat).length === 0 && (
-                        <p className="text-sm text-gray-400 px-1">No modules yet.</p>
+                        <p className="text-sm text-gray-500 px-1">No modules yet.</p>
                       )}
                       {trainingModules.filter(m => m.category === cat).map(mod => {
                         const modPending = trainingCompletions.filter(c => c.module_id === mod.id && !c.verified_by);
@@ -4984,22 +5002,22 @@ export default function App() {
                         <div key={mod.id} className="bg-white border border-gray-100 rounded-2xl p-3.5 space-y-2">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="text-base font-black text-gray-900 leading-snug">{mod.title}</p>
-                              <p className="text-sm text-gray-400 mt-0.5">
+                              <p className="text-xs font-black text-gray-900 leading-snug">{mod.title}</p>
+                              <p className="text-sm text-gray-500 mt-0.5">
                                 {mod.steps.length} step{mod.steps.length !== 1 ? 's' : ''}{mod.created_by ? ` — by ${mod.created_by}` : ''}
                                 {modValidated.length > 0 ? ` · ${modValidated.length} validated` : ''}
                               </p>
                             </div>
-                            <button onClick={() => startEditTraining(mod)} className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit module">
+                            <button onClick={() => startEditTraining(mod)} className="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Edit module">
                               <EditIcon />
                             </button>
                             {trainingDeleteConfirm === mod.id ? (
                               <div className="flex items-center gap-1">
                                 <button onClick={() => deleteTrainingModule(mod.id)} disabled={trainingSaving} className="h-8 px-2 bg-red-600 text-white rounded-lg text-sm font-black">Confirm</button>
-                                <button onClick={() => setTrainingDeleteConfirm(null)} className="h-8 px-1.5 text-gray-400 text-sm font-black">✕</button>
+                                <button onClick={() => setTrainingDeleteConfirm(null)} className="h-8 px-1.5 text-gray-500 text-sm font-black">✕</button>
                               </div>
                             ) : (
-                              <button onClick={() => setTrainingDeleteConfirm(mod.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete module">
+                              <button onClick={() => setTrainingDeleteConfirm(mod.id)} className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Delete module">
                                 <TrashIcon />
                               </button>
                             )}
@@ -5013,7 +5031,7 @@ export default function App() {
                                 <div key={c.id} className="flex items-center gap-2">
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-gray-800 leading-snug">{c.user_name}</p>
-                                    <p className="text-sm text-gray-400">Completed {new Date(c.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                    <p className="text-sm text-gray-500">Completed {new Date(c.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                                   </div>
                                   <button
                                     onClick={() => validateTrainingCompletion(c.id)}
@@ -5058,7 +5076,7 @@ export default function App() {
                       <button
                         key={cat}
                         onClick={() => setTrainingDraft({ ...trainingDraft, category: cat })}
-                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${trainingDraft.category === cat ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-400'}`}
+                        className={`flex-1 py-1.5 rounded-xl text-sm font-black uppercase border transition-all ${trainingDraft.category === cat ? 'bg-emerald-800 text-white border-emerald-800' : 'border-gray-200 text-gray-500'}`}
                       >
                         {cat}
                       </button>
@@ -5119,9 +5137,9 @@ export default function App() {
                     {trainingDraft.steps.map((step, i) => (
                       <div key={i} className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-base font-black text-gray-400 tracking-wider">STEP {i + 1}</span>
+                          <span className="text-xs font-black text-gray-500 tracking-wider">STEP {i + 1}</span>
                           {trainingDraft.steps.length > 1 && (
-                            <button onClick={() => { setTrainingDraft({ ...trainingDraft, steps: trainingDraft.steps.filter((_, j) => j !== i) }); setTrainingErrorFields(prev => new Set(Array.from(prev).filter(k => !k.startsWith('step-')))); }} className="text-gray-400 hover:text-red-500 p-1 bg-white border border-gray-100 rounded-lg transition-colors">
+                            <button onClick={() => { setTrainingDraft({ ...trainingDraft, steps: trainingDraft.steps.filter((_, j) => j !== i) }); setTrainingErrorFields(prev => new Set(Array.from(prev).filter(k => !k.startsWith('step-')))); }} className="text-gray-500 hover:text-red-500 p-1 bg-white border border-gray-100 rounded-lg transition-colors">
                               <TrashIcon />
                             </button>
                           )}
@@ -5131,7 +5149,7 @@ export default function App() {
 
                         {/* Step photos */}
                         <div className="bg-white border border-gray-100 p-2.5 rounded-xl space-y-2 shadow-xs">
-                          <div className="flex justify-between items-center text-base font-bold text-gray-400 uppercase tracking-wide">
+                          <div className="flex justify-between items-center text-xs font-bold text-gray-500 uppercase tracking-wide">
                             <span>Step Photos</span>
                             <label className={`h-7 px-2.5 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-sm font-extrabold text-emerald-800 flex items-center gap-1 cursor-pointer transition-colors ${trainingUploading === String(i) ? 'opacity-50 pointer-events-none' : ''}`}>
                               {trainingUploading === String(i) ? 'Uploading…' : <><CloudUploadIcon /> Add Photo</>}
@@ -5163,15 +5181,15 @@ export default function App() {
                       <h3 className="text-sm font-black text-gray-900 flex items-center gap-1">
                         <CareerIcon /> Linked Career Milestones
                       </h3>
-                      <p className="text-sm text-gray-400 leading-snug">
+                      <p className="text-sm text-gray-500 leading-snug">
                         Tick the milestones this training prepares a teammate for. Linked milestones show an &ldquo;Open Training&rdquo; button in the career ladder, and changes save instantly.
                       </p>
                       {careerTracks.filter(t => t.tasks.length > 0).length === 0 && (
-                        <p className="text-sm text-gray-400">No career milestones exist yet — add some in the Career Ladder Manager.</p>
+                        <p className="text-sm text-gray-500">No career milestones exist yet — add some in the Career Ladder Manager.</p>
                       )}
                       {careerTracks.filter(t => t.tasks.length > 0).map(track => (
                         <div key={track.id} className="space-y-1">
-                          <p className="text-sm font-black text-gray-400 uppercase tracking-wider pt-1">{track.department} — {track.name}</p>
+                          <p className="text-sm font-black text-gray-500 uppercase tracking-wider pt-1">{track.department} — {track.name}</p>
                           {track.tasks.map(task => {
                             const linked = task.training_module_id === trainingDraft.id;
                             return (
@@ -5192,7 +5210,7 @@ export default function App() {
                   )}
 
                   {trainingDraft.id === null && (
-                    <p className="text-sm text-gray-400 border-t border-gray-100 pt-3">
+                    <p className="text-sm text-gray-500 border-t border-gray-100 pt-3">
                       💡 After publishing, reopen this module to link it to career ladder milestones (or pick the module from a milestone&apos;s editor in the Career Ladder Manager).
                     </p>
                   )}
@@ -5218,7 +5236,7 @@ export default function App() {
             <button
               onClick={() => setCurrentView('dashboard')}
               className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
-                currentView === 'dashboard' || currentView === 'document' || currentView === 'addRevision' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+                currentView === 'dashboard' || currentView === 'document' || currentView === 'addRevision' ? 'text-emerald-800 scale-105' : 'text-gray-500 hover:text-gray-600'
               }`}
             >
               <FolderIcon />
@@ -5228,7 +5246,7 @@ export default function App() {
             <button
               onClick={() => setCurrentView('handbook')}
               className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
-                currentView === 'handbook' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+                currentView === 'handbook' ? 'text-emerald-800 scale-105' : 'text-gray-500 hover:text-gray-600'
               }`}
             >
               <HandbookIcon />
@@ -5238,7 +5256,7 @@ export default function App() {
             <button
               onClick={() => setCurrentView('careerLadder')}
               className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
-                currentView === 'careerLadder' || currentView === 'careerAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+                currentView === 'careerLadder' || currentView === 'careerAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-500 hover:text-gray-600'
               }`}
             >
               <CareerIcon />
@@ -5248,7 +5266,7 @@ export default function App() {
             <button
               onClick={() => { setOpenTraining(null); setCurrentView('training'); }}
               className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
-                currentView === 'training' || currentView === 'trainingAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+                currentView === 'training' || currentView === 'trainingAdmin' ? 'text-emerald-800 scale-105' : 'text-gray-500 hover:text-gray-600'
               }`}
             >
               <TrainingIcon />
@@ -5258,7 +5276,7 @@ export default function App() {
             <button
               onClick={() => setCurrentView('userNotifications')}
               className={`flex flex-col items-center gap-1 flex-1 min-w-0 relative transition-all ${
-                currentView === 'userNotifications' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+                currentView === 'userNotifications' ? 'text-emerald-800 scale-105' : 'text-gray-500 hover:text-gray-600'
               }`}
             >
               <div className="relative">
@@ -5277,7 +5295,7 @@ export default function App() {
                 <button
                   onClick={() => setCurrentView('new')}
                   className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
-                    currentView === 'new' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+                    currentView === 'new' ? 'text-emerald-800 scale-105' : 'text-gray-500 hover:text-gray-600'
                   }`}
                 >
                   <PlusIcon />
@@ -5287,7 +5305,7 @@ export default function App() {
                 <button
                   onClick={() => setCurrentView('adminConsole')}
                   className={`flex flex-col items-center gap-1 flex-1 min-w-0 transition-all ${
-                    currentView === 'adminConsole' ? 'text-emerald-800 scale-105' : 'text-gray-400 hover:text-gray-600'
+                    currentView === 'adminConsole' ? 'text-emerald-800 scale-105' : 'text-gray-500 hover:text-gray-600'
                   }`}
                 >
                   <ShieldIcon />
