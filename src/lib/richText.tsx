@@ -66,6 +66,88 @@ export function RichText({ text, className }: { text: string; className?: string
   return <div className={className}>{blocks}</div>;
 }
 
+// Bullet glyphs that Word, Docs and PDFs put at the start of list lines
+const BULLET_GLYPHS = /^[\s]*[•·▪◦‣∙*–—]\s+/;
+
+/** Normalize pasted plain text: tidy line endings and turn whatever bullet
+ *  glyph the source used into the "- " marker this editor understands. */
+export function plainToMarkers(text: string): string {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/ /g, ' ') // non-breaking spaces come across from Word
+    .split('\n')
+    .map(line => (BULLET_GLYPHS.test(line) ? line.replace(BULLET_GLYPHS, '- ') : line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n') // collapse runaway blank lines to one gap
+    .trim();
+}
+
+/**
+ * Convert clipboard HTML (Word, Google Docs, web pages) into the same
+ * markdown-ish markers the editor stores, so pasted text keeps its bold,
+ * italics, underline, bullets, line breaks and paragraph spacing.
+ *
+ * The HTML is only ever *read* — parsed into a detached document and walked
+ * for text. Nothing is injected, and the result is plain text that still
+ * passes through the server-side sanitizer like anything typed by hand.
+ */
+export function htmlToMarkers(html: string): string {
+  if (typeof DOMParser === 'undefined') return '';
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(html, 'text/html');
+  } catch {
+    return '';
+  }
+  doc.querySelectorAll('script, style, head').forEach(el => el.remove());
+
+  const walk = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      // Collapse the incidental newlines/indentation in source markup
+      return (node.textContent ?? '').replace(/\s+/g, ' ');
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'br') return '\n';
+
+    const inner = Array.from(el.childNodes).map(walk).join('');
+    const text = inner.trim();
+
+    switch (tag) {
+      case 'b':
+      case 'strong':
+        return text ? `**${text}**` : '';
+      case 'i':
+      case 'em':
+        return text ? `*${text}*` : '';
+      case 'u':
+        return text ? `__${text}__` : '';
+      case 'li':
+        return text ? `- ${text}\n` : '';
+      case 'p':
+      case 'div':
+      case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
+        // Paragraphs keep a blank line between them
+        return text ? `${text}\n\n` : '';
+      case 'ul':
+      case 'ol':
+      case 'table':
+        return inner.endsWith('\n') ? `${inner}\n` : `${inner}\n\n`;
+      case 'tr':
+        return text ? `${text}\n` : '';
+      case 'td':
+      case 'th':
+        return text ? `${text} ` : '';
+      default:
+        return inner;
+    }
+  };
+
+  return plainToMarkers(walk(doc.body));
+}
+
 /**
  * A textarea with a small formatting toolbar. Buttons wrap the current
  * selection with the matching markers (or toggle "- " prefixes for
@@ -125,6 +207,32 @@ export function RichTextarea({ value, onChange, rows, placeholder, className }: 
     });
   };
 
+  /**
+   * Keep formatting when pasting from Word, Google Docs or a web page:
+   * convert the clipboard's HTML into this editor's markers rather than
+   * letting the browser drop everything to flat text.
+   */
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const ta = ref.current;
+    if (!ta) return;
+    const html = e.clipboardData.getData('text/html');
+    const plain = e.clipboardData.getData('text/plain');
+    const converted = html ? htmlToMarkers(html) : plainToMarkers(plain);
+    // Nothing useful to convert — let the browser paste normally
+    if (!converted || converted === plain) return;
+
+    e.preventDefault();
+    const s = ta.selectionStart;
+    const eSel = ta.selectionEnd;
+    const next = value.slice(0, s) + converted + value.slice(eSel);
+    onChange(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      const caret = s + converted.length;
+      ta.setSelectionRange(caret, caret);
+    });
+  };
+
   const btn = 'h-6 min-w-[24px] px-1.5 rounded-md border border-gray-200 bg-white text-gray-600 text-xs leading-none hover:border-emerald-300 hover:text-emerald-800 transition-colors';
 
   return (
@@ -141,6 +249,7 @@ export function RichTextarea({ value, onChange, rows, placeholder, className }: 
         placeholder={placeholder}
         value={value}
         onChange={e => onChange(e.target.value)}
+        onPaste={handlePaste}
         className={className}
       />
     </div>
