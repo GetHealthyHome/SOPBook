@@ -2148,7 +2148,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex justify-center items-start py-0 sm:py-8 font-sans antialiased text-gray-900">
         <div className="w-full max-w-md bg-white min-h-screen sm:min-h-[840px] sm:rounded-[40px] sm:shadow-2xl sm:border-[8px] sm:border-gray-900 relative overflow-hidden flex flex-col items-center justify-center p-6 text-gray-500">
-          <img src="/logo.svg" alt="Healthy Home Field Guide" className="w-16 h-16 animate-pulse mx-auto" />
+          <img src="/logo.svg?v=4" alt="Healthy Home Field Guide" className="w-16 h-16 animate-pulse mx-auto" />
           <span className="text-sm font-bold tracking-wide uppercase mt-4 animate-pulse text-gray-500">Loading your Field Guide…</span>
         </div>
       </div>
@@ -2165,7 +2165,7 @@ export default function App() {
           <div className="px-5 py-6 border-b border-gray-100">
             <div className="flex items-center gap-2.5">
               <img
-                src="/logo.svg"
+                src="/logo.svg?v=4"
                 alt="Healthy Home Field Guide"
                 className={`w-9 h-9 ${currentUser ? 'cursor-pointer' : ''}`}
                 onClick={() => { if (currentUser) setCurrentView('home'); }}
@@ -2250,7 +2250,7 @@ export default function App() {
             }`}
           >
             <button onClick={handleInstallClick} className="flex-1 min-w-0 flex items-center gap-3 text-left p-3.5 pr-0">
-              <img src="/logo.svg" alt="" className="w-10 h-10 flex-shrink-0" />
+              <img src="/logo.svg?v=4" alt="" className="w-10 h-10 flex-shrink-0" />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-black leading-tight">Install the Field Guide</span>
                 <span className="block text-xs text-emerald-100 font-medium leading-snug">
@@ -2312,7 +2312,7 @@ export default function App() {
           {currentView === 'login' && (
             <div className="space-y-6 py-8 lg:max-w-sm lg:mx-auto">
               <div className="text-center space-y-1.5">
-                <img src="/logo.svg" alt="Healthy Home Field Guide logo" className="w-24 h-24 mx-auto mb-3" />
+                <img src="/logo.svg?v=4" alt="Healthy Home Field Guide logo" className="w-24 h-24 mx-auto mb-3" />
                 <h1 className="text-2xl font-black tracking-tight text-emerald-800 leading-tight block px-2">
                   Healthy Home
                 </h1>
