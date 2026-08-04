@@ -87,13 +87,19 @@ export function attemptsUntilNextLock(rec: AttemptRecord): number {
 // for immediate feedback before submitting.
 // ---------------------------------------------------------------------------
 
+// Caps are a backstop against a single request bloating a row, not an
+// editorial limit — they sit far above what anyone types by hand so full
+// length articles paste in whole. `article` is for standalone long-form
+// content; `body` is for the many-per-row fields (up to 50 steps on an SOP),
+// so it stays lower to bound the total row size.
 const MAX_LENGTHS = {
   name: 80,
   password: 128,
   title: 200,
-  summary: 400,
-  body: 4000,
-  notes: 2000,
+  summary: 2_000,
+  body: 20_000,
+  article: 50_000,
+  notes: 5_000,
   default: 500,
 } as const;
 

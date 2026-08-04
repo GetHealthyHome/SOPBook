@@ -238,6 +238,7 @@ interface SafetyModule {
   image_url: string;
   link_url: string;
   link_label: string;
+  order_index: number;
   created_by: string;
   created_at: string;
 }
@@ -567,6 +568,9 @@ export default function App() {
   const [safetyFormError, setSafetyFormError] = useState('');
   const [safetyUploading, setSafetyUploading] = useState(false);
   const [safetyDeleteConfirm, setSafetyDeleteConfirm] = useState<number | null>(null);
+  // Which safety modules are expanded, and whether the admin is reordering
+  const [safetyOpen, setSafetyOpen] = useState<Record<number, boolean>>({});
+  const [safetyReorderMode, setSafetyReorderMode] = useState(false);
   // Training completion validation
   const [trainingCompletions, setTrainingCompletions] = useState<TrainingCompletion[]>([]);
   const [trainingCompBusy, setTrainingCompBusy] = useState(false);
@@ -1357,6 +1361,40 @@ export default function App() {
     }
     setSafetyDeleteConfirm(null);
     setSafetySaving(false);
+  };
+
+  // Persist a new safety module order, reverting the list if the save fails
+  const persistSafetyOrder = async (reordered: SafetyModule[], previous: SafetyModule[]) => {
+    setSafetyModules(reordered);
+    try {
+      const res = await fetch('/api/safety/reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: reordered.map(m => m.id) }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      console.error('safety reorder failed:', err);
+      setSafetyModules(previous);
+    }
+  };
+
+  const moveSafetyModule = async (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= safetyModules.length) return;
+    const reordered = [...safetyModules];
+    const [item] = reordered.splice(index, 1);
+    reordered.splice(target, 0, item);
+    await persistSafetyOrder(reordered, safetyModules);
+  };
+
+  const moveSafetyModuleToPosition = async (index: number, position1Based: number) => {
+    const target = Math.max(0, Math.min(safetyModules.length - 1, position1Based - 1));
+    if (target === index) return;
+    const reordered = [...safetyModules];
+    const [item] = reordered.splice(index, 1);
+    reordered.splice(target, 0, item);
+    await persistSafetyOrder(reordered, safetyModules);
   };
 
   // Upload a PDF/text/Word document of step-by-step instructions and
@@ -2376,12 +2414,26 @@ export default function App() {
                     </div>
                   </div>
                   {isAdmin && !safetyDraft && (
-                    <button
-                      onClick={() => { setSafetyFormError(''); setSafetyDraft(blankSafetyDraft()); }}
-                      className="h-10 px-3 bg-red-700 hover:bg-red-800 text-white rounded-xl text-sm font-black flex items-center gap-1 flex-shrink-0 transition-colors"
-                    >
-                      <PlusIcon /> Add
-                    </button>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {safetyModules.length > 1 && (
+                        <button
+                          onClick={() => setSafetyReorderMode(v => !v)}
+                          className={`h-10 px-3 rounded-xl text-sm font-black border transition-colors ${
+                            safetyReorderMode
+                              ? 'bg-emerald-700 border-emerald-700 text-white hover:bg-emerald-800'
+                              : 'bg-white border-gray-200 text-gray-700 hover:border-emerald-300'
+                          }`}
+                        >
+                          {safetyReorderMode ? 'Done' : 'Reorder'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setSafetyFormError(''); setSafetyDraft(blankSafetyDraft()); }}
+                        className="h-10 px-3 bg-red-700 hover:bg-red-800 text-white rounded-xl text-sm font-black flex items-center gap-1 transition-colors"
+                      >
+                        <PlusIcon /> Add
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -2411,7 +2463,7 @@ export default function App() {
                     <div>
                       <label className="block text-xs font-black text-gray-600 uppercase tracking-wider mb-1">Content</label>
                       <RichTextarea
-                        rows={10}
+                        rows={14}
                         value={safetyDraft.body}
                         onChange={v => setSafetyDraft({ ...safetyDraft, body: v })}
                         placeholder={'Write the safety overview here.\n\nUse the buttons above for **bold**, *italic*, __underline__ and bullet lists.'}
@@ -2493,20 +2545,85 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Published modules */}
+                {/* Published modules — collapsed to their titles so a long
+                    library stays scannable; tap a title to read the module. */}
                 {safetyModules.length > 0 && (
                   <section className="space-y-3">
-                    {safetyModules.map(mod => (
-                      <article key={mod.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-                        {mod.image_url && (
-                          <SafeImage src={mod.image_url} alt={mod.title}
-                            wrapperClassName="w-full h-40 bg-gray-100 overflow-hidden"
-                            className="object-cover w-full h-full" />
-                        )}
-                        <div className="p-4 space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <h2 className="text-base font-black text-gray-900 leading-snug">{mod.title}</h2>
-                            {isAdmin && (
+                    {safetyModules.length > 1 && (
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => {
+                            const anyOpen = safetyModules.some(m => safetyOpen[m.id]);
+                            setSafetyOpen(anyOpen ? {} : Object.fromEntries(safetyModules.map(m => [m.id, true])));
+                          }}
+                          className="text-xs font-black text-gray-600 hover:text-emerald-700 uppercase tracking-wider"
+                        >
+                          {safetyModules.some(m => safetyOpen[m.id]) ? 'Collapse all' : 'Expand all'}
+                        </button>
+                      </div>
+                    )}
+
+                    {safetyModules.map((mod, modIndex) => {
+                      const isOpen = !!safetyOpen[mod.id];
+                      return (
+                        <article key={mod.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
+                          <div className="flex items-center gap-1.5 px-2 py-2">
+                            {/* Reorder controls — admin only, while reordering */}
+                            {isAdmin && safetyReorderMode && (
+                              <>
+                                <div className="flex flex-col flex-shrink-0">
+                                  <button
+                                    onClick={() => moveSafetyModule(modIndex, -1)}
+                                    disabled={modIndex === 0}
+                                    title="Move up"
+                                    className="w-6 h-5 flex items-center justify-center text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded disabled:opacity-25 disabled:hover:bg-transparent"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7"/></svg>
+                                  </button>
+                                  <button
+                                    onClick={() => moveSafetyModule(modIndex, 1)}
+                                    disabled={modIndex === safetyModules.length - 1}
+                                    title="Move down"
+                                    className="w-6 h-5 flex items-center justify-center text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded disabled:opacity-25 disabled:hover:bg-transparent"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"/></svg>
+                                  </button>
+                                </div>
+                                {/* Jump to position — type a number to move a module far in one step */}
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={safetyModules.length}
+                                  defaultValue={modIndex + 1}
+                                  key={`safety-pos-${mod.id}-${modIndex}`}
+                                  onClick={e => e.currentTarget.select()}
+                                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                  onBlur={e => {
+                                    const n = parseInt(e.target.value, 10);
+                                    if (!Number.isNaN(n) && n !== modIndex + 1) moveSafetyModuleToPosition(modIndex, n);
+                                  }}
+                                  title={`Position ${modIndex + 1} of ${safetyModules.length} — type a number and press Enter to jump`}
+                                  className="w-10 h-8 flex-shrink-0 text-center text-sm font-black text-gray-600 bg-gray-50 border border-gray-200 rounded-lg focus:border-emerald-500 focus:bg-white focus:outline-none"
+                                />
+                              </>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => setSafetyOpen(prev => ({ ...prev, [mod.id]: !prev[mod.id] }))}
+                              aria-expanded={isOpen}
+                              className="flex-1 min-w-0 flex items-center gap-2 text-left px-2 py-1.5 rounded-xl hover:bg-gray-50 transition-colors"
+                            >
+                              <svg
+                                className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+                              </svg>
+                              <h2 className="text-base font-black text-gray-900 leading-snug flex-1 min-w-0">{mod.title}</h2>
+                            </button>
+
+                            {isAdmin && !safetyReorderMode && (
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <button
                                   onClick={() => { setSafetyFormError(''); setSafetyDraft({ id: mod.id, title: mod.title, body: mod.body || '', imageUrl: mod.image_url || '', linkUrl: mod.link_url || '', linkLabel: mod.link_label || '' }); }}
@@ -2537,23 +2654,34 @@ export default function App() {
                             )}
                           </div>
 
-                          {mod.body && <RichText className="text-sm text-gray-700 leading-relaxed" text={mod.body} />}
+                          {isOpen && (
+                            <div className="border-t border-gray-100">
+                              {mod.image_url && (
+                                <SafeImage src={mod.image_url} alt={mod.title}
+                                  wrapperClassName="w-full h-40 bg-gray-100 overflow-hidden"
+                                  className="object-cover w-full h-full" />
+                              )}
+                              <div className="p-4 space-y-2">
+                                {mod.body && <RichText className="text-sm text-gray-700 leading-relaxed" text={mod.body} />}
 
-                          {mod.link_url && (
-                            <a href={mod.link_url} target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-2 bg-blue-50 border border-blue-100 hover:bg-blue-100 rounded-xl px-3 py-2 text-sm font-bold text-blue-800 transition-colors">
-                              <LinkIcon />
-                              <span className="truncate flex-1">{mod.link_label || mod.link_url}</span>
-                              <span>&#8599;</span>
-                            </a>
-                          )}
+                                {mod.link_url && (
+                                  <a href={mod.link_url} target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-2 bg-blue-50 border border-blue-100 hover:bg-blue-100 rounded-xl px-3 py-2 text-sm font-bold text-blue-800 transition-colors">
+                                    <LinkIcon />
+                                    <span className="truncate flex-1">{mod.link_label || mod.link_url}</span>
+                                    <span>&#8599;</span>
+                                  </a>
+                                )}
 
-                          {mod.created_by && (
-                            <p className="text-xs text-gray-500 pt-0.5">Posted by {mod.created_by}</p>
+                                {mod.created_by && (
+                                  <p className="text-xs text-gray-500 pt-0.5">Posted by {mod.created_by}</p>
+                                )}
+                              </div>
+                            </div>
                           )}
-                        </div>
-                      </article>
-                    ))}
+                        </article>
+                      );
+                    })}
                   </section>
                 )}
 
