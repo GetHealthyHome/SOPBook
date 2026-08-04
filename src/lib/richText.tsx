@@ -36,24 +36,47 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
   return nodes;
 }
 
+/** "- item" or "• item" */
+export const BULLET_LINE = /^\s*[-•]\s+(.*)$/;
+/** "1. item" or "1) item" */
+export const ORDERED_LINE = /^\s*(\d{1,3})[.)]\s+(.*)$/;
+
 export function RichText({ text, className }: { text: string; className?: string }) {
   const lines = String(text ?? '').split('\n');
   const blocks: React.ReactNode[] = [];
-  let bullets: React.ReactNode[] = [];
+  let items: React.ReactNode[] = [];
+  let kind: 'ul' | 'ol' | null = null;
+  let start = 1;
 
-  const flushBullets = (key: string) => {
-    if (bullets.length) {
-      blocks.push(<ul key={key} className="list-disc pl-5 space-y-0.5">{bullets}</ul>);
-      bullets = [];
-    }
+  // Consecutive list lines of the same kind become one list; anything else
+  // (or a switch between bullets and numbers) closes the current one.
+  const flushList = (key: string) => {
+    if (!items.length) return;
+    blocks.push(
+      kind === 'ol'
+        ? <ol key={key} start={start} className="list-decimal pl-5 space-y-0.5">{items}</ol>
+        : <ul key={key} className="list-disc pl-5 space-y-0.5">{items}</ul>
+    );
+    items = [];
+    kind = null;
   };
 
   lines.forEach((line, i) => {
-    const bullet = line.match(/^\s*[-•]\s+(.*)$/);
+    const bullet = line.match(BULLET_LINE);
+    const ordered = line.match(ORDERED_LINE);
+
     if (bullet) {
-      bullets.push(<li key={`li-${i}`}>{renderInline(bullet[1], `li-${i}`)}</li>);
+      if (kind === 'ol') flushList(`list-${i}`);
+      kind = 'ul';
+      items.push(<li key={`li-${i}`}>{renderInline(bullet[1], `li-${i}`)}</li>);
+    } else if (ordered) {
+      if (kind === 'ul') flushList(`list-${i}`);
+      // Honour the first number so a list can pick up where another left off
+      if (kind !== 'ol') start = Math.max(1, parseInt(ordered[1], 10) || 1);
+      kind = 'ol';
+      items.push(<li key={`li-${i}`}>{renderInline(ordered[2], `li-${i}`)}</li>);
     } else {
-      flushBullets(`ul-${i}`);
+      flushList(`list-${i}`);
       blocks.push(
         <span key={`ln-${i}`} className="block min-h-[1.25em]">
           {renderInline(line, `ln-${i}`)}
@@ -61,7 +84,7 @@ export function RichText({ text, className }: { text: string; className?: string
       );
     }
   });
-  flushBullets('ul-end');
+  flushList('list-end');
 
   return <div className={className}>{blocks}</div>;
 }
@@ -124,8 +147,16 @@ export function htmlToMarkers(html: string): string {
         return text ? `*${text}*` : '';
       case 'u':
         return text ? `__${text}__` : '';
-      case 'li':
-        return text ? `- ${text}\n` : '';
+      case 'li': {
+        if (!text) return '';
+        // Numbered in the source stays numbered here
+        const parent = el.parentElement;
+        if (parent && parent.tagName.toLowerCase() === 'ol') {
+          const idx = Array.prototype.indexOf.call(parent.children, el) + 1;
+          return `${idx}. ${text}\n`;
+        }
+        return `- ${text}\n`;
+      }
       case 'p':
       case 'div':
       case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
@@ -176,6 +207,41 @@ export function RichTextarea({ value, onChange, rows, placeholder, className }: 
     });
   };
 
+  /** Strip whatever list marker a line already carries, so the two list
+   *  buttons convert between each other instead of stacking markers. */
+  const stripMarker = (l: string) =>
+    l.replace(/^(\s*)-\s+/, '$1').replace(/^(\s*)\d{1,3}[.)]\s+/, '$1');
+
+  /** Shared plumbing for both list buttons: work on the lines the selection
+   *  touches, then leave the caret at the end of what changed. */
+  const applyToSelectedLines = (transform: (lines: string[]) => string[]) => {
+    const ta = ref.current;
+    if (!ta) return;
+    const s = ta.selectionStart;
+    const e = ta.selectionEnd;
+    const lineStart = value.lastIndexOf('\n', s - 1) + 1;
+    const lineEndIdx = value.indexOf('\n', e);
+    const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
+    const updatedSegment = transform(value.slice(lineStart, lineEnd).split('\n')).join('\n');
+    const next = value.slice(0, lineStart) + updatedSegment + value.slice(lineEnd);
+    onChange(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      const caret = lineStart + updatedSegment.length;
+      ta.setSelectionRange(caret, caret);
+    });
+  };
+
+  const toggleNumbers = () => applyToSelectedLines(segLines => {
+    // "All numbered" only counts lines that have text; an empty selection
+    // (a blank line) should ADD numbering so a list can be started.
+    const nonEmpty = segLines.filter(l => l.trim());
+    const allNumbered = nonEmpty.length > 0 && nonEmpty.every(l => ORDERED_LINE.test(l));
+    if (allNumbered) return segLines.map(stripMarker);
+    let n = 0;
+    return segLines.map(l => `${++n}. ${stripMarker(l)}`);
+  });
+
   const toggleBullets = () => {
     const ta = ref.current;
     if (!ta) return;
@@ -194,7 +260,7 @@ export function RichTextarea({ value, onChange, rows, placeholder, className }: 
       .map(l => {
         if (allBulleted) return l.replace(/^(\s*)-\s+/, '$1');   // remove bullets
         if (/^\s*-\s+/.test(l)) return l;                        // already bulleted
-        return `- ${l}`;                                          // add (blank line -> "- ")
+        return `- ${stripMarker(l)}`;                             // add (converts a numbered line)
       })
       .join('\n');
     const next = value.slice(0, lineStart) + updatedSegment + value.slice(lineEnd);
@@ -242,6 +308,7 @@ export function RichTextarea({ value, onChange, rows, placeholder, className }: 
         <button type="button" tabIndex={-1} onClick={() => wrapSelection('*')} className={`${btn} italic font-bold`} title="Italic">I</button>
         <button type="button" tabIndex={-1} onClick={() => wrapSelection('__')} className={`${btn} underline font-bold`} title="Underline">U</button>
         <button type="button" tabIndex={-1} onClick={toggleBullets} className={`${btn} font-bold`} title="Bullet list">•≡</button>
+        <button type="button" tabIndex={-1} onClick={toggleNumbers} className={`${btn} font-bold`} title="Numbered list">1≡</button>
       </div>
       <textarea
         ref={ref}
