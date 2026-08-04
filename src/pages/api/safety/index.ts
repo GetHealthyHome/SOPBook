@@ -27,7 +27,7 @@ function cleanModule(body: Record<string, unknown>) {
   const link = String(body.linkUrl ?? '').trim();
   return {
     title,
-    body:       sanitize(String(body.body ?? ''), 'body'),
+    body:       sanitize(String(body.body ?? ''), 'article'),
     image_url:  isSafeImageUrl(image) ? image : '',
     link_url:   isSafeLinkUrl(link) ? link : '',
     link_label: sanitize(String(body.linkLabel ?? ''), 'title'),
