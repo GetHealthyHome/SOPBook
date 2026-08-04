@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 /**
  * Lightweight rich-text support: content is stored as plain text with
@@ -114,16 +114,7 @@ export function plainToMarkers(text: string): string {
  * for text. Nothing is injected, and the result is plain text that still
  * passes through the server-side sanitizer like anything typed by hand.
  */
-export function htmlToMarkers(html: string): string {
-  if (typeof DOMParser === 'undefined') return '';
-  let doc: Document;
-  try {
-    doc = new DOMParser().parseFromString(html, 'text/html');
-  } catch {
-    return '';
-  }
-  doc.querySelectorAll('script, style, head').forEach(el => el.remove());
-
+export function walkToMarkers(root: Node): string {
   const walk = (node: Node): string => {
     if (node.nodeType === Node.TEXT_NODE) {
       // Collapse the incidental newlines/indentation in source markup
@@ -157,15 +148,19 @@ export function htmlToMarkers(html: string): string {
         }
         return `- ${text}\n`;
       }
-      case 'p':
       case 'div':
+        // contentEditable wraps each visual line in a div — one newline only,
+        // otherwise editing a document would keep adding blank lines
+        return `${text}\n`;
+      case 'p':
       case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
-        // Paragraphs keep a blank line between them
+        // Real paragraphs (as pasted from Word/Docs) keep a blank line
         return text ? `${text}\n\n` : '';
       case 'ul':
       case 'ol':
       case 'table':
-        return inner.endsWith('\n') ? `${inner}\n` : `${inner}\n\n`;
+        // Each item already ends with a newline; no extra gap
+        return inner.endsWith('\n') ? inner : `${inner}\n`;
       case 'tr':
         return text ? `${text}\n` : '';
       case 'td':
@@ -176,13 +171,90 @@ export function htmlToMarkers(html: string): string {
     }
   };
 
-  return plainToMarkers(walk(doc.body));
+  return plainToMarkers(walk(root));
 }
 
 /**
- * A textarea with a small formatting toolbar. Buttons wrap the current
- * selection with the matching markers (or toggle "- " prefixes for
- * bullets), keeping the cursor on the text that was formatted.
+ * Convert clipboard HTML (Word, Google Docs, web pages) into markers.
+ * The HTML is only ever *read* — parsed into a detached document and walked
+ * for text, with scripts and styles dropped first. Nothing is injected.
+ */
+export function htmlToMarkers(html: string): string {
+  if (typeof DOMParser === 'undefined') return '';
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(html, 'text/html');
+  } catch {
+    return '';
+  }
+  doc.querySelectorAll('script, style, head').forEach(el => el.remove());
+  return walkToMarkers(doc.body);
+}
+
+/**
+ * Build editor DOM from stored markers.
+ *
+ * Nodes are created with the DOM API and text is set via textContent, so no
+ * HTML string is ever parsed or injected — the marker text is data, never
+ * markup. That keeps the "never inject HTML" rule intact while still showing
+ * real bold/italic/underline/lists inside the editor.
+ */
+function buildNodes(text: string): DocumentFragment {
+  const frag = document.createDocumentFragment();
+
+  const inlineNodes = (line: string): Node[] => {
+    const out: Node[] = [];
+    const re = new RegExp(INLINE_RE.source, 'g');
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(line)) !== null) {
+      if (m.index > last) out.push(document.createTextNode(line.slice(last, m.index)));
+      const token = m[0];
+      let el: HTMLElement;
+      if (token.startsWith('**')) { el = document.createElement('strong'); el.textContent = token.slice(2, -2); }
+      else if (token.startsWith('__')) { el = document.createElement('u'); el.textContent = token.slice(2, -2); }
+      else { el = document.createElement('em'); el.textContent = token.slice(1, -1); }
+      out.push(el);
+      last = m.index + token.length;
+    }
+    if (last < line.length) out.push(document.createTextNode(line.slice(last)));
+    return out;
+  };
+
+  let list: HTMLElement | null = null;
+  let listKind: 'ul' | 'ol' | null = null;
+
+  for (const line of String(text ?? '').split('\n')) {
+    const bullet = line.match(BULLET_LINE);
+    const ordered = line.match(ORDERED_LINE);
+    if (bullet || ordered) {
+      const kind: 'ul' | 'ol' = bullet ? 'ul' : 'ol';
+      if (listKind !== kind) {
+        list = document.createElement(kind);
+        frag.appendChild(list);
+        listKind = kind;
+      }
+      const li = document.createElement('li');
+      inlineNodes(bullet ? bullet[1] : ordered![2]).forEach(n => li.appendChild(n));
+      list!.appendChild(li);
+    } else {
+      list = null;
+      listKind = null;
+      const div = document.createElement('div');
+      const nodes = inlineNodes(line);
+      if (!nodes.length) div.appendChild(document.createElement('br'));
+      else nodes.forEach(n => div.appendChild(n));
+      frag.appendChild(div);
+    }
+  }
+  return frag;
+}
+
+/**
+ * Rich text editor that shows formatting as you apply it — bold text looks
+ * bold rather than showing asterisks. The content is still *stored* as plain
+ * text with markers, so nothing downstream changes: the server sanitizer,
+ * the database columns and the read-only renderer all stay as they were.
  */
 export function RichTextarea({ value, onChange, rows, placeholder, className }: {
   value: string;
@@ -191,132 +263,104 @@ export function RichTextarea({ value, onChange, rows, placeholder, className }: 
   placeholder?: string;
   className?: string;
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  // What we last reported upward. Repainting only when the incoming value
+  // differs from this keeps the caret still while typing.
+  const lastEmitted = useRef<string | null>(null);
 
-  const wrapSelection = (marker: string) => {
-    const ta = ref.current;
-    if (!ta) return;
-    const s = ta.selectionStart;
-    const e = ta.selectionEnd;
-    const selected = value.slice(s, e) || 'text';
-    const next = value.slice(0, s) + marker + selected + marker + value.slice(e);
-    onChange(next);
-    requestAnimationFrame(() => {
-      ta.focus();
-      ta.setSelectionRange(s + marker.length, s + marker.length + selected.length);
-    });
+  const paint = (text: string) => {
+    const el = ref.current;
+    if (!el) return;
+    el.textContent = '';
+    el.appendChild(buildNodes(text));
+    el.dataset.empty = text.trim() ? 'false' : 'true';
   };
 
-  /** Strip whatever list marker a line already carries, so the two list
-   *  buttons convert between each other instead of stacking markers. */
-  const stripMarker = (l: string) =>
-    l.replace(/^(\s*)-\s+/, '$1').replace(/^(\s*)\d{1,3}[.)]\s+/, '$1');
+  useEffect(() => {
+    if (value !== lastEmitted.current) paint(value);
+  }, [value]);
 
-  /** Shared plumbing for both list buttons: work on the lines the selection
-   *  touches, then leave the caret at the end of what changed. */
-  const applyToSelectedLines = (transform: (lines: string[]) => string[]) => {
-    const ta = ref.current;
-    if (!ta) return;
-    const s = ta.selectionStart;
-    const e = ta.selectionEnd;
-    const lineStart = value.lastIndexOf('\n', s - 1) + 1;
-    const lineEndIdx = value.indexOf('\n', e);
-    const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
-    const updatedSegment = transform(value.slice(lineStart, lineEnd).split('\n')).join('\n');
-    const next = value.slice(0, lineStart) + updatedSegment + value.slice(lineEnd);
-    onChange(next);
-    requestAnimationFrame(() => {
-      ta.focus();
-      const caret = lineStart + updatedSegment.length;
-      ta.setSelectionRange(caret, caret);
-    });
+  const emit = () => {
+    const el = ref.current;
+    if (!el) return;
+    const markers = walkToMarkers(el);
+    lastEmitted.current = markers;
+    el.dataset.empty = markers.trim() ? 'false' : 'true';
+    onChange(markers);
   };
 
-  const toggleNumbers = () => applyToSelectedLines(segLines => {
-    // "All numbered" only counts lines that have text; an empty selection
-    // (a blank line) should ADD numbering so a list can be started.
-    const nonEmpty = segLines.filter(l => l.trim());
-    const allNumbered = nonEmpty.length > 0 && nonEmpty.every(l => ORDERED_LINE.test(l));
-    if (allNumbered) return segLines.map(stripMarker);
-    let n = 0;
-    return segLines.map(l => `${++n}. ${stripMarker(l)}`);
-  });
-
-  const toggleBullets = () => {
-    const ta = ref.current;
-    if (!ta) return;
-    const s = ta.selectionStart;
-    const e = ta.selectionEnd;
-    const lineStart = value.lastIndexOf('\n', s - 1) + 1;
-    const lineEndIdx = value.indexOf('\n', e);
-    const lineEnd = lineEndIdx === -1 ? value.length : lineEndIdx;
-    const segment = value.slice(lineStart, lineEnd);
-    const segLines = segment.split('\n');
-    // "All bulleted" only counts lines that have text; an empty selection
-    // (a blank line) should ADD a bullet so a list can be started.
-    const nonEmpty = segLines.filter(l => l.trim());
-    const allBulleted = nonEmpty.length > 0 && nonEmpty.every(l => /^\s*-\s+/.test(l));
-    const updatedSegment = segLines
-      .map(l => {
-        if (allBulleted) return l.replace(/^(\s*)-\s+/, '$1');   // remove bullets
-        if (/^\s*-\s+/.test(l)) return l;                        // already bulleted
-        return `- ${stripMarker(l)}`;                             // add (converts a numbered line)
-      })
-      .join('\n');
-    const next = value.slice(0, lineStart) + updatedSegment + value.slice(lineEnd);
-    onChange(next);
-    requestAnimationFrame(() => {
-      ta.focus();
-      // Put the cursor at the end of the updated segment so the user can type
-      const caret = lineStart + updatedSegment.length;
-      ta.setSelectionRange(caret, caret);
-    });
+  /** Apply a formatting command to the current selection. execCommand is
+   *  deprecated but is the only cross-browser way to do this without pulling
+   *  in an editor framework, and it degrades harmlessly if unavailable. */
+  const exec = (command: string) => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    try {
+      // Prefer <b>/<i>/<u> tags over inline styles so the walker sees them
+      document.execCommand('styleWithCSS', false, 'false');
+      document.execCommand(command);
+    } catch {
+      return;
+    }
+    emit();
   };
 
-  /**
-   * Keep formatting when pasting from Word, Google Docs or a web page:
-   * convert the clipboard's HTML into this editor's markers rather than
-   * letting the browser drop everything to flat text.
-   */
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const ta = ref.current;
-    if (!ta) return;
+  /** Paste keeps its formatting: clipboard HTML becomes markers, then real
+   *  nodes inserted at the caret. */
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
     const html = e.clipboardData.getData('text/html');
     const plain = e.clipboardData.getData('text/plain');
-    const converted = html ? htmlToMarkers(html) : plainToMarkers(plain);
-    // Nothing useful to convert — let the browser paste normally
-    if (!converted || converted === plain) return;
+    const markers = html ? htmlToMarkers(html) : plainToMarkers(plain);
+    if (!markers) return;
 
     e.preventDefault();
-    const s = ta.selectionStart;
-    const eSel = ta.selectionEnd;
-    const next = value.slice(0, s) + converted + value.slice(eSel);
-    onChange(next);
-    requestAnimationFrame(() => {
-      ta.focus();
-      const caret = s + converted.length;
-      ta.setSelectionRange(caret, caret);
-    });
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    const frag = buildNodes(markers);
+    const last = frag.lastChild;
+    range.insertNode(frag);
+    if (last) {
+      // Drop the caret after what was pasted
+      const after = document.createRange();
+      after.setStartAfter(last);
+      after.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(after);
+    }
+    emit();
   };
 
   const btn = 'h-6 min-w-[24px] px-1.5 rounded-md border border-gray-200 bg-white text-gray-600 text-xs leading-none hover:border-emerald-300 hover:text-emerald-800 transition-colors';
+  // Buttons must not steal the selection from the editor
+  const hold = (e: React.MouseEvent) => e.preventDefault();
 
   return (
     <div>
       <div className="flex items-center gap-1 mb-1">
-        <button type="button" tabIndex={-1} onClick={() => wrapSelection('**')} className={`${btn} font-black`} title="Bold">B</button>
-        <button type="button" tabIndex={-1} onClick={() => wrapSelection('*')} className={`${btn} italic font-bold`} title="Italic">I</button>
-        <button type="button" tabIndex={-1} onClick={() => wrapSelection('__')} className={`${btn} underline font-bold`} title="Underline">U</button>
-        <button type="button" tabIndex={-1} onClick={toggleBullets} className={`${btn} font-bold`} title="Bullet list">•≡</button>
-        <button type="button" tabIndex={-1} onClick={toggleNumbers} className={`${btn} font-bold`} title="Numbered list">1≡</button>
+        <button type="button" tabIndex={-1} onMouseDown={hold} onClick={() => exec('bold')} className={`${btn} font-black`} title="Bold">B</button>
+        <button type="button" tabIndex={-1} onMouseDown={hold} onClick={() => exec('italic')} className={`${btn} italic font-bold`} title="Italic">I</button>
+        <button type="button" tabIndex={-1} onMouseDown={hold} onClick={() => exec('underline')} className={`${btn} underline font-bold`} title="Underline">U</button>
+        <button type="button" tabIndex={-1} onMouseDown={hold} onClick={() => exec('insertUnorderedList')} className={`${btn} font-bold`} title="Bullet list">•≡</button>
+        <button type="button" tabIndex={-1} onMouseDown={hold} onClick={() => exec('insertOrderedList')} className={`${btn} font-bold`} title="Numbered list">1≡</button>
       </div>
-      <textarea
+      <div
         ref={ref}
-        rows={rows}
-        placeholder={placeholder}
-        value={value}
-        onChange={e => onChange(e.target.value)}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        aria-label={placeholder}
+        data-placeholder={placeholder}
+        data-rich-editor="true"
+        onInput={emit}
+        onBlur={emit}
         onPaste={handlePaste}
+        style={{ minHeight: `${Math.max(2, rows ?? 3) * 1.6}em` }}
         className={className}
       />
     </div>
