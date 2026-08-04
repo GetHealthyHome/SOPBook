@@ -552,6 +552,11 @@ export default function App() {
   const [trainingDeleteConfirm, setTrainingDeleteConfirm] = useState<number | null>(null);
   const [trainingUploading, setTrainingUploading] = useState<string | null>(null); // 'cover' | step index
 
+  // Division cover photos (admin-set, everyone reads)
+  const [divisionPhotos, setDivisionPhotos] = useState<Record<string, string>>({});
+  const [divisionPhotosLoaded, setDivisionPhotosLoaded] = useState(false);
+  const [divisionUploading, setDivisionUploading] = useState<string | null>(null);
+
   // Safety modules (authored) + admin builder state
   const [safetyModules, setSafetyModules] = useState<SafetyModule[]>([]);
   const [safetyLoaded, setSafetyLoaded] = useState(false);
@@ -966,6 +971,11 @@ export default function App() {
     }
   }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Division tiles need their photos as soon as the SOP dashboard opens
+  useEffect(() => {
+    if (currentUser && !divisionPhotosLoaded) loadDivisionPhotos();
+  }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load safety modules on first visit to the Safety view
   useEffect(() => {
     if (currentView === 'safety' && currentUser && !safetyLoaded && !safetyLoading) {
@@ -1222,6 +1232,40 @@ export default function App() {
       setTrainingError(err instanceof Error ? err.message : 'Could not load training.');
     } finally {
       setTrainingLoading(false);
+    }
+  };
+
+  // ---- Division photos ----------------------------------------------------
+  const loadDivisionPhotos = async () => {
+    try {
+      const res = await fetch('/api/divisions');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setDivisionPhotos(data.photos ?? {});
+    } catch {
+      // Non-fatal: tiles simply fall back to their plain icon header
+    } finally {
+      setDivisionPhotosLoaded(true);
+    }
+  };
+
+  const uploadDivisionPhoto = async (division: string, file: File) => {
+    setDivisionUploading(division);
+    try {
+      const formData = new FormData();
+      formData.append('file', await compressImage(file));
+      const up = await fetch('/api/upload', { method: 'POST', body: formData });
+      const upData = await up.json().catch(() => ({}));
+      if (!up.ok || !upData.url) return;
+      const res = await fetch('/api/divisions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ division, imageUrl: upData.url }),
+      });
+      if (res.ok) setDivisionPhotos(prev => ({ ...prev, [division]: upData.url }));
+    } catch {
+      // Leave the previous photo in place on failure
+    } finally {
+      setDivisionUploading(null);
     }
   };
 
@@ -2645,53 +2689,54 @@ export default function App() {
           {/* VIEW: HOME LAUNCHER */}
           {currentView === 'home' && currentUser && (() => {
             const unread = userNotifications.filter(n => !n.read_at).length;
-            // Same shape as the SOP division tiles: a 2:1 card on a grid whose
-            // column count steps up with the viewport, icon beside the label.
-            const tile = 'aspect-[2/1] bg-white border border-gray-200 hover:border-gray-300 hover:shadow-md rounded-2xl p-3 text-left transition-all active:scale-[0.99] flex items-center gap-2.5 overflow-hidden';
+            // Solid pill in the section's colour with a white icon badge —
+            // the shape reads as a button rather than a card.
+            const tile = (tone: string) =>
+              `h-16 ${tone} rounded-full shadow-md hover:shadow-lg pl-2 pr-4 text-left transition-all active:scale-[0.98] flex items-center gap-3 overflow-hidden`;
             // Each section keeps its own colour so they stay quick to tell
             // apart; all are dark enough for white icons.
             const circle = (colour: string) =>
-              `relative w-10 h-10 rounded-full ${colour} flex items-center justify-center text-white shadow-md transition-colors flex-shrink-0`;
-            const label = 'block text-sm leading-tight font-black text-gray-900';
-            const icon = 'w-1/2 h-1/2';
+              `relative w-12 h-12 rounded-full bg-white ${colour} flex items-center justify-center shadow-sm flex-shrink-0`;
+            const label = 'block text-sm leading-tight font-black uppercase tracking-wide text-white';
+            const icon = 'w-6 h-6';
             return (
               <div className="space-y-6 py-6">
                 <h1 className="text-2xl font-black text-gray-950 tracking-tight text-center">
                   Welcome back {currentUser.name.split(' ')[0]}!
                 </h1>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                  <button onClick={() => setCurrentView('dashboard')} className={tile}>
-                    <span className={circle('bg-emerald-900 hover:bg-emerald-800')}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <button onClick={() => setCurrentView('dashboard')} className={tile('bg-emerald-700 hover:bg-emerald-800')}>
+                    <span className={circle('text-emerald-700')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
                     </span>
                     <span className="min-w-0"><span className={label}>SOPs</span></span>
                   </button>
-                  <button onClick={() => setCurrentView('handbook')} className={tile}>
-                    <span className={circle('bg-blue-800 hover:bg-blue-700')}>
+                  <button onClick={() => setCurrentView('handbook')} className={tile('bg-blue-700 hover:bg-blue-800')}>
+                    <span className={circle('text-blue-700')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
                     </span>
                     <span className="min-w-0"><span className={label}>Handbook</span></span>
                   </button>
-                  <button onClick={() => setCurrentView('careerLadder')} className={tile}>
-                    <span className={circle('bg-amber-600 hover:bg-amber-500')}>
+                  <button onClick={() => setCurrentView('careerLadder')} className={tile('bg-amber-500 hover:bg-amber-600')}>
+                    <span className={circle('text-amber-600')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                     </span>
                     <span className="min-w-0"><span className={label}>Career Ladder</span></span>
                   </button>
-                  <button onClick={() => { setOpenTraining(null); setCurrentView('training'); }} className={tile}>
-                    <span className={circle('bg-violet-800 hover:bg-violet-700')}>
+                  <button onClick={() => { setOpenTraining(null); setCurrentView('training'); }} className={tile('bg-violet-700 hover:bg-violet-800')}>
+                    <span className={circle('text-violet-700')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-6 4v-3.5"/></svg>
                     </span>
                     <span className="min-w-0"><span className={label}>Training</span></span>
                   </button>
-                  <button onClick={() => setCurrentView('safety')} className={tile}>
-                    <span className={circle('bg-red-700 hover:bg-red-600')}>
+                  <button onClick={() => setCurrentView('safety')} className={tile('bg-red-600 hover:bg-red-700')}>
+                    <span className={circle('text-red-600')}>
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                     </span>
                     <span className="min-w-0"><span className={label}>Safety</span></span>
                   </button>
-                  <button onClick={() => setCurrentView('userNotifications')} className={tile}>
-                    <span className={circle('bg-rose-700 hover:bg-rose-600')}>
+                  <button onClick={() => setCurrentView('userNotifications')} className={tile('bg-rose-600 hover:bg-rose-700')}>
+                    <span className={circle('text-rose-600')}>
                       {unread > 0 && (
                         <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center shadow-md ring-2 ring-white">
                           {unread > 9 ? '9+' : unread}
@@ -2801,24 +2846,52 @@ export default function App() {
                       const count = documents.filter(d =>
                         (d.categories?.length ? d.categories : [d.category]).includes(cat)
                       ).length;
+                      const photo = divisionPhotos[cat];
                       return (
-                        <button
-                          key={cat}
-                          onClick={() => setSelectedCategory(cat)}
-                          className="aspect-[2/1] bg-white border border-gray-200 hover:border-emerald-300 hover:shadow-md rounded-2xl p-3 text-left transition-all active:scale-[0.99] group flex items-center gap-2.5 overflow-hidden"
-                        >
-                          {/* Wide tiles read better with the icon beside the
-                              label rather than stacked above it */}
-                          <span className="inline-flex p-2 bg-emerald-50 text-emerald-800 rounded-lg group-hover:bg-emerald-800 group-hover:text-white transition-colors flex-shrink-0">
-                            <FolderIcon />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-sm font-black text-gray-900 leading-tight">{cat}</span>
-                            <span className="block text-xs text-gray-600 font-bold mt-0.5">
-                              {count} {count === 1 ? 'procedure' : 'procedures'}
+                        <div key={cat} className="relative">
+                          <button
+                            onClick={() => setSelectedCategory(cat)}
+                            className="w-full aspect-square bg-white border border-gray-200 hover:border-emerald-300 hover:shadow-md rounded-2xl text-left transition-all active:scale-[0.99] group overflow-hidden flex flex-col"
+                          >
+                            {/* Photo fills the top two thirds; without one the
+                                same band carries the folder icon instead. */}
+                            <span className="h-2/3 w-full bg-emerald-50 relative overflow-hidden flex items-center justify-center">
+                              {photo ? (
+                                <img src={photo} alt="" className="absolute inset-0 w-full h-full object-cover"
+                                  onError={e => { e.currentTarget.style.display = 'none'; }} />
+                              ) : (
+                                <span className="text-emerald-800 opacity-60 scale-150"><FolderIcon /></span>
+                              )}
                             </span>
-                          </span>
-                        </button>
+                            <span className="h-1/3 w-full px-3 flex flex-col justify-center min-w-0">
+                              <span className="block text-sm font-black text-gray-900 leading-tight truncate">{cat}</span>
+                              <span className="block text-xs text-gray-600 font-bold">
+                                {count} {count === 1 ? 'procedure' : 'procedures'}
+                              </span>
+                            </span>
+                          </button>
+
+                          {/* Admins set the division photo straight from the tile */}
+                          {currentUser.userType === 'admin' && (
+                            <label
+                              title={`Set ${cat} photo`}
+                              className={`absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 hover:bg-white text-gray-700 shadow-md flex items-center justify-center cursor-pointer transition-colors ${
+                                divisionUploading === cat ? 'opacity-60 pointer-events-none' : ''
+                              }`}
+                            >
+                              {divisionUploading === cat
+                                ? <span className="text-[10px] font-black">…</span>
+                                : <CloudUploadIcon />}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={divisionUploading === cat}
+                                onChange={e => { const f = e.target.files?.[0]; if (f) uploadDivisionPhoto(cat, f); e.target.value = ''; }}
+                              />
+                            </label>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
