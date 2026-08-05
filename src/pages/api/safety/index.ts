@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { isSafeImageUrl } from '@/lib/sopSanitize';
@@ -56,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Everything below is admin-only authoring
-  if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+  if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
   const body = req.body ?? {};
 
   if (req.method === 'POST') {

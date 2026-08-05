@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { hashPassword, verifyPassword, MAX_PASSWORD_LEN } from '@/lib/passwords';
@@ -31,7 +31,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // POST — add a new team member (admin only)
   if (req.method === 'POST') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { name, role, userType, password } = req.body ?? {};
     if (!name || !role || !userType || !password) return res.status(400).json({ error: 'name, role, userType, and password required.' });
     if (!['admin', 'user'].includes(userType)) return res.status(400).json({ error: 'Invalid userType.' });
@@ -67,11 +67,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (pw.length > MAX_PASSWORD_LEN) return res.status(400).json({ error: 'Password too long.' });
 
     // Admin reset of a specific account (no current password needed)
-    if (name && typeof name === 'string' && session.userType === 'admin') {
+    if (name && typeof name === 'string' && (await isCurrentAdmin(session))) {
       const targetName = name;
       const { data: updated, error } = await db
         .from('app_users')
-        .update({ password_hash: hashPassword(pw) })
+        .update({ password_hash: hashPassword(pw), session_epoch: Math.floor(Date.now() / 1000) })
         .eq('name', targetName)
         .select('name')
         .maybeSingle();
@@ -119,7 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const { error: chErr } = await db
       .from('app_users')
-      .update({ password_hash: hashPassword(pw) })
+      .update({ password_hash: hashPassword(pw), session_epoch: Math.floor(Date.now() / 1000) })
       .eq('name', session.name);
     if (chErr) {
       logError('admin/users PATCH self-change', chErr);
@@ -130,7 +130,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // DELETE — remove a team member (admin only, cannot delete self)
   if (req.method === 'DELETE') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { name } = req.body ?? {};
     if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name required.' });
     if (name === session.name) return res.status(400).json({ error: 'Cannot delete your own account.' });

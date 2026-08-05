@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { logError } from '@/lib/log';
 
@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // GET — fetch all badge assignments (all users for admins, own only for regular users)
   if (req.method === 'GET') {
-    const query = session.userType === 'admin'
+    const query = (await isCurrentAdmin(session))
       ? db.from('user_badges').select('*')
       : db.from('user_badges').select('*').eq('user_name', session.name);
     const { data, error } = await query;
@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // POST — assign a badge (admin only)
   if (req.method === 'POST') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { userName, badge } = req.body ?? {};
     if (!userName || typeof userName !== 'string' || userName.length > 80 || !badge) {
       return res.status(400).json({ error: 'userName and badge required.' });
@@ -47,7 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // DELETE — revoke a badge (admin only)
   if (req.method === 'DELETE') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { userName, badge } = req.body ?? {};
     if (!userName || !badge) return res.status(400).json({ error: 'userName and badge required.' });
 

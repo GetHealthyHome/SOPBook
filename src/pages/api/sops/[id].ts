@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { sanitizeSteps, sanitizeRevisions, sanitizeReadLogs, sanitizeCategories, SOP_ID_RE, MAX_READ_LOGS } from '@/lib/sopSanitize';
@@ -76,7 +76,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Full update: admin only
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
 
     const { category, categories, title, summary, lastUpdated, nextReviewDate,
             ppe, hardware, consumables, terms, steps, revisionHistory, readLogs } = body;
@@ -121,7 +121,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // DELETE — admin only
   if (req.method === 'DELETE') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { error } = await db.from('sops').delete().eq('id', id);
     if (error) {
       logError('sops/[id] DELETE', error);

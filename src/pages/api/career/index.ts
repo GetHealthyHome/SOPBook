@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { logError } from '@/lib/log';
 
@@ -11,7 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!session) return res.status(401).json({ error: 'Not authenticated.' });
 
   const db = getSupabase();
-  const isAdmin = session.userType === 'admin';
+  const isAdmin = await isCurrentAdmin(session);
 
   const [tracksRes, tasksRes, myCompRes, allCompRes, myAssignRes, allAssignRes] = await Promise.all([
     db.from('career_tracks').select('*').order('order_index'),

@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { fanOutNotification } from '@/lib/fanOutNotification';
@@ -21,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // GET — return sections (+ current content hash), revisions, and
   // acknowledgements (all members for admins, own only for regular users)
   if (req.method === 'GET') {
-    const isAdmin = session.userType === 'admin';
+    const isAdmin = await isCurrentAdmin(session);
     const [sectionsResult, revisionsResult, acksResult] = await Promise.all([
       db.from('handbook_sections').select('id, title, content, order_index').order('order_index', { ascending: true }),
       isAdmin
@@ -49,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+  if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
 
   const body = req.body ?? {};
   const cleanTitle = sanitize(String(body.title ?? ''), 'title');

@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { logError } from '@/lib/log';
 
@@ -39,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // PATCH — admin signs off a completion, verifying the work
   if (req.method === 'PATCH') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { completionId } = req.body ?? {};
     if (typeof completionId !== 'number') return res.status(400).json({ error: 'completionId required.' });
 
@@ -66,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!existing) return res.status(404).json({ error: 'Completion not found.' });
 
     const isOwner = existing.user_name === session.name;
-    const isAdmin = session.userType === 'admin';
+    const isAdmin = await isCurrentAdmin(session);
     if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Forbidden.' });
     if (isOwner && !isAdmin && existing.verified_by) {
       return res.status(403).json({ error: 'This completion is verified — only an admin can remove it.' });

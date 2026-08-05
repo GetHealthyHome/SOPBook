@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { SOP_ID_RE } from '@/lib/sopSanitize';
@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // GET — all notifications (admin only)
   if (req.method === 'GET') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { data, error } = await db.from('notifications').select('*').order('created_at', { ascending: false }).limit(200);
     if (error) {
       logError('notifications GET', error);
@@ -64,7 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // DELETE — dismiss a notification (admin only)
   if (req.method === 'DELETE') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { id } = req.body ?? {};
     if (!id || typeof id !== 'string') return res.status(400).json({ error: 'id required.' });
     const { error } = await db.from('notifications').delete().eq('id', id);
