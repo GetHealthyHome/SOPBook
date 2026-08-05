@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { isSafeImageUrl } from '@/lib/sopSanitize';
@@ -64,7 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const [modsRes, stepsRes, compsRes] = await Promise.all([
       db.from('training_modules').select('*').order('order_index').order('created_at'),
       db.from('training_steps').select('*').order('order_index'),
-      session.userType === 'admin'
+      (await isCurrentAdmin(session))
         ? db.from('training_completions').select('*')
         : db.from('training_completions').select('*').eq('user_name', session.name),
     ]);
@@ -88,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Everything below is admin-only authoring
-  if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+  if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
   const body = req.body ?? {};
 
   // POST — create a module with its steps

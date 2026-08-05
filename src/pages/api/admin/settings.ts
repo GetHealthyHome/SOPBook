@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { logError } from '@/lib/log';
 
@@ -11,7 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!checkIpRateLimit(req)) return res.status(429).json({ error: 'Too many requests.' });
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Not authenticated.' });
-  if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+  if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
 
   const db = getSupabase();
 

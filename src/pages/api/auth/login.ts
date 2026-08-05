@@ -2,22 +2,11 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { createToken, setSessionCookie, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { verifyPassword, hashPassword, legacySha256, needsRehash, MAX_PASSWORD_LEN } from '@/lib/passwords';
+import { fallbackAccounts } from '@/lib/fallbackAccounts';
 import { logError } from '@/lib/log';
 
-// Fallback accounts from env vars — used when the app_users table is
-// unavailable or the user isn't found there. Accounts whose env password
-// is missing/empty are disabled entirely (never loginable).
-const FALLBACK: [string, string, 'admin' | 'user', string | undefined][] = [
-  ['Marcus Thorne', 'HVAC Supervisor',     'admin', process.env.PW_MARCUS],
-  ['Sarah Lin',     'Master Electrician',  'admin', process.env.PW_SARAH],
-  ['Alex Rivers',   'Field Apprentice',    'user',  process.env.PW_ALEX],
-  ['Derrick Vance', 'Plumbing Specialist', 'user',  process.env.PW_DERRICK],
-];
-const FALLBACK_MAP: Record<string, { name: string; role: string; userType: 'admin' | 'user'; pwHash: string }> = {};
-for (const [name, role, userType, pw] of FALLBACK) {
-  if (!pw) continue; // no password configured — account disabled
-  FALLBACK_MAP[name.toLowerCase()] = { name, role, userType, pwHash: legacySha256(pw) };
-}
+// Preset env-var accounts live in a shared module so the live-session check
+// can recognise a session that has no database row behind it.
 
 // Escape ILIKE pattern metacharacters so a login name like "%" can't
 // match arbitrary rows.
@@ -41,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const { data: dbUser, error } = await getSupabase()
       .from('app_users')
-      .select('name, role, user_type, password_hash')
+      .select('name, role, user_type, password_hash, session_epoch')
       .ilike('name', escapeIlike(key))
       .maybeSingle();
     if (error) throw error;
@@ -58,7 +47,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .eq('name', dbUser.name);
         if (upgradeErr) logError('auth/login rehash', upgradeErr);
       }
-      const token = createToken({ name: dbUser.name, role: dbUser.role, userType: dbUser.user_type as 'admin' | 'user' });
+      // Stamping the account's current epoch lets a later bump (password
+      // reset, demotion) invalidate this token.
+      const token = createToken({
+        name: dbUser.name,
+        role: dbUser.role,
+        userType: dbUser.user_type as 'admin' | 'user',
+        epoch: dbUser.session_epoch ?? 0,
+      });
       setSessionCookie(res, token);
       return res.status(200).json({ user: { name: dbUser.name, role: dbUser.role, userType: dbUser.user_type } });
     }
@@ -68,8 +64,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Fallback: env var accounts (legacy SHA-256 comparison, constant time)
-  const account = FALLBACK_MAP[key];
-  const match = verifyPassword(password, account?.pwHash ?? legacySha256('__invalid__'));
+  const account = fallbackAccounts()[key];
+  const match = verifyPassword(password, account ? legacySha256(account.password) : legacySha256('__invalid__'));
   if (!account || !match) return res.status(401).json({ error: 'Invalid credentials.' });
 
   const token = createToken({ name: account.name, role: account.role, userType: account.userType });

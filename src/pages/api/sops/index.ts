@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { sanitize } from '@/lib/security';
 import { sanitizeSteps, sanitizeRevisions, sanitizeReadLogs, sanitizeCategories, SOP_ID_RE } from '@/lib/sopSanitize';
@@ -48,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // POST — create new SOP (admin only)
   if (req.method === 'POST') {
-    if (session.userType !== 'admin') return res.status(403).json({ error: 'Admin only.' });
+    if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
     const { id, category, categories, title, summary, lastUpdated, nextReviewDate,
             ppe, hardware, consumables, terms, steps, revisionHistory } = req.body ?? {};
 

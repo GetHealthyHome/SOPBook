@@ -13,6 +13,9 @@ export interface SessionUser {
   role: string;
   userType: 'admin' | 'user';
   iat: number; // unix seconds — issued at
+  /** app_users.session_epoch at login. Absent on tokens issued before
+   *  revocation support existed; those are treated as epoch 0. */
+  epoch?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +106,75 @@ export function clearSessionCookie(res: ServerResponse): void {
     'Max-Age=0',
   ].filter(Boolean).join('; ');
   res.setHeader('Set-Cookie', flags);
+}
+
+// ---------------------------------------------------------------------------
+// Live session validation
+//
+// A signed cookie is self-contained and valid for its full 8-hour life, so on
+// its own it cannot express "this person was just demoted / deleted / had
+// their password reset". These helpers re-check the account against the
+// database, so a privilege change takes effect on the next request instead of
+// up to eight hours later.
+//
+// They fail closed: if the account cannot be confirmed, access is denied.
+// ---------------------------------------------------------------------------
+
+export interface LiveSession {
+  name: string;
+  role: string;
+  userType: 'admin' | 'user';
+}
+
+/**
+ * Re-read the account behind a verified session cookie.
+ * Returns null if the session is no longer valid — the account was deleted,
+ * or its password/privileges changed after this token was issued.
+ */
+export async function getLiveSession(session: SessionUser | null): Promise<LiveSession | null> {
+  if (!session) return null;
+
+  // Imported lazily so modules that only need cookie helpers don't pull in
+  // the database client.
+  const { getSupabase } = await import('./supabaseServer');
+  const { fallbackAccount } = await import('./fallbackAccounts');
+
+  try {
+    const { data, error } = await getSupabase()
+      .from('app_users')
+      .select('name, role, user_type, session_epoch')
+      .eq('name', session.name)
+      .maybeSingle();
+    if (error) throw error;
+
+    if (data) {
+      // Any bump to session_epoch invalidates tokens issued before it.
+      const tokenEpoch = session.epoch ?? 0;
+      if ((data.session_epoch ?? 0) > tokenEpoch) return null;
+      // The database is authoritative for privileges, not the cookie.
+      return {
+        name: data.name,
+        role: data.role,
+        userType: data.user_type === 'admin' ? 'admin' : 'user',
+      };
+    }
+
+    // No row: either an env-var preset account, or an account that has been
+    // deleted. Only the former may continue.
+    const preset = fallbackAccount(session.name);
+    if (preset) return { name: preset.name, role: preset.role, userType: preset.userType };
+    return null;
+  } catch (err) {
+    const { logError } = await import('./log');
+    logError('serverAuth/getLiveSession', err);
+    return null; // fail closed
+  }
+}
+
+/** True only if the session still belongs to a current administrator. */
+export async function isCurrentAdmin(session: SessionUser | null): Promise<boolean> {
+  const live = await getLiveSession(session);
+  return live?.userType === 'admin';
 }
 
 // ---------------------------------------------------------------------------
