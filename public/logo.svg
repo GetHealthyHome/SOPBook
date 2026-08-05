@@ -1,9 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 660">
-  <!-- Healthy Home Field Guide mark: a house outline with a check inside,
-       drawn as strokes so it stays crisp at every size. -->
-  <g fill="none" stroke="#3B5D24" stroke-width="62" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M95 295 L318 72 L505 272"/>
-    <path d="M152 300 V588 H470 V430"/>
-    <path d="M258 396 L325 478 L497 285"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Healthy Home Field Guide mark: a house whose roof folds down into a
+       check. Drawn as strokes so it stays crisp at every size. -->
+  <g fill="none" stroke="#24501A" stroke-width="52" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M56 226 L254 58 L452 218 L310 352 L256 300"/>
+    <path d="M104 290 V436 H416 V352"/>
   </g>
 </svg>
