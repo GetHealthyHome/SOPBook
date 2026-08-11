@@ -9,7 +9,7 @@ Built with Expo (SDK 53), React Native 0.79, TypeScript, expo-router and Zustand
 
 ## Status
 
-Feature-complete against the original brief. Typechecks, 51 tests pass.
+Feature-complete against the original brief. Typechecks, lints, 100 tests pass.
 
 - Housecall Pro client (`GET /jobs`, `GET /customers`, `POST /jobs/{id}/attachments`)
 - SQLite schema with migrations, and repositories for jobs/customers/photos/queue
@@ -178,6 +178,37 @@ Three things in there are load-bearing and easy to break:
   2560px export, and the photo is letterboxed inside its container.
 - **Flattening writes a new file, then swaps.** Rendering in place means a crash
   mid-encode truncates the only copy of the photo.
+
+## Tests
+
+```bash
+npm test        # jest
+npm run typecheck
+npm run lint
+```
+
+The database tests run against **real SQLite**, not a mock. `src/test/sqliteDatabase.ts`
+stands in for `expo-sqlite` using Node's built-in binding, so the actual migrations
+execute and the actual queries are parsed. That is the point: the queue's correctness
+lives in its SQL — an atomic claim, a unique index that makes re-enqueueing
+idempotent, an ordering that decides which photo uploads next — and mocking the
+repositories would only test the mocks.
+
+(`sql.js` was the first choice and does not work here: WebAssembly misbehaves inside
+Jest's VM sandbox, where typed arrays cross a realm boundary and string decoding
+silently returns empty. It surfaces as SQLite failing to open a database with an
+empty error message. `node:sqlite` needs Node 22.5+.)
+
+What is covered, and what is not:
+
+| Area | Covered |
+| --- | --- |
+| Upload queue SQL | Atomic claim, idempotent enqueue, backoff eligibility, parking, recovery |
+| Photo repository | JSON round-trip, partial updates, cascade delete, stale drafts |
+| Sync engine | Success, retryable vs. unrecoverable failure, offline mid-flight, crash states, headless passes |
+| Stamp layout, geometry, backoff, mappers, formatting | Pure functions, from the first pass |
+| Skia rendering (`flatten.ts`, `stampRenderer.ts`) | **No** — needs a GPU surface; see CrewCam #1 |
+| React components | **No** |
 
 ## Next steps
 

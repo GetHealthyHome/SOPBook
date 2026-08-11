@@ -130,6 +130,11 @@ class SyncEngine {
     this.idleTimer = null;
     this.currentAbort?.abort();
     this.started = false;
+    // `isOnline` was only ever a cache of the listener that just went away.
+    // Keeping a stale `false` would make a later `requestDrain()` refuse to run
+    // on a belief nothing can correct; back to the same optimistic default the
+    // engine starts with, where a real failure is what teaches it otherwise.
+    this.isOnline = true;
   }
 
   subscribe(listener: SyncListener): () => void {
