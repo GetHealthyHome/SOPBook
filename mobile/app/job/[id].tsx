@@ -1,13 +1,28 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { jobsRepo } from '@/db';
 import { useCaptureStore } from '@/state';
-import { HIT_TARGET, JOB_STATUS_STYLE, radius, spacing, typography, useTheme } from '@/theme';
-import { formatScheduleWindow } from '@/utils/format';
-import type { Job } from '@/types';
+import { HIT_TARGET, JOB_STATUS_STYLE, palette, radius, spacing, typography, useTheme } from '@/theme';
+import { formatBytes, formatDateTime, formatScheduleWindow } from '@/utils/format';
+import type { Job, Photo } from '@/types';
+
+/** A photo whose bytes are gone from this device because they are safe upstream. */
+function isUploaded(photo: Photo): boolean {
+  return photo.status === 'uploaded';
+}
 
 export default function JobDetailScreen() {
   const theme = useTheme();
@@ -18,6 +33,30 @@ export default function JobDetailScreen() {
 
   const photos = useCaptureStore((state) => (id ? state.photosByJob[id] : undefined)) ?? [];
   const loadPhotosForJob = useCaptureStore((state) => state.loadPhotosForJob);
+  const removePhoto = useCaptureStore((state) => state.removePhoto);
+  const [viewing, setViewing] = useState<Photo | null>(null);
+
+  const confirmDelete = useCallback(
+    (photo: Photo) => {
+      const warning = isUploaded(photo)
+        ? 'This photo is already on the Housecall Pro job. Deleting it here removes only the local record.'
+        : 'This photo has not uploaded yet. Deleting it is permanent — there is no other copy.';
+
+      Alert.alert('Delete photo?', warning, [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            setViewing(null);
+            void removePhoto(photo);
+          },
+        },
+      ]);
+    },
+    [removePhoto],
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -106,24 +145,99 @@ export default function JobDetailScreen() {
       ) : (
         <View style={styles.grid}>
           {photos.map((photo) => (
-            <View key={photo.id} style={styles.thumbWrapper}>
-              <Image
-                source={{ uri: photo.localUri }}
-                style={styles.thumb}
-                contentFit="cover"
-                // Uploaded photos have their local file deleted to reclaim space,
-                // so a missing image here is expected, not an error.
-                placeholder={null}
-              />
+            <Pressable
+              key={photo.id}
+              onPress={() => setViewing(photo)}
+              onLongPress={() => confirmDelete(photo)}
+              accessibilityRole="imagebutton"
+              accessibilityLabel={`Photo, ${photo.status}${photo.tags.length ? `, ${photo.tags.join(', ')}` : ''}`}
+              style={({ pressed }) => [styles.thumbWrapper, pressed && styles.thumbPressed]}
+            >
+              {isUploaded(photo) ? (
+                // Not an error state. The local file is deleted after upload to
+                // reclaim space, so saying so beats rendering an empty box that
+                // reads as a bug.
+                <View style={[styles.thumb, styles.uploadedTile]}>
+                  <Text style={styles.uploadedGlyph}>✓</Text>
+                  <Text style={styles.uploadedLabel}>Uploaded</Text>
+                </View>
+              ) : (
+                <Image source={{ uri: photo.localUri }} style={styles.thumb} contentFit="cover" />
+              )}
               <Text style={[styles.thumbCaption, { color: theme.textTertiary }]} numberOfLines={1}>
                 {photo.status}
                 {photo.tags.length ? ` · ${photo.tags[0]}` : ''}
               </Text>
-            </View>
+            </Pressable>
           ))}
         </View>
       )}
+
+      <PhotoViewer photo={viewing} onClose={() => setViewing(null)} onDelete={confirmDelete} />
     </ScrollView>
+  );
+}
+
+/**
+ * Full-screen look at one photo. Dark chrome, and the metadata spelled out —
+ * the whole value of a stamped photo is the record attached to it, and a tech
+ * checking their work should not have to squint at the burned-in corner.
+ */
+function PhotoViewer({
+  photo,
+  onClose,
+  onDelete,
+}: {
+  photo: Photo | null;
+  onClose: () => void;
+  onDelete: (photo: Photo) => void;
+}) {
+  if (!photo) return null;
+
+  const location = photo.metadata.location;
+
+  return (
+    <Modal visible transparent={false} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={styles.viewer} edges={['top', 'bottom']}>
+        <View style={styles.viewerBar}>
+          <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button">
+            <Text style={styles.viewerClose}>Done</Text>
+          </Pressable>
+          <Pressable onPress={() => onDelete(photo)} hitSlop={12} accessibilityRole="button">
+            <Text style={styles.viewerDelete}>Delete</Text>
+          </Pressable>
+        </View>
+
+        {isUploaded(photo) ? (
+          <View style={styles.viewerEmpty}>
+            <Text style={styles.uploadedGlyph}>✓</Text>
+            <Text style={styles.viewerEmptyTitle}>Uploaded to Housecall Pro</Text>
+            <Text style={styles.viewerEmptyBody}>
+              The local copy was removed to free space. View it on the job in Housecall Pro.
+            </Text>
+          </View>
+        ) : (
+          <Image source={{ uri: photo.localUri }} style={styles.viewerImage} contentFit="contain" />
+        )}
+
+        <ScrollView contentContainerStyle={styles.viewerMeta}>
+          {photo.tags.length ? (
+            <Text style={styles.viewerTags}>{photo.tags.join(' · ')}</Text>
+          ) : null}
+          {photo.caption ? <Text style={styles.viewerCaption}>{photo.caption}</Text> : null}
+          <Text style={styles.viewerDetail}>Taken {formatDateTime(photo.metadata.capturedAtUtc)}</Text>
+          <Text style={styles.viewerDetail}>
+            {location
+              ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`
+              : 'No GPS fix at capture'}
+          </Text>
+          <Text style={styles.viewerDetail}>
+            {photo.status}
+            {photo.byteSize ? ` · ${formatBytes(photo.byteSize)}` : ''}
+          </Text>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -164,6 +278,28 @@ const styles = StyleSheet.create({
   body: { ...typography.subheadline },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   thumbWrapper: { width: '31%', gap: 4 },
+  thumbPressed: { opacity: 0.6 },
   thumb: { width: '100%', aspectRatio: 1, borderRadius: radius.sm, backgroundColor: '#00000010' },
   thumbCaption: { ...typography.caption },
+  uploadedTile: { alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: '#34C75922' },
+  uploadedGlyph: { ...typography.title2, color: palette.green },
+  uploadedLabel: { ...typography.caption, color: palette.green, fontWeight: '600' },
+  viewer: { flex: 1, backgroundColor: '#000000' },
+  viewerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  viewerClose: { ...typography.headline, color: '#FFFFFF' },
+  viewerDelete: { ...typography.headline, color: palette.red },
+  viewerImage: { flex: 1, width: '100%' },
+  viewerEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
+  viewerEmptyTitle: { ...typography.title3, color: '#FFFFFF' },
+  viewerEmptyBody: { ...typography.subheadline, color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
+  viewerMeta: { padding: spacing.lg, gap: spacing.xs },
+  viewerTags: { ...typography.headline, color: '#FFFFFF' },
+  viewerCaption: { ...typography.body, color: 'rgba(255,255,255,0.85)' },
+  viewerDetail: { ...typography.footnote, color: 'rgba(255,255,255,0.6)' },
 });

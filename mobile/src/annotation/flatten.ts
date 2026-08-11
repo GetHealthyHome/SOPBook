@@ -1,6 +1,12 @@
 import { PaintStyle, Skia, StrokeCap, StrokeJoin, type SkCanvas, type SkPath } from '@shopify/react-native-skia';
 import { scalarToPixels } from './geometry';
-import type { Annotation, NormalizedPoint, Stroke, TextAnnotation } from './types';
+import { arrowHead, normalizeRect } from './shapeGeometry';
+import type {
+  Annotation,
+  NormalizedPoint,
+  ShapeAnnotation,
+  TextAnnotation,
+} from './types';
 import { decodeImage, makeSurface, writeSurfaceToFile } from '@/render/imageCanvas';
 import { makeMonoFont } from '@/render/skiaFont';
 import { logger } from '@/utils/logger';
@@ -41,11 +47,50 @@ export function buildStrokePath(
   return path;
 }
 
-function strokePaint(stroke: Stroke, width: number, height: number) {
+/**
+ * Path for a dragged shape, in pixels.
+ *
+ * Shared by the live preview and the flattening pass for the same reason
+ * `drawAnnotations` is: an arrowhead that looked one way while drawing and
+ * another way in the saved file would be a bug nobody notices until an auditor
+ * is looking at the photo.
+ */
+export function buildShapePath(
+  shape: ShapeAnnotation['shape'],
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  strokeWidthPx: number,
+): SkPath {
+  const path = Skia.Path.Make();
+
+  if (shape === 'rect' || shape === 'ellipse') {
+    const box = normalizeRect(start, end);
+    const rect = Skia.XYWHRect(box.x, box.y, box.width, box.height);
+    if (shape === 'rect') path.addRect(rect);
+    else path.addOval(rect);
+    return path;
+  }
+
+  // Arrow: a shaft plus two barbs swept back from the tip.
+  path.moveTo(start.x, start.y);
+  path.lineTo(end.x, end.y);
+
+  const head = arrowHead(start, end, strokeWidthPx);
+  if (!head) return path;
+
+  for (const barb of head.barbs) {
+    path.moveTo(end.x, end.y);
+    path.lineTo(barb.x, barb.y);
+  }
+
+  return path;
+}
+
+function strokePaint(color: string, widthFraction: number, width: number, height: number) {
   const paint = Skia.Paint();
-  paint.setColor(Skia.Color(stroke.color));
+  paint.setColor(Skia.Color(color));
   paint.setStyle(PaintStyle.Stroke);
-  paint.setStrokeWidth(scalarToPixels(stroke.width, width, height));
+  paint.setStrokeWidth(scalarToPixels(widthFraction, width, height));
   paint.setStrokeCap(StrokeCap.Round);
   paint.setStrokeJoin(StrokeJoin.Round);
   paint.setAntiAlias(true);
@@ -69,7 +114,20 @@ export function drawAnnotations(
 
   for (const annotation of annotations) {
     if (annotation.kind === 'stroke') {
-      canvas.drawPath(buildStrokePath(annotation.points, toPixels), strokePaint(annotation, width, height));
+      canvas.drawPath(
+        buildStrokePath(annotation.points, toPixels),
+        strokePaint(annotation.color, annotation.width, width, height),
+      );
+    } else if (annotation.kind === 'shape') {
+      canvas.drawPath(
+        buildShapePath(
+          annotation.shape,
+          toPixels(annotation.start),
+          toPixels(annotation.end),
+          scalarToPixels(annotation.width, width, height),
+        ),
+        strokePaint(annotation.color, annotation.width, width, height),
+      );
     } else {
       drawTextAnnotation(canvas, annotation, width, height);
     }

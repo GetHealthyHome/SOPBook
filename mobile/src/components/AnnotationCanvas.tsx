@@ -10,20 +10,35 @@ import {
 } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
-import { buildStrokePath } from '@/annotation/flatten';
+import { buildShapePath, buildStrokePath } from '@/annotation/flatten';
 import { computeContainRect, scalarToPixels, toNormalized } from '@/annotation/geometry';
 import { makeMonoFont } from '@/render/skiaFont';
-import type { Annotation, AnnotationTool, NormalizedPoint } from '@/annotation/types';
+import type {
+  Annotation,
+  AnnotationTool,
+  NormalizedPoint,
+  ShapeKind,
+} from '@/annotation/types';
+
+export interface LiveShape {
+  shape: ShapeKind;
+  color: string;
+  width: number;
+  start: NormalizedPoint;
+  end: NormalizedPoint;
+}
 
 interface AnnotationCanvasProps {
   imageUri: string;
   annotations: Annotation[];
   /** The stroke being drawn right now, rendered but not yet committed. */
   liveStroke: { color: string; width: number; points: NormalizedPoint[] } | null;
+  /** The shape being dragged right now, same deal. */
+  liveShape: LiveShape | null;
   tool: AnnotationTool;
-  onStrokeStart: (point: NormalizedPoint) => void;
-  onStrokeMove: (point: NormalizedPoint) => void;
-  onStrokeEnd: () => void;
+  onDragStart: (point: NormalizedPoint) => void;
+  onDragMove: (point: NormalizedPoint) => void;
+  onDragEnd: () => void;
   onTapForText: (point: NormalizedPoint) => void;
   onLayout: (event: LayoutChangeEvent) => void;
   containerWidth: number;
@@ -41,10 +56,11 @@ export function AnnotationCanvas({
   imageUri,
   annotations,
   liveStroke,
+  liveShape,
   tool,
-  onStrokeStart,
-  onStrokeMove,
-  onStrokeEnd,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
   onTapForText,
   onLayout,
   containerWidth,
@@ -69,17 +85,19 @@ export function AnnotationCanvas({
         // Start drawing on the first pixel of movement; the default activation
         // distance makes short marks feel like they were ignored.
         .minDistance(0)
-        .enabled(tool === 'draw')
+        // Every tool except text is drawn by dragging. The component stays
+        // ignorant of which one — it reports points, the screen decides shape.
+        .enabled(tool !== 'text')
         .onBegin((event) => {
-          runOnJS(onStrokeStart)(toNormalized(event.x, event.y, rect));
+          runOnJS(onDragStart)(toNormalized(event.x, event.y, rect));
         })
         .onUpdate((event) => {
-          runOnJS(onStrokeMove)(toNormalized(event.x, event.y, rect));
+          runOnJS(onDragMove)(toNormalized(event.x, event.y, rect));
         })
         .onFinalize(() => {
-          runOnJS(onStrokeEnd)();
+          runOnJS(onDragEnd)();
         }),
-    [tool, rect, onStrokeStart, onStrokeMove, onStrokeEnd],
+    [tool, rect, onDragStart, onDragMove, onDragEnd],
   );
 
   const tap = useMemo(
@@ -122,6 +140,21 @@ export function AnnotationCanvas({
                   strokeCap="round"
                   strokeJoin="round"
                 />
+              ) : annotation.kind === 'shape' ? (
+                <Path
+                  key={annotation.id}
+                  path={buildShapePath(
+                    annotation.shape,
+                    toPixels(annotation.start),
+                    toPixels(annotation.end),
+                    scalarToPixels(annotation.width, rect.width, rect.height),
+                  )}
+                  color={annotation.color}
+                  style="stroke"
+                  strokeWidth={scalarToPixels(annotation.width, rect.width, rect.height)}
+                  strokeCap="round"
+                  strokeJoin="round"
+                />
               ) : (
                 <SkiaText
                   key={annotation.id}
@@ -144,6 +177,22 @@ export function AnnotationCanvas({
                 color={liveStroke.color}
                 style="stroke"
                 strokeWidth={scalarToPixels(liveStroke.width, rect.width, rect.height)}
+                strokeCap="round"
+                strokeJoin="round"
+              />
+            ) : null}
+
+            {liveShape ? (
+              <Path
+                path={buildShapePath(
+                  liveShape.shape,
+                  toPixels(liveShape.start),
+                  toPixels(liveShape.end),
+                  scalarToPixels(liveShape.width, rect.width, rect.height),
+                )}
+                color={liveShape.color}
+                style="stroke"
+                strokeWidth={scalarToPixels(liveShape.width, rect.width, rect.height)}
                 strokeCap="round"
                 strokeJoin="round"
               />

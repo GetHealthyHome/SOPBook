@@ -14,12 +14,14 @@ import {
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AnnotationCanvas } from '@/components/AnnotationCanvas';
+import { AnnotationCanvas, type LiveShape } from '@/components/AnnotationCanvas';
 import { flattenAnnotations } from '@/annotation/flatten';
+import { isDeliberateDrag } from '@/annotation/shapeGeometry';
 import {
-  DEFAULT_TEXT_SIZE,
   MARKER_COLORS,
   STROKE_WIDTHS,
+  TEXT_SIZES,
+  isShapeTool,
   type Annotation,
   type AnnotationTool,
   type NormalizedPoint,
@@ -49,49 +51,92 @@ export default function ReviewScreen() {
   const discardDraft = useCaptureStore((state) => state.discardDraft);
 
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  /**
+   * Undone annotations, newest last. Cleared whenever something new is added:
+   * a redo stack that survives a divergent edit would replay marks the tech
+   * has already moved past.
+   */
+  const [redoStack, setRedoStack] = useState<Annotation[]>([]);
   const [liveStroke, setLiveStroke] = useState<{
     color: string;
     width: number;
     points: NormalizedPoint[];
   } | null>(null);
+  const [liveShape, setLiveShape] = useState<LiveShape | null>(null);
 
   const [tool, setTool] = useState<AnnotationTool>('draw');
   const [color, setColor] = useState<string>(MARKER_COLORS[0].value);
   const [strokeWidth, setStrokeWidth] = useState<number>(STROKE_WIDTHS[1].value);
+  const [textSize, setTextSize] = useState<number>(TEXT_SIZES[1].value);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [isSaving, setIsSaving] = useState(false);
 
   const [pendingTextPoint, setPendingTextPoint] = useState<NormalizedPoint | null>(null);
   const [textDraft, setTextDraft] = useState('');
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [tagDraft, setTagDraft] = useState('');
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     setSize({ width, height });
   }, []);
 
-  const onStrokeStart = useCallback(
-    (point: NormalizedPoint) => setLiveStroke({ color, width: strokeWidth, points: [point] }),
-    [color, strokeWidth],
+  const addAnnotation = useCallback((annotation: Annotation) => {
+    setAnnotations((existing) => [...existing, annotation]);
+    setRedoStack([]);
+    void Haptics.selectionAsync();
+  }, []);
+
+  const onDragStart = useCallback(
+    (point: NormalizedPoint) => {
+      if (isShapeTool(tool)) {
+        setLiveShape({ shape: tool, color, width: strokeWidth, start: point, end: point });
+      } else {
+        setLiveStroke({ color, width: strokeWidth, points: [point] });
+      }
+    },
+    [color, strokeWidth, tool],
   );
 
-  const onStrokeMove = useCallback((point: NormalizedPoint) => {
+  const onDragMove = useCallback((point: NormalizedPoint) => {
     setLiveStroke((current) =>
       current ? { ...current, points: [...current.points, point] } : current,
     );
+    setLiveShape((current) => (current ? { ...current, end: point } : current));
   }, []);
 
-  const onStrokeEnd = useCallback(() => {
+  const onDragEnd = useCallback(() => {
     setLiveStroke((current) => {
       if (current && current.points.length > 0) {
-        setAnnotations((existing) => [
-          ...existing,
-          { id: newId(), kind: 'stroke', color: current.color, width: current.width, points: current.points },
-        ]);
-        void Haptics.selectionAsync();
+        addAnnotation({
+          id: newId(),
+          kind: 'stroke',
+          color: current.color,
+          width: current.width,
+          points: current.points,
+        });
       }
       return null;
     });
-  }, []);
+
+    setLiveShape((current) => {
+      // A tap with a shape tool selected is almost certainly a misfire, and a
+      // zero-size rectangle is invisible anyway — drop it rather than litter
+      // the undo stack with nothing.
+      if (current && isDeliberateDrag(current.start, current.end)) {
+        addAnnotation({
+          id: newId(),
+          kind: 'shape',
+          shape: current.shape,
+          color: current.color,
+          width: current.width,
+          start: current.start,
+          end: current.end,
+        });
+      }
+      return null;
+    });
+  }, [addAnnotation]);
 
   const onTapForText = useCallback((point: NormalizedPoint) => {
     setPendingTextPoint(point);
@@ -101,56 +146,93 @@ export default function ReviewScreen() {
   const commitText = useCallback(() => {
     const trimmed = textDraft.trim();
     if (pendingTextPoint && trimmed) {
-      setAnnotations((existing) => [
-        ...existing,
-        {
-          id: newId(),
-          kind: 'text',
-          color,
-          text: trimmed,
-          position: pendingTextPoint,
-          fontSize: DEFAULT_TEXT_SIZE,
-        },
-      ]);
+      addAnnotation({
+        id: newId(),
+        kind: 'text',
+        color,
+        text: trimmed,
+        position: pendingTextPoint,
+        fontSize: textSize,
+      });
     }
     setPendingTextPoint(null);
     setTextDraft('');
-  }, [color, pendingTextPoint, textDraft]);
+  }, [addAnnotation, color, pendingTextPoint, textDraft, textSize]);
 
   const undo = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setAnnotations((existing) => existing.slice(0, -1));
+    setAnnotations((existing) => {
+      const last = existing[existing.length - 1];
+      if (!last) return existing;
+      setRedoStack((stack) => [...stack, last]);
+      return existing.slice(0, -1);
+    });
   }, []);
 
-  const onSave = useCallback(async () => {
-    if (!draft || isSaving) return;
-    setIsSaving(true);
+  const redo = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRedoStack((stack) => {
+      const last = stack[stack.length - 1];
+      if (!last) return stack;
+      setAnnotations((existing) => [...existing, last]);
+      return stack.slice(0, -1);
+    });
+  }, []);
 
-    try {
-      let finalUri = draft.localUri;
+  const tags = useMemo<PhotoTag[]>(() => draft?.tags ?? [], [draft?.tags]);
 
-      if (annotations.length > 0) {
-        // New file rather than in-place, so a crash mid-encode cannot destroy
-        // the stamped original. The old file is removed only after the swap.
-        const flattenedUri = `${draft.localUri.replace(/\.jpg$/, '')}-annotated.jpg`;
-        const result = await flattenAnnotations({
-          sourceUri: draft.localUri,
-          destinationUri: flattenedUri,
-          annotations,
-        });
-        finalUri = result.uri;
-        await deleteFile(draft.localUri);
+  /** Tags the tech typed, which are not in the preset row and need their own chips. */
+  const customTags = useMemo(
+    () => tags.filter((tag) => !PRESET_PHOTO_TAGS.includes(tag as (typeof PRESET_PHOTO_TAGS)[number])),
+    [tags],
+  );
+
+  const commitTag = useCallback(() => {
+    const trimmed = tagDraft.trim();
+    // The data model has always allowed free-form tags (`PhotoTag` is
+    // `PresetPhotoTag | (string & {})`); only the UI was preset-only.
+    if (trimmed && !tags.includes(trimmed)) toggleTag(trimmed);
+    setTagDraft('');
+    setIsAddingTag(false);
+  }, [tagDraft, tags, toggleTag]);
+
+  /**
+   * Flattens and commits. `andShootAgain` is what makes documenting six areas
+   * of an attic six taps instead of six round trips through the job screen.
+   */
+  const save = useCallback(
+    async (andShootAgain: boolean) => {
+      if (!draft || isSaving) return;
+      setIsSaving(true);
+
+      try {
+        let finalUri = draft.localUri;
+
+        if (annotations.length > 0) {
+          // New file rather than in-place, so a crash mid-encode cannot destroy
+          // the stamped original. The old file is removed only after the swap.
+          const flattenedUri = `${draft.localUri.replace(/\.jpg$/, '')}-annotated.jpg`;
+          const result = await flattenAnnotations({
+            sourceUri: draft.localUri,
+            destinationUri: flattenedUri,
+            annotations,
+          });
+          finalUri = result.uri;
+          await deleteFile(draft.localUri);
+        }
+
+        const jobId = draft.jobId;
+        await commitDraft(finalUri, await getFileSize(finalUri));
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace(andShootAgain ? `/capture/${jobId}` : `/job/${jobId}`);
+      } catch (error) {
+        logger.error('review.save_failed', { error: String(error) });
+        Alert.alert('Could not save photo', String(error));
+        setIsSaving(false);
       }
-
-      await commitDraft(finalUri, await getFileSize(finalUri));
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace(`/job/${draft.jobId}`);
-    } catch (error) {
-      logger.error('review.save_failed', { error: String(error) });
-      Alert.alert('Could not save photo', String(error));
-      setIsSaving(false);
-    }
-  }, [annotations, commitDraft, draft, isSaving, router]);
+    },
+    [annotations, commitDraft, draft, isSaving, router],
+  );
 
   const onDiscard = useCallback(() => {
     Alert.alert('Discard photo?', 'The photo and anything drawn on it will be deleted.', [
@@ -166,8 +248,6 @@ export default function ReviewScreen() {
       },
     ]);
   }, [discardDraft, draft?.jobId, router]);
-
-  const tags = useMemo<PhotoTag[]>(() => draft?.tags ?? [], [draft?.tags]);
 
   if (!draft) {
     return (
@@ -186,28 +266,37 @@ export default function ReviewScreen() {
         <Pressable onPress={onDiscard} hitSlop={12} accessibilityRole="button">
           <Text style={styles.discard}>Discard</Text>
         </Pressable>
-        <Pressable
-          onPress={undo}
-          disabled={annotations.length === 0}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Undo last annotation"
-        >
-          <Text style={[styles.undo, annotations.length === 0 && styles.disabled]}>Undo</Text>
-        </Pressable>
-        <Pressable onPress={onSave} disabled={isSaving} hitSlop={12} accessibilityRole="button">
-          {isSaving ? <ActivityIndicator color={palette.blue} /> : <Text style={styles.save}>Save</Text>}
-        </Pressable>
+        <View style={styles.historyGroup}>
+          <Pressable
+            onPress={undo}
+            disabled={annotations.length === 0}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Undo last annotation"
+          >
+            <Text style={[styles.undo, annotations.length === 0 && styles.disabled]}>Undo</Text>
+          </Pressable>
+          <Pressable
+            onPress={redo}
+            disabled={redoStack.length === 0}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Redo last undone annotation"
+          >
+            <Text style={[styles.undo, redoStack.length === 0 && styles.disabled]}>Redo</Text>
+          </Pressable>
+        </View>
       </View>
 
       <AnnotationCanvas
         imageUri={draft.localUri}
         annotations={annotations}
         liveStroke={liveStroke}
+        liveShape={liveShape}
         tool={tool}
-        onStrokeStart={onStrokeStart}
-        onStrokeMove={onStrokeMove}
-        onStrokeEnd={onStrokeEnd}
+        onDragStart={onDragStart}
+        onDragMove={onDragMove}
+        onDragEnd={onDragEnd}
         onTapForText={onTapForText}
         onLayout={onLayout}
         containerWidth={size.width}
@@ -216,7 +305,7 @@ export default function ReviewScreen() {
 
       <View style={styles.controls}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {PRESET_PHOTO_TAGS.map((tag) => {
+          {[...PRESET_PHOTO_TAGS, ...customTags].map((tag) => {
             const active = tags.includes(tag);
             return (
               <Pressable
@@ -233,6 +322,17 @@ export default function ReviewScreen() {
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => {
+              setTagDraft('');
+              setIsAddingTag(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Add a custom tag"
+            style={[styles.tagChip, styles.tagChipAdd]}
+          >
+            <Text style={styles.tagLabel}>+ Tag</Text>
+          </Pressable>
         </ScrollView>
 
         <TextInput
@@ -243,12 +343,15 @@ export default function ReviewScreen() {
           style={styles.caption}
         />
 
-        <View style={styles.toolRow}>
-          <View style={styles.toolGroup}>
-            <ToolButton label="Draw" active={tool === 'draw'} onPress={() => setTool('draw')} />
-            <ToolButton label="Text" active={tool === 'text'} onPress={() => setTool('text')} />
-          </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <ToolButton label="Draw" active={tool === 'draw'} onPress={() => setTool('draw')} />
+          <ToolButton label="Arrow" active={tool === 'arrow'} onPress={() => setTool('arrow')} />
+          <ToolButton label="Box" active={tool === 'rect'} onPress={() => setTool('rect')} />
+          <ToolButton label="Circle" active={tool === 'ellipse'} onPress={() => setTool('ellipse')} />
+          <ToolButton label="Text" active={tool === 'text'} onPress={() => setTool('text')} />
+        </ScrollView>
 
+        <View style={styles.toolRow}>
           <View style={styles.toolGroup}>
             {MARKER_COLORS.map((marker) => (
               <Pressable
@@ -269,29 +372,98 @@ export default function ReviewScreen() {
             ))}
           </View>
 
+          {/* The size control follows the tool: stroke weight for anything
+              drawn, point size for text. One row, two meanings, because there
+              is no room on a phone for both at once. */}
           <View style={styles.toolGroup}>
-            {STROKE_WIDTHS.map((option) => (
-              <Pressable
-                key={option.name}
-                onPress={() => setStrokeWidth(option.value)}
-                accessibilityRole="button"
-                accessibilityLabel={`${option.name} stroke`}
-                accessibilityState={{ selected: strokeWidth === option.value }}
-                style={[styles.widthButton, strokeWidth === option.value && styles.widthButtonActive]}
-              >
-                <View
-                  style={{
-                    width: 20,
-                    height: Math.max(2, option.value * 260),
-                    borderRadius: 4,
-                    backgroundColor: '#FFFFFF',
-                  }}
-                />
-              </Pressable>
-            ))}
+            {tool === 'text'
+              ? TEXT_SIZES.map((option) => (
+                  <Pressable
+                    key={option.name}
+                    onPress={() => setTextSize(option.value)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${option.name} text`}
+                    accessibilityState={{ selected: textSize === option.value }}
+                    style={[styles.widthButton, textSize === option.value && styles.widthButtonActive]}
+                  >
+                    <Text style={[styles.sizeGlyph, { fontSize: 10 + option.value * 400 }]}>A</Text>
+                  </Pressable>
+                ))
+              : STROKE_WIDTHS.map((option) => (
+                  <Pressable
+                    key={option.name}
+                    onPress={() => setStrokeWidth(option.value)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${option.name} stroke`}
+                    accessibilityState={{ selected: strokeWidth === option.value }}
+                    style={[styles.widthButton, strokeWidth === option.value && styles.widthButtonActive]}
+                  >
+                    <View
+                      style={{
+                        width: 20,
+                        height: Math.max(2, option.value * 260),
+                        borderRadius: 4,
+                        backgroundColor: '#FFFFFF',
+                      }}
+                    />
+                  </Pressable>
+                ))}
           </View>
         </View>
+
+        {/* Both save paths sit at the bottom, in thumb reach. "Shoot again"
+            is the one that matters in the field: six areas of an attic should
+            be six shots, not six round trips through the job screen. */}
+        <View style={styles.saveRow}>
+          <Pressable
+            onPress={() => void save(true)}
+            disabled={isSaving}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.saveSecondary, pressed && styles.pressed]}
+          >
+            <Text style={styles.saveSecondaryLabel}>Save & shoot again</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void save(false)}
+            disabled={isSaving}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.savePrimary, pressed && styles.pressed]}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.savePrimaryLabel}>Save</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
+
+      <Modal visible={isAddingTag} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add a tag</Text>
+            <TextInput
+              value={tagDraft}
+              onChangeText={setTagDraft}
+              autoFocus
+              autoCapitalize="words"
+              placeholder="e.g. Rim Joist"
+              placeholderTextColor="rgba(255,255,255,0.4)"
+              style={styles.modalInput}
+              onSubmitEditing={commitTag}
+              returnKeyType="done"
+            />
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setIsAddingTag(false)} style={styles.modalButton}>
+                <Text style={styles.modalCancel}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={commitTag} style={styles.modalButton}>
+                <Text style={styles.modalConfirm}>Add</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={pendingTextPoint !== null} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
@@ -354,9 +526,30 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   discard: { ...typography.headline, color: palette.red },
+  historyGroup: { flexDirection: 'row', gap: spacing.lg },
   undo: { ...typography.headline, color: '#FFFFFF' },
-  save: { ...typography.headline, color: palette.blue, fontWeight: '700' },
   disabled: { opacity: 0.35 },
+  pressed: { opacity: 0.75 },
+  saveRow: { flexDirection: 'row', gap: spacing.sm, paddingBottom: spacing.md },
+  saveSecondary: {
+    flex: 1,
+    minHeight: HIT_TARGET,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  saveSecondaryLabel: { ...typography.callout, color: '#FFFFFF', fontWeight: '600' },
+  savePrimary: {
+    flex: 1,
+    minHeight: HIT_TARGET,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.blue,
+  },
+  savePrimaryLabel: { ...typography.headline, color: '#FFFFFF', fontWeight: '700' },
+  sizeGlyph: { color: '#FFFFFF', fontWeight: '700' },
   controls: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md },
   chipRow: { gap: spacing.sm, paddingRight: spacing.lg },
   tagChip: {
@@ -368,6 +561,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tagChipActive: { backgroundColor: palette.blue },
+  tagChipAdd: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', borderStyle: 'dashed' },
   tagLabel: { ...typography.footnote, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
   tagLabelActive: { color: '#FFFFFF' },
   caption: {

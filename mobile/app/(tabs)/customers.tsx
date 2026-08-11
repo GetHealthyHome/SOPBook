@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCatalogStore } from '@/state';
 import { HIT_TARGET, radius, spacing, typography, useTheme } from '@/theme';
@@ -16,9 +18,34 @@ export default function CustomersScreen() {
   const theme = useTheme();
   const { customers, customerSearch, setCustomerSearch, isHydrating } = useCatalogStore();
 
+  const router = useRouter();
+  const setJobSearch = useCatalogStore((state) => state.setJobSearch);
+  const setStatusFilter = useCatalogStore((state) => state.setStatusFilter);
+
+  /**
+   * Tapping a customer shows their jobs.
+   *
+   * It routes through the existing job search rather than a new screen because
+   * `jobs.search_blob` already contains the customer name, so this works
+   * offline against the cache — which is where a tech will be standing.
+   */
+  const showJobsFor = useCallback(
+    (customer: Customer) => {
+      void Haptics.selectionAsync();
+      setJobSearch(customer.displayName);
+      // Clear the status filter too, or a customer whose only job is completed
+      // reads as a customer with no jobs.
+      setStatusFilter([]);
+      router.push('/');
+    },
+    [router, setJobSearch, setStatusFilter],
+  );
+
   const renderItem = useCallback(
-    ({ item }: { item: Customer }) => <CustomerRow customer={item} />,
-    [],
+    ({ item }: { item: Customer }) => (
+      <CustomerRow customer={item} onPress={() => showJobsFor(item)} />
+    ),
+    [showJobsFor],
   );
 
   return (
@@ -56,12 +83,13 @@ export default function CustomersScreen() {
   );
 }
 
-function CustomerRow({ customer }: { customer: Customer }) {
+function CustomerRow({ customer, onPress }: { customer: Customer; onPress: () => void }) {
   const theme = useTheme();
   return (
     <Pressable
+      onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={customer.displayName}
+      accessibilityLabel={`${customer.displayName}, show jobs`}
       style={({ pressed }) => [
         styles.row,
         { backgroundColor: theme.backgroundSecondary },

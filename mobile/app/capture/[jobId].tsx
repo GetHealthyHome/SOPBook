@@ -37,6 +37,12 @@ export default function CaptureScreen() {
   const [hasLocation, setHasLocation] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Continuous torch rather than a shutter-synced flash. Attics and crawlspaces
+   * are the primary environment for this app, and in the dark the tech needs
+   * light to *frame* the shot, not only to expose it.
+   */
+  const [isTorchOn, setIsTorchOn] = useState(false);
 
   const setDraft = useCaptureStore((state) => state.setDraft);
 
@@ -147,7 +153,13 @@ export default function CaptureScreen() {
 
   return (
     <View style={styles.container}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+      {/* Back camera only, deliberately: this app documents buildings. */}
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing="back"
+        enableTorch={isTorchOn}
+      />
 
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.topBar}>
@@ -161,20 +173,38 @@ export default function CaptureScreen() {
             <Text style={styles.closeLabel}>Close</Text>
           </Pressable>
 
-          <View style={styles.gpsPill}>
-            <View
-              style={[
-                styles.gpsDot,
-                { backgroundColor: hasLocation && accuracy ? palette.green : palette.orange },
-              ]}
-            />
-            <Text style={styles.gpsLabel}>
-              {!hasLocation
-                ? 'No GPS'
-                : accuracy
-                  ? `±${Math.round(accuracy)} m`
-                  : 'Locating...'}
-            </Text>
+          <View style={styles.topRight}>
+            <Pressable
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setIsTorchOn((on) => !on);
+              }}
+              hitSlop={12}
+              accessibilityRole="switch"
+              accessibilityLabel="Torch"
+              accessibilityState={{ checked: isTorchOn }}
+              style={[styles.torchButton, isTorchOn && styles.torchButtonOn]}
+            >
+              <Text style={[styles.torchLabel, isTorchOn && styles.torchLabelOn]}>
+                {isTorchOn ? 'Light On' : 'Light'}
+              </Text>
+            </Pressable>
+
+            <View style={styles.gpsPill}>
+              <View
+                style={[
+                  styles.gpsDot,
+                  { backgroundColor: hasLocation && accuracy ? palette.green : palette.orange },
+                ]}
+              />
+              <Text style={styles.gpsLabel}>
+                {!hasLocation
+                  ? 'No GPS'
+                  : accuracy
+                    ? `±${Math.round(accuracy)} m`
+                    : 'Locating...'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -246,6 +276,17 @@ const styles = StyleSheet.create({
     paddingRight: spacing.md,
   },
   closeLabel: { ...typography.headline, color: '#FFFFFF' },
+  topRight: { alignItems: 'flex-end', gap: spacing.sm },
+  torchButton: {
+    minHeight: HIT_TARGET,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  torchButtonOn: { backgroundColor: palette.markerYellow },
+  torchLabel: { ...typography.footnote, color: '#FFFFFF', fontWeight: '600' },
+  torchLabelOn: { color: palette.ink },
   gpsPill: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -9,15 +9,17 @@ Built with Expo (SDK 53), React Native 0.79, TypeScript, expo-router and Zustand
 
 ## Status
 
-Feature-complete against the original brief. Typechecks, lints, 100 tests pass.
+Feature-complete against the original brief. Typechecks, lints, 108 tests pass.
 
 - Housecall Pro client (`GET /jobs`, `GET /customers`, `POST /jobs/{id}/attachments`)
 - SQLite schema with migrations, and repositories for jobs/customers/photos/queue
 - Offline-first sync engine: atomic task claiming, jittered exponential backoff,
   crash recovery, connectivity-driven draining, OS-scheduled background uploads
 - Zustand stores, design tokens, sync status bar, jobs/customers/queue tabs, job detail
-- Camera capture with warmed-up GPS and a burned-in metadata stamp
-- Annotation studio: Skia freehand, text tool, four high-visibility inks, flattening
+- Camera capture with warmed-up GPS, torch, and a burned-in metadata stamp
+- Annotation studio: Skia freehand, arrow/box/circle, text, undo/redo, four
+  high-visibility inks, flattening
+- Photo viewer with delete, custom tags, and a save-and-shoot-again loop
 
 **Not verified on hardware.** Nothing here has been run on a device or simulator.
 The camera, GPS and Skia paths in particular are written against the documented

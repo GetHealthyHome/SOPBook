@@ -51,9 +51,45 @@ export interface TextAnnotation {
   fontSize: number;
 }
 
-export type Annotation = Stroke | TextAnnotation;
+/**
+ * Shapes are stored as the two corners the tech dragged between, not as a
+ * rasterized path. Freehand is for tracing; these are for pointing at a thing
+ * and boxing a thing, which is what people actually reach for when marking a
+ * defect — and a dragged rectangle is steadier than one drawn on a ladder.
+ */
+export type ShapeKind = 'arrow' | 'rect' | 'ellipse';
 
-/** Default text size as a fraction of the longest edge (~46px at 2560). */
+export interface ShapeAnnotation {
+  id: string;
+  kind: 'shape';
+  shape: ShapeKind;
+  color: string;
+  /** Fraction of the longest edge. See `STROKE_WIDTHS`. */
+  width: number;
+  /** Where the drag began. For an arrow this is the tail. */
+  start: NormalizedPoint;
+  /** Where it ended. For an arrow this is the point. */
+  end: NormalizedPoint;
+}
+
+export type Annotation = Stroke | TextAnnotation | ShapeAnnotation;
+
+/**
+ * Text sizes as a fraction of the longest edge, for the same reason stroke
+ * widths are: a point size would render as unreadable specks in a 2560px export.
+ */
+export const TEXT_SIZES = [
+  { name: 'Small', value: 0.012 },
+  { name: 'Medium', value: 0.018 },
+  { name: 'Large', value: 0.03 },
+] as const;
+
+/** ~46px at 2560. Kept as a named export; several call sites depend on it. */
 export const DEFAULT_TEXT_SIZE = 0.018;
 
-export type AnnotationTool = 'draw' | 'text';
+export type AnnotationTool = 'draw' | 'text' | ShapeKind;
+
+/** Tools that are drawn by dragging from one corner to another. */
+export function isShapeTool(tool: AnnotationTool): tool is ShapeKind {
+  return tool === 'arrow' || tool === 'rect' || tool === 'ellipse';
+}
