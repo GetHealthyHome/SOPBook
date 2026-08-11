@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import { jobsRepo } from '@/db';
 import { useCaptureStore } from '@/state';
-import { JOB_STATUS_STYLE, radius, spacing, typography, useTheme } from '@/theme';
+import { HIT_TARGET, JOB_STATUS_STYLE, radius, spacing, typography, useTheme } from '@/theme';
 import { formatScheduleWindow } from '@/utils/format';
 import type { Job } from '@/types';
 
 export default function JobDetailScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [job, setJob] = useState<Job | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,6 +78,24 @@ export default function JobDetailScreen() {
       {job.description ? <Field label="Description" value={job.description} /> : null}
       <Field label="Reference" value={job.reference} />
 
+      {/* Primary action, placed above the photo grid rather than in a header:
+          one-tap camera access is the whole reason a tech opens this screen. */}
+      <Pressable
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          router.push(`/capture/${job.id}`);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Take a photo for this job"
+        style={({ pressed }) => [
+          styles.captureButton,
+          { backgroundColor: theme.accent },
+          pressed && styles.capturePressed,
+        ]}
+      >
+        <Text style={styles.captureLabel}>Take Photo</Text>
+      </Pressable>
+
       <Text style={[styles.sectionTitle, { color: theme.text }]}>
         Photos {photos.length ? `(${photos.length})` : ''}
       </Text>
@@ -131,6 +151,15 @@ const styles = StyleSheet.create({
   field: { gap: 2 },
   fieldLabel: { ...typography.caption, fontWeight: '700', letterSpacing: 0.5 },
   fieldValue: { ...typography.body },
+  captureButton: {
+    minHeight: HIT_TARGET + 12,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+  },
+  capturePressed: { opacity: 0.8 },
+  captureLabel: { ...typography.headline, color: '#FFFFFF' },
   sectionTitle: { ...typography.title3, marginTop: spacing.lg },
   body: { ...typography.subheadline },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

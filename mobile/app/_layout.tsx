@@ -43,6 +43,17 @@ export default function RootLayout() {
                 name="job/[id]"
                 options={{ headerShown: true, headerTitle: 'Job', headerBackTitle: 'Jobs' }}
               />
+              {/* Both capture surfaces are full-screen modals: the photo is the
+                  entire task while it is open, and a visible tab bar underneath
+                  would invite a tech to navigate away mid-capture. */}
+              <Stack.Screen
+                name="capture/[jobId]"
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
+              <Stack.Screen
+                name="review/[photoId]"
+                options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
+              />
             </Stack>
             <SyncStatusBar />
           </>

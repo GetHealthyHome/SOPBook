@@ -9,21 +9,19 @@ Built with Expo (SDK 53), React Native 0.79, TypeScript, expo-router and Zustand
 
 ## Status
 
-This is the **foundation layer**: architecture, data model, API client, offline
-sync engine, and the navigation shell. It typechecks, tests pass, and it runs.
-
-Shipped and working:
+Feature-complete against the original brief. Typechecks, 51 tests pass.
 
 - Housecall Pro client (`GET /jobs`, `GET /customers`, `POST /jobs/{id}/attachments`)
 - SQLite schema with migrations, and repositories for jobs/customers/photos/queue
 - Offline-first sync engine: atomic task claiming, jittered exponential backoff,
   crash recovery, connectivity-driven draining
 - Zustand stores, design tokens, sync status bar, jobs/customers/queue tabs, job detail
+- Camera capture with warmed-up GPS and a burned-in metadata stamp
+- Annotation studio: Skia freehand, text tool, four high-visibility inks, flattening
 
-Not yet built — see [Next steps](#next-steps):
-
-- The camera screen and the canvas stamp renderer
-- The annotation studio (Skia freehand + text)
+**Not verified on hardware.** Nothing here has been run on a device or simulator.
+The camera, GPS and Skia paths in particular are written against the documented
+APIs but have never executed. See the open issues for what that leaves at risk.
 
 ## Getting started
 
@@ -53,12 +51,17 @@ mobile/
 │   ├── _layout.tsx           # bootstrap gate, auth redirect, sync bar
 │   ├── sign-in.tsx           # API key entry, verified before it is stored
 │   ├── (tabs)/               # Jobs · Customers · Queue
-│   └── job/[id].tsx          # job detail + captured photos
+│   ├── job/[id].tsx          # job detail + captured photos + Take Photo
+│   ├── capture/[jobId].tsx   # full-screen camera
+│   └── review/[photoId].tsx  # tagging + annotation studio
 └── src/
+    ├── annotation/           # annotation model, letterbox geometry, flattening
     ├── api/                  # Housecall Pro client, wire→domain mappers, errors
     ├── auth/                 # Keychain-backed credential storage
-    ├── components/           # SyncStatusBar, JobCard
+    ├── capture/              # GPS warm-up, EXIF orientation, stamp renderer
+    ├── components/           # SyncStatusBar, JobCard, AnnotationCanvas
     ├── db/                   # SQLite: schema, migrations, repositories
+    ├── render/               # shared Skia surface/font/geometry helpers
     ├── state/                # Zustand stores
     ├── storage/              # photo files on disk
     ├── sync/                 # SyncEngine + backoff policy
@@ -131,15 +134,28 @@ Note that a Housecall Pro API key is company-wide. Putting one on every tech's p
 is a real blast-radius question — `EXPO_PUBLIC_TOKEN_BROKER_URL` is reserved for
 brokering short-lived per-device tokens through a backend instead.
 
+## Capture pipeline
+
+```
+shutter ──> takePictureAsync({exif:true})
+        ──> Skia: rotate upright, downscale to 2560, burn stamp   [stampRenderer]
+        ──> photos row (status: draft) ──> review screen
+        ──> Skia: flatten annotations into a NEW file             [flatten]
+        ──> photos row (status: pending) ──> upload_queue
+```
+
+Three things in there are load-bearing and easy to break:
+
+- **Rotation is baked into pixels, not left to EXIF.** Skia ignores the EXIF
+  orientation tag when decoding, so an unrotated draw would put the stamp in the
+  wrong corner of what the viewer sees.
+- **Annotations are stored normalized (0..1 in image space), never in screen
+  points.** A stroke drawn on a 390pt preview has to land in the same place in a
+  2560px export, and the photo is letterboxed inside its container.
+- **Flattening writes a new file, then swaps.** Rendering in place means a crash
+  mid-encode truncates the only copy of the photo.
+
 ## Next steps
 
-1. **Camera + stamp** — `expo-camera` capture, `expo-location` fix, then the stamp
-   composited in the lower-right on a Skia canvas before the file is written.
-   Format and box geometry are already specified in `src/utils/format.ts` and
-   `src/theme/tokens.ts` (`stamp`).
-2. **Annotation studio** — Skia freehand paths with adjustable stroke width, the
-   four high-visibility inks in `palette`, and a text tool; flattened into the JPEG
-   on save. The commit path (`useCaptureStore.commitDraft`) already takes the
-   flattened URI and hands off to the queue.
-3. **Background upload** — `expo-background-task` so photos leave the phone after
-   the tech pockets it.
+Tracked as issues in [GetHealthyHome/CrewCam](https://github.com/GetHealthyHome/CrewCam/issues).
+The largest by far is hardware validation — none of the native paths have run.
