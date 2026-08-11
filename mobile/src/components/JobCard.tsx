@@ -1,6 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
-import { Platform } from 'react-native';
 import { JOB_STATUS_STYLE, HIT_TARGET, radius, spacing, typography, useTheme } from '@/theme';
 import { formatScheduleWindow } from '@/utils/format';
 import type { Job } from '@/types';

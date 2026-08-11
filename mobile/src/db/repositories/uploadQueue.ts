@@ -125,15 +125,27 @@ export async function releaseTask(taskId: string): Promise<void> {
 }
 
 /**
- * Recovers tasks left `uploading` by a process death. Called once at startup —
- * without it, a force-quit mid-upload strands that photo forever, because no
- * claim query will ever look at an `uploading` row again.
+ * Recovers tasks left `uploading` by a process death. Without it, a force-quit
+ * mid-upload strands that photo forever, because no claim query will ever look
+ * at an `uploading` row again.
+ *
+ * `staleMs` is what makes this safe to call from more than one place. At
+ * startup nothing else can be uploading, so the default of 0 sweeps every row.
+ * A background pass must instead pass a generous age, because on Android it can
+ * fire while the foreground app is genuinely mid-upload — resetting that row
+ * would let a second worker claim it and post the photo twice.
+ *
+ * Comparing `updated_at` lexicographically is sound here: every writer uses
+ * `toISOString()`, whose fixed-width UTC format sorts chronologically.
  */
-export async function recoverStuckTasks(): Promise<number> {
+export async function recoverStuckTasks(staleMs = 0): Promise<number> {
   const db = await getDatabase();
+  const cutoff = new Date(Date.now() - staleMs).toISOString();
   const result = await db.runAsync(
-    `UPDATE upload_queue SET status = 'pending', updated_at = ? WHERE status = 'uploading'`,
-    [new Date().toISOString()],
+    `UPDATE upload_queue
+     SET status = 'pending', updated_at = ?
+     WHERE status = 'uploading' AND updated_at <= ?`,
+    [new Date().toISOString(), cutoff],
   );
   return result.changes ?? 0;
 }
@@ -161,6 +173,22 @@ export async function retryAllFailed(): Promise<number> {
 export async function removeTaskForPhoto(photoId: string): Promise<void> {
   const db = await getDatabase();
   await db.runAsync('DELETE FROM upload_queue WHERE photo_id = ?', [photoId]);
+}
+
+/**
+ * Tasks that still have a future attempt coming, ignoring parked ones.
+ *
+ * A background pass reports this to the OS scheduler: "still work to do" is
+ * what earns the app another slot. Counting parked tasks here would make the
+ * app ask for slots forever over photos that can never succeed.
+ */
+export async function countUnfinishedTasks(parkedUntil: number): Promise<number> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM upload_queue WHERE next_attempt_at < ?',
+    [parkedUntil],
+  );
+  return row?.count ?? 0;
 }
 
 /** One query behind the sync status bar, so the bar is never N queries deep. */

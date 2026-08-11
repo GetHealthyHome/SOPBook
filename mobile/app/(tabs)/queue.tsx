@@ -3,6 +3,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadQueueRepo } from '@/db';
+import { isBackgroundSyncAvailable } from '@/sync/backgroundTask';
 import { useSessionStore, useSyncStore } from '@/state';
 import { HIT_TARGET, radius, spacing, typography, useTheme } from '@/theme';
 import { formatDateTime, pluralize } from '@/utils/format';
@@ -17,6 +18,7 @@ export default function QueueScreen() {
   const { pending, uploading, failed, isOnline, retryFailed, syncNow } = useSyncStore();
   const signOut = useSessionStore((state) => state.signOut);
   const [tasks, setTasks] = useState<UploadTask[]>([]);
+  const [backgroundAllowed, setBackgroundAllowed] = useState(true);
 
   const reload = useCallback(async () => {
     setTasks(await uploadQueueRepo.listTasks());
@@ -27,6 +29,10 @@ export default function QueueScreen() {
   useEffect(() => {
     void reload();
   }, [reload, pending, uploading, failed]);
+
+  useEffect(() => {
+    void isBackgroundSyncAvailable().then(setBackgroundAllowed);
+  }, []);
 
   const total = pending + uploading + failed;
 
@@ -58,6 +64,16 @@ export default function QueueScreen() {
             }}
           />
         </View>
+
+        {/* Only shown when it is false. A tech whose phone is in Low Power Mode
+            needs to know the queue will not drain on its own, because the fix
+            is on the phone, not in this app. */}
+        {!backgroundAllowed && total > 0 ? (
+          <Text style={[styles.notice, { color: theme.warning }]}>
+            Background uploads are turned off for this app. Keep Retrofit Field open to finish
+            uploading, or re-enable Background App Refresh in Settings.
+          </Text>
+        ) : null}
       </View>
 
       <FlatList
@@ -146,6 +162,7 @@ const styles = StyleSheet.create({
   actionDisabled: { opacity: 0.4 },
   actionPressed: { opacity: 0.7 },
   actionLabel: { ...typography.callout, fontWeight: '600' },
+  notice: { ...typography.footnote, marginTop: spacing.xs },
   list: { paddingHorizontal: spacing.lg, paddingBottom: 120 },
   row: {
     flexDirection: 'row',

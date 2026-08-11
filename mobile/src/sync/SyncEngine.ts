@@ -2,7 +2,8 @@ import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { AppState, type AppStateStatus } from 'react-native';
 import { uploadJobAttachment } from '@/api/housecallPro';
 import { ApiError, describeApiError } from '@/api/errors';
-import { photosRepo, uploadQueueRepo } from '@/db';
+import { hasApiToken } from '@/auth/credentials';
+import { getDatabase, photosRepo, uploadQueueRepo } from '@/db';
 import { deleteFile, fileExists } from '@/storage/photoFiles';
 import { logger } from '@/utils/logger';
 import { MAX_AUTO_ATTEMPTS, PARKED_UNTIL, isExhausted, nextAttemptAt } from './backoff';
@@ -12,6 +13,43 @@ export type SyncListener = (summary: SyncSummary) => void;
 
 /** Idle poll, so a task whose backoff expires while the app sits open still fires. */
 const IDLE_TICK_MS = 30_000;
+
+/** Bound on one foreground pass, so a 200-photo backlog cannot monopolize the loop. */
+const FOREGROUND_MAX_TASKS = 50;
+
+/**
+ * Wall-clock budget for a headless pass.
+ *
+ * iOS hands a `BGProcessingTask` a soft window and kills the process without
+ * ceremony when it expires; Android's WorkManager does the same at ten minutes.
+ * Stopping ourselves well short means the loop always ends between tasks, with
+ * the queue in a consistent state, rather than being shot mid-multipart-post.
+ */
+const BACKGROUND_BUDGET_MS = 25_000;
+
+/** Ceiling on a headless pass, independent of the clock. */
+const BACKGROUND_MAX_TASKS = 25;
+
+/**
+ * How long a row must sit in `uploading` before a background pass will reclaim
+ * it. Long enough that no live foreground upload could still own it — the API
+ * client's own upload timeout is 120s.
+ */
+const STALE_UPLOAD_MS = 10 * 60_000;
+
+interface DrainOptions {
+  maxTasks?: number;
+  /** `Date.now()` value past which the loop stops claiming new work. */
+  deadlineAt?: number;
+}
+
+export interface HeadlessPassResult {
+  uploaded: number;
+  /** Tasks still expecting a future attempt, excluding parked ones. */
+  remaining: number;
+  /** Set when the pass declined to do anything, for the log line. */
+  skipped?: 'busy' | 'offline' | 'no-credential';
+}
 
 /**
  * Sequential background uploader for the offline photo queue.
@@ -27,10 +65,11 @@ const IDLE_TICK_MS = 30_000;
  *    connectivity flap and N overlapping drain loops. The DB-level atomic claim
  *    is the second line of defense; this is the first.
  *
- *  - **Foreground only.** This is not an OS background task. It runs while the
- *    app is open and resumes on foreground. Truly-backgrounded uploads need
- *    `expo-task-manager` + `expo-background-task`, which is a separate change
- *    with its own iOS budget constraints — see the note at the bottom.
+ *  - **Two entry points, one loop.** `start()` drives the foreground engine —
+ *    listeners, idle tick, unbounded time. `runHeadlessPass()` is what an
+ *    OS-scheduled wake-up calls: same drain, but bounded by a wall clock and
+ *    responsible for establishing its own world, because it may be running in
+ *    a JS context where the app never launched. See `backgroundTask.ts`.
  */
 class SyncEngine {
   private isDraining = false;
@@ -125,43 +164,99 @@ class SyncEngine {
     await this.drain();
   }
 
-  private async drain(): Promise<void> {
-    if (this.isDraining) return;
+  /**
+   * One bounded pass for an OS-scheduled wake-up, with no listeners, no timers,
+   * and no assumption that `start()` ever ran.
+   *
+   * A headless invocation gets a fresh JS context: the app may be fully dead,
+   * so this establishes everything `start()` normally would — database,
+   * connectivity, credential — and then drains against a hard clock budget.
+   */
+  async runHeadlessPass(options: DrainOptions & { budgetMs?: number } = {}): Promise<HeadlessPassResult> {
+    // Android's WorkManager will happily fire while the app is alive and
+    // already draining. Yield rather than compete for the same rows.
+    if (this.isDraining) {
+      return { uploaded: 0, remaining: await this.remainingCount(), skipped: 'busy' };
+    }
+
+    await getDatabase();
+
+    // Without a credential every upload is a guaranteed 401, and each one would
+    // burn a retry attempt on a photo that is otherwise perfectly fine.
+    if (!(await hasApiToken())) {
+      return { uploaded: 0, remaining: await this.remainingCount(), skipped: 'no-credential' };
+    }
+
+    this.isOnline = isUsable(await NetInfo.fetch());
+    if (!this.isOnline) {
+      return { uploaded: 0, remaining: await this.remainingCount(), skipped: 'offline' };
+    }
+
+    const recovered = await uploadQueueRepo.recoverStuckTasks(STALE_UPLOAD_MS);
+    if (recovered) logger.info('sync.background.recovered_stuck', { count: recovered });
+
+    const uploaded = await this.drain({
+      maxTasks: options.maxTasks ?? BACKGROUND_MAX_TASKS,
+      deadlineAt: options.deadlineAt ?? Date.now() + (options.budgetMs ?? BACKGROUND_BUDGET_MS),
+    });
+
+    return { uploaded, remaining: await this.remainingCount() };
+  }
+
+  private async remainingCount(): Promise<number> {
+    return uploadQueueRepo.countUnfinishedTasks(PARKED_UNTIL);
+  }
+
+  /** Returns the number of photos this pass actually got upstream. */
+  private async drain(options: DrainOptions = {}): Promise<number> {
+    if (this.isDraining) return 0;
     this.isDraining = true;
+
+    const maxTasks = options.maxTasks ?? FOREGROUND_MAX_TASKS;
+    const deadlineAt = options.deadlineAt ?? Number.POSITIVE_INFINITY;
+    const outOfTime = () => Date.now() >= deadlineAt;
+    let uploaded = 0;
 
     try {
       do {
         this.drainRequested = false;
         if (!this.isOnline) break;
 
-        // Bounded per pass so a 200-photo backlog cannot monopolize the loop
-        // forever; the idle tick picks up where this left off.
-        for (let processed = 0; processed < 50; processed += 1) {
-          if (!this.isOnline) break;
+        for (let processed = 0; processed < maxTasks; processed += 1) {
+          if (!this.isOnline || outOfTime()) break;
 
           const task = await uploadQueueRepo.claimNextTask();
           if (!task) break;
 
           await this.emit();
-          await this.processTask(task);
+          if (await this.processTask(task)) uploaded += 1;
         }
-      } while (this.drainRequested);
+      } while (this.drainRequested && !outOfTime());
+
+      if (outOfTime()) logger.info('sync.drain.budget_spent', { uploaded });
     } catch (error) {
       logger.error('sync.drain.crashed', { error: String(error) });
     } finally {
       this.isDraining = false;
       await this.emit();
     }
+
+    return uploaded;
   }
 
-  private async processTask(task: { id: string; photoId: string; attempts: number }): Promise<void> {
+  /** True only when the photo reached Housecall Pro on this attempt. */
+  private async processTask(task: {
+    id: string;
+    photoId: string;
+    attempts: number;
+  }): Promise<boolean> {
     const photo = await photosRepo.getPhoto(task.photoId);
 
     // The photo row is gone — the tech deleted it while it sat in the queue.
     if (!photo) {
       logger.warn('sync.task.orphaned', { taskId: task.id, photoId: task.photoId });
       await uploadQueueRepo.markTaskDone(task.id);
-      return;
+      return false;
     }
 
     // Already uploaded, but the queue row survived a crash between the upload
@@ -169,7 +264,7 @@ class SyncEngine {
     // a duplicate attachment from being created.
     if (photo.status === 'uploaded' && photo.remoteAttachmentId) {
       await uploadQueueRepo.markTaskDone(task.id);
-      return;
+      return false;
     }
 
     // The file is gone but the row remains. Unrecoverable — retrying can never
@@ -178,7 +273,7 @@ class SyncEngine {
       logger.error('sync.task.file_missing', { photoId: photo.id, uri: photo.localUri });
       await uploadQueueRepo.markTaskFailed(task.id, 'Local file is missing', PARKED_UNTIL);
       await photosRepo.updatePhoto(photo.id, { status: 'failed' });
-      return;
+      return false;
     }
 
     await photosRepo.updatePhoto(photo.id, { status: 'uploading' });
@@ -201,8 +296,10 @@ class SyncEngine {
 
       this.lastSyncedAt = new Date().toISOString();
       logger.info('sync.uploaded', { photoId: photo.id, attachmentId: attachment.id });
+      return true;
     } catch (error) {
       await this.handleUploadFailure(task, photo.id, error);
+      return false;
     } finally {
       this.currentAbort = null;
     }
@@ -272,14 +369,3 @@ function isUsable(state: NetInfoState): boolean {
 }
 
 export const syncEngine = new SyncEngine();
-
-/*
- * Deferred: true OS-backgrounded uploads.
- *
- * Today the queue drains while the app is foregrounded. Uploading after the
- * tech pockets the phone requires `expo-background-task` (iOS
- * BGProcessingTask), which the OS schedules opportunistically — typically when
- * charging and on Wi-Fi, with no guaranteed timing. It is worth adding, but it
- * changes the failure model enough to deserve its own pass rather than being
- * bolted on here.
- */

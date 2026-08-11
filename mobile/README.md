@@ -14,7 +14,7 @@ Feature-complete against the original brief. Typechecks, 51 tests pass.
 - Housecall Pro client (`GET /jobs`, `GET /customers`, `POST /jobs/{id}/attachments`)
 - SQLite schema with migrations, and repositories for jobs/customers/photos/queue
 - Offline-first sync engine: atomic task claiming, jittered exponential backoff,
-  crash recovery, connectivity-driven draining
+  crash recovery, connectivity-driven draining, OS-scheduled background uploads
 - Zustand stores, design tokens, sync status bar, jobs/customers/queue tabs, job detail
 - Camera capture with warmed-up GPS and a burned-in metadata stamp
 - Annotation studio: Skia freehand, text tool, four high-visibility inks, flattening
@@ -110,9 +110,33 @@ knowing before changing `src/sync/SyncEngine.ts`:
   deleted — the photo still matters, we just stop burning battery on it until the
   tech taps Retry.
 - **Uploaded files are deleted from disk.** A 60-photo day fills a phone otherwise.
-- **Sync runs in the foreground only.** True background upload needs
-  `expo-background-task`; that changes the failure model enough to deserve its
-  own pass.
+- **The same loop runs in two modes.** `start()` is the foreground engine —
+  connectivity listeners, an idle tick, no time limit. `runHeadlessPass()` is what
+  an OS wake-up calls: it opens its own database, checks its own credential, and
+  drains against a 25-second wall clock. See below.
+
+### Background uploads
+
+`src/sync/backgroundTask.ts` registers a `BGProcessingTask` (iOS) / WorkManager job
+(Android) so a queue drains after the tech pockets the phone. Four constraints shape it:
+
+- **The task is defined at module scope.** A cold wake-up boots a bare JS context
+  and runs the entry bundle looking for the registration — nothing renders, so a
+  `defineTask` inside a hook would never be reached.
+- **The pass has a wall-clock budget.** The OS kills an overrunning process without
+  ceremony. Stopping at 25 seconds means the loop always ends *between* tasks, with
+  the queue consistent, rather than mid-multipart-post.
+- **The credential is `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`.** iOS schedules these
+  tasks when the phone is charging and idle — which is to say locked. A
+  `WHEN_UNLOCKED` keychain item is unreadable in exactly that window, so every
+  overnight upload would fail on a key the app genuinely has.
+- **Stale-task recovery is age-gated.** Reclaiming `uploading` rows is safe at
+  startup but not from a background pass, which on Android can fire while the
+  foreground app is genuinely mid-upload; resetting that row would let a second
+  worker claim it and post the photo twice.
+
+Returning `Failed` when photos remain is deliberate — that is how a task tells the
+scheduler its work is unfinished and earns the next slot.
 
 ### Security posture
 
@@ -120,7 +144,7 @@ Stated plainly, because "encrypted" is easy to over-claim:
 
 | Asset | Protection |
 | --- | --- |
-| Housecall Pro API key | iOS Keychain / Android Keystore, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` — never in the bundle, never in SQLite |
+| Housecall Pro API key | iOS Keychain / Android Keystore, `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY` — never in the bundle, never in SQLite |
 | Photo files | App sandbox under iOS Data Protection / Android FBE |
 | SQLite queue | Same sandbox protection. **Not** separately encrypted by default |
 

@@ -1,6 +1,9 @@
 import { getDatabase, photosRepo } from '@/db';
 import { sweepOrphanFiles } from '@/storage/photoFiles';
 import { syncEngine } from '@/sync/SyncEngine';
+// Imported for its side effect as much as its exports: this module's top-level
+// `defineTask` is what makes an OS wake-up resolvable when the app is cold.
+import { registerBackgroundSync } from '@/sync/backgroundTask';
 import { useCatalogStore, useSessionStore, useSyncStore } from '@/state';
 import { logger } from '@/utils/logger';
 
@@ -30,6 +33,12 @@ export async function bootstrap(): Promise<void> {
 
     useSyncStore.getState().attach();
     await syncEngine.start();
+
+    // Only ask the OS for wake-ups we could actually use. An unauthenticated
+    // install would be woken on a schedule just to bail on a missing key.
+    if (useSessionStore.getState().hasToken) {
+      void registerBackgroundSync();
+    }
 
     // Housekeeping runs after the app is usable — it must never delay first paint.
     void cleanUpStaleData();
