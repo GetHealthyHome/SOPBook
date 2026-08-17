@@ -33,6 +33,7 @@ const HistoryIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentCo
 const LogOutIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>;
 const ShieldIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>;
 const HandbookIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>;
+const AlertIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v3.75m9.303 3.376c.866 1.5-.217 3.374-1.948 3.374H4.645c-1.73 0-2.813-1.874-1.948-3.374l7.108-12.32c.866-1.5 3.032-1.5 3.898 0l7.1 12.32zM12 15.75h.007v.008H12v-.008z"/></svg>;
 const CareerIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>;
 const CalendarIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
 const CloudUploadIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>;
@@ -131,7 +132,7 @@ function ReferenceSection({ title, text, filled }: { title: string; text: string
 type View =
   | 'login' | 'home' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole'
   | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training'
-  | 'trainingAdmin' | 'search' | 'safety';
+  | 'trainingAdmin' | 'search' | 'safety' | 'incidents';
 
 // Chromium's install-prompt event; not yet in the TS DOM lib
 interface BeforeInstallPromptEvent extends Event {
@@ -250,6 +251,55 @@ interface SafetyDraft {
   imageUrl: string;
   linkUrl: string;
   linkLabel: string;
+}
+
+
+/** A field incident report: injury, damage to a customer's home, near miss,
+ *  or a vehicle/equipment event. Filed by anyone, read by the filer + admins. */
+type IncidentCategory = 'injury' | 'property' | 'near_miss' | 'vehicle' | 'other';
+type IncidentSeverity = 'minor' | 'moderate' | 'major';
+type IncidentStatus   = 'submitted' | 'reviewing' | 'closed';
+
+interface IncidentReport {
+  id: number;
+  category: IncidentCategory;
+  severity: IncidentSeverity;
+  osha_recordable: boolean;
+  occurred_at: string;
+  location: string;
+  job_reference: string;
+  description: string;
+  immediate_actions: string;
+  people_involved: string;
+  witnesses: string;
+  photo_urls: string[];
+  customer_notified: boolean;
+  estimated_cost: number | null;
+  status: IncidentStatus;
+  review_notes?: string;      // admin-only; absent for the filer
+  corrective_action: string;
+  reviewed_by: string;
+  reviewed_at: string | null;
+  closed_at: string | null;
+  reported_by: string;
+  created_at: string;
+}
+
+interface IncidentDraft {
+  id: number | null;
+  category: IncidentCategory;
+  severity: IncidentSeverity;
+  oshaRecordable: boolean;
+  occurredAt: string;         // datetime-local value
+  location: string;
+  jobReference: string;
+  description: string;
+  immediateActions: string;
+  peopleInvolved: string;
+  witnesses: string;
+  photoUrls: string[];
+  customerNotified: boolean;
+  estimatedCost: string;
 }
 
 interface TrainingModule {
@@ -568,6 +618,19 @@ export default function App() {
   const [safetyFormError, setSafetyFormError] = useState('');
   const [safetyUploading, setSafetyUploading] = useState(false);
   const [safetyDeleteConfirm, setSafetyDeleteConfirm] = useState<number | null>(null);
+  // Incident reports (field-filed) + builder state
+  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [incidentsLoaded, setIncidentsLoaded] = useState(false);
+  const [incidentsLoading, setIncidentsLoading] = useState(false);
+  const [incidentsError, setIncidentsError] = useState('');
+  const [incidentDraft, setIncidentDraft] = useState<IncidentDraft | null>(null);
+  const [incidentSaving, setIncidentSaving] = useState(false);
+  const [incidentFormError, setIncidentFormError] = useState('');
+  const [incidentUploading, setIncidentUploading] = useState(false);
+  const [incidentOpen, setIncidentOpen] = useState<Record<number, boolean>>({});
+  const [incidentFilter, setIncidentFilter] = useState<'all' | IncidentStatus>('all');
+  const [incidentReview, setIncidentReview] = useState<Record<number, { reviewNotes: string; correctiveAction: string }>>({});
+  const [incidentDeleteConfirm, setIncidentDeleteConfirm] = useState<number | null>(null);
   // Which safety modules are expanded, and whether the admin is reordering
   const [safetyOpen, setSafetyOpen] = useState<Record<number, boolean>>({});
   const [safetyReorderMode, setSafetyReorderMode] = useState(false);
@@ -980,6 +1043,13 @@ export default function App() {
     if (currentUser && !divisionPhotosLoaded) loadDivisionPhotos();
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load incident reports on first visit to the Incidents view
+  useEffect(() => {
+    if (currentView === 'incidents' && currentUser && !incidentsLoaded && !incidentsLoading) {
+      loadIncidents();
+    }
+  }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load safety modules on first visit to the Safety view
   useEffect(() => {
     if (currentView === 'safety' && currentUser && !safetyLoaded && !safetyLoading) {
@@ -1386,6 +1456,163 @@ export default function App() {
     const [item] = reordered.splice(index, 1);
     reordered.splice(target, 0, item);
     await persistSafetyOrder(reordered, safetyModules);
+  };
+
+  // ---- Incident reports ---------------------------------------------------
+  const loadIncidents = async () => {
+    setIncidentsLoading(true);
+    setIncidentsError('');
+    try {
+      const res = await fetch('/api/incidents');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setIncidents(data.reports ?? []);
+      setIncidentsLoaded(true);
+    } catch (err) {
+      setIncidentsError(err instanceof Error ? err.message : 'Could not load incident reports.');
+    } finally {
+      setIncidentsLoading(false);
+    }
+  };
+
+  /** A datetime-local value for "now", in the browser's own timezone. */
+  const localNow = () => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+  };
+
+  const blankIncidentDraft = (): IncidentDraft => ({
+    id: null, category: 'injury', severity: 'minor', oshaRecordable: false,
+    occurredAt: localNow(), location: '', jobReference: '', description: '',
+    immediateActions: '', peopleInvolved: '', witnesses: '', photoUrls: [],
+    customerNotified: false, estimatedCost: '',
+  });
+
+  const editIncidentDraft = (r: IncidentReport): IncidentDraft => {
+    const d = new Date(r.occurred_at);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return {
+      id: r.id, category: r.category, severity: r.severity,
+      oshaRecordable: r.osha_recordable, occurredAt: d.toISOString().slice(0, 16),
+      location: r.location || '', jobReference: r.job_reference || '',
+      description: r.description || '', immediateActions: r.immediate_actions || '',
+      peopleInvolved: r.people_involved || '', witnesses: r.witnesses || '',
+      photoUrls: r.photo_urls ?? [], customerNotified: r.customer_notified,
+      estimatedCost: r.estimated_cost == null ? '' : String(r.estimated_cost),
+    };
+  };
+
+  const uploadIncidentPhoto = async (file: File) => {
+    setIncidentUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', await compressImage(file));
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        setIncidentFormError(data.error || 'Photo upload failed.');
+        return;
+      }
+      setIncidentFormError('');
+      setIncidentDraft(prev => (prev ? { ...prev, photoUrls: [...prev.photoUrls, data.url].slice(0, 10) } : prev));
+    } catch {
+      setIncidentFormError('Photo upload failed. Check your connection.');
+    } finally {
+      setIncidentUploading(false);
+    }
+  };
+
+  const saveIncidentDraft = async () => {
+    if (!incidentDraft) return;
+    if (!incidentDraft.description.trim()) {
+      setIncidentFormError('Describe what happened before submitting.');
+      return;
+    }
+    setIncidentSaving(true);
+    setIncidentFormError('');
+    try {
+      const res = await fetch('/api/incidents', {
+        method: incidentDraft.id === null ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: incidentDraft.id ?? undefined,
+          category: incidentDraft.category,
+          severity: incidentDraft.severity,
+          oshaRecordable: incidentDraft.oshaRecordable,
+          // datetime-local has no zone, so send a real instant
+          occurredAt: new Date(incidentDraft.occurredAt).toISOString(),
+          location: incidentDraft.location.trim(),
+          jobReference: incidentDraft.jobReference.trim(),
+          description: incidentDraft.description,
+          immediateActions: incidentDraft.immediateActions,
+          peopleInvolved: incidentDraft.peopleInvolved.trim(),
+          witnesses: incidentDraft.witnesses.trim(),
+          photoUrls: incidentDraft.photoUrls,
+          customerNotified: incidentDraft.customerNotified,
+          estimatedCost: incidentDraft.estimatedCost,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.report) throw new Error(data.error || 'Save failed.');
+      setIncidents(prev => {
+        const exists = prev.some(r => r.id === data.report.id);
+        return exists ? prev.map(r => (r.id === data.report.id ? data.report : r)) : [data.report, ...prev];
+      });
+      setIncidentDraft(null);
+    } catch (err) {
+      setIncidentFormError(err instanceof Error ? err.message : 'Save failed.');
+    } finally {
+      setIncidentSaving(false);
+    }
+  };
+
+  /** Admin: move a report through the review workflow and record findings. */
+  const saveIncidentReview = async (r: IncidentReport, status: IncidentStatus) => {
+    const pending = incidentReview[r.id] ?? { reviewNotes: r.review_notes ?? '', correctiveAction: r.corrective_action ?? '' };
+    setIncidentSaving(true);
+    try {
+      const res = await fetch('/api/incidents', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: r.id, status,
+          reviewNotes: pending.reviewNotes,
+          correctiveAction: pending.correctiveAction,
+          // Preserve the factual account — the admin PUT rewrites these fields
+          category: r.category, severity: r.severity, oshaRecordable: r.osha_recordable,
+          occurredAt: r.occurred_at, location: r.location, jobReference: r.job_reference,
+          description: r.description, immediateActions: r.immediate_actions,
+          peopleInvolved: r.people_involved, witnesses: r.witnesses,
+          photoUrls: r.photo_urls, customerNotified: r.customer_notified,
+          estimatedCost: r.estimated_cost,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.report) throw new Error(data.error || 'Update failed.');
+      setIncidents(prev => prev.map(x => (x.id === r.id ? data.report : x)));
+    } catch (err) {
+      setIncidentsError(err instanceof Error ? err.message : 'Update failed.');
+    } finally {
+      setIncidentSaving(false);
+    }
+  };
+
+  const deleteIncident = async (id: number) => {
+    setIncidentSaving(true);
+    try {
+      const res = await fetch('/api/incidents', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setIncidents(prev => prev.filter(r => r.id !== id));
+    } catch (err) {
+      console.error('deleteIncident failed:', err);
+    }
+    setIncidentDeleteConfirm(null);
+    setIncidentSaving(false);
   };
 
   const moveSafetyModuleToPosition = async (index: number, position1Based: number) => {
@@ -2183,6 +2410,7 @@ export default function App() {
               { view: 'careerLadder', label: 'Career', icon: <CareerIcon />, match: ['careerLadder','careerAdmin'] },
               { view: 'training', label: 'Training', icon: <TrainingIcon />, match: ['training','trainingAdmin'] },
               { view: 'safety', label: 'Safety', icon: <ShieldIcon />, match: ['safety'] },
+              { view: 'incidents', label: 'Incidents', icon: <AlertIcon />, match: ['incidents'] },
               { view: 'userNotifications', label: 'Notifications', icon: <BellIcon />, match: ['userNotifications'] },
               ...(currentUser.userType === 'admin' ? [
                 { view: 'new', label: 'Draft SOP', icon: <PlusIcon />, match: ['new'] },
@@ -2708,6 +2936,550 @@ export default function App() {
             );
           })()}
 
+          {/* VIEW: INCIDENT REPORTS — filed from the field by anyone; read by
+              the filer plus admins. Injuries, damage to a customer's home,
+              near misses, and vehicle or equipment events. */}
+          {currentView === 'incidents' && currentUser && (() => {
+            const isAdmin = currentUser.userType === 'admin';
+
+            const CATEGORY_META: Record<IncidentCategory, { label: string; tone: string }> = {
+              injury:    { label: 'Injury / illness',    tone: 'bg-red-50 text-red-800 border-red-200' },
+              property:  { label: 'Customer property',   tone: 'bg-amber-50 text-amber-900 border-amber-200' },
+              near_miss: { label: 'Near miss',           tone: 'bg-blue-50 text-blue-800 border-blue-200' },
+              vehicle:   { label: 'Vehicle / equipment', tone: 'bg-violet-50 text-violet-800 border-violet-200' },
+              other:     { label: 'Other',               tone: 'bg-gray-100 text-gray-700 border-gray-200' },
+            };
+            const SEVERITY_META: Record<IncidentSeverity, { label: string; tone: string }> = {
+              minor:    { label: 'Minor',    tone: 'bg-gray-100 text-gray-700' },
+              moderate: { label: 'Moderate', tone: 'bg-amber-100 text-amber-900' },
+              major:    { label: 'Major',    tone: 'bg-red-600 text-white' },
+            };
+            const STATUS_META: Record<IncidentStatus, { label: string; tone: string }> = {
+              submitted: { label: 'Submitted',    tone: 'bg-blue-100 text-blue-800' },
+              reviewing: { label: 'Under review', tone: 'bg-amber-100 text-amber-900' },
+              closed:    { label: 'Closed',       tone: 'bg-emerald-100 text-emerald-800' },
+            };
+
+            const visible = incidentFilter === 'all' ? incidents : incidents.filter(r => r.status === incidentFilter);
+            const openCount = incidents.filter(r => r.status !== 'closed').length;
+
+            const fieldLabel = 'block text-xs font-black text-gray-600 uppercase tracking-wider mb-1';
+            const fieldBox = 'w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-base text-gray-900 focus:border-orange-600 focus:outline-none shadow-xs';
+            const fmtDate = (iso: string) => {
+              try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+              catch { return iso; }
+            };
+
+            return (
+              <div className="space-y-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span className="p-3 bg-orange-50 text-orange-700 rounded-2xl flex-shrink-0">
+                      <AlertIcon />
+                    </span>
+                    <div className="min-w-0">
+                      <h1 className="text-2xl font-black text-gray-950 tracking-tight leading-tight">Incident Reports</h1>
+                      <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">
+                        {isAdmin
+                          ? 'Every report filed by the crew. Injuries, customer property, near misses and vehicles.'
+                          : 'Report an injury, damage to a customer’s home, a near miss, or a vehicle issue.'}
+                      </p>
+                    </div>
+                  </div>
+                  {!incidentDraft && (
+                    <button
+                      onClick={() => { setIncidentFormError(''); setIncidentDraft(blankIncidentDraft()); }}
+                      className="h-10 px-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-black flex items-center gap-1 flex-shrink-0 transition-colors"
+                    >
+                      <PlusIcon /> Report
+                    </button>
+                  )}
+                </div>
+
+                {/* Anyone can file; nobody is disciplined for filing. Saying so
+                    on the screen is what actually gets reports filed. */}
+                {!incidentDraft && !isAdmin && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5">
+                    <p className="text-sm text-blue-900 leading-relaxed">
+                      <span className="font-black">Report it, even if nothing happened.</span> Near misses are free lessons.
+                      Reports go to management only, and filing one in good faith is never held against you.
+                    </p>
+                  </div>
+                )}
+
+                {/* Filing / editing form */}
+                {incidentDraft && (
+                  <div className="bg-white border-2 border-orange-200 rounded-2xl p-4 space-y-3.5 shadow-sm">
+                    <h2 className="text-base font-black text-gray-950">
+                      {incidentDraft.id === null ? 'New incident report' : 'Edit incident report'}
+                    </h2>
+
+                    {incidentFormError && (
+                      <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm font-semibold">
+                        &#9888; {incidentFormError}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className={fieldLabel}>What kind of incident?</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(Object.keys(CATEGORY_META) as IncidentCategory[]).map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setIncidentDraft({ ...incidentDraft, category: c })}
+                            className={`h-11 px-3 rounded-xl text-sm font-bold border-2 transition-colors ${
+                              incidentDraft.category === c
+                                ? 'border-orange-600 bg-orange-50 text-orange-900'
+                                : 'border-gray-200 bg-white text-gray-700 hover:border-orange-300'
+                            }`}
+                          >
+                            {CATEGORY_META[c].label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={fieldLabel}>How serious?</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(Object.keys(SEVERITY_META) as IncidentSeverity[]).map(sv => (
+                          <button
+                            key={sv}
+                            type="button"
+                            onClick={() => setIncidentDraft({ ...incidentDraft, severity: sv })}
+                            className={`h-11 rounded-xl text-sm font-bold border-2 transition-colors ${
+                              incidentDraft.severity === sv
+                                ? 'border-orange-600 bg-orange-50 text-orange-900'
+                                : 'border-gray-200 bg-white text-gray-700 hover:border-orange-300'
+                            }`}
+                          >
+                            {SEVERITY_META[sv].label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {incidentDraft.category === 'injury' && (
+                      <label className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl p-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={incidentDraft.oshaRecordable}
+                          onChange={e => setIncidentDraft({ ...incidentDraft, oshaRecordable: e.target.checked })}
+                          className="mt-0.5 w-5 h-5 flex-shrink-0 accent-red-700"
+                        />
+                        <span className="text-sm text-red-900 leading-relaxed">
+                          <span className="font-black">Possibly OSHA recordable</span> &mdash; anything beyond first aid:
+                          medical treatment, days away from work, restricted duty, or loss of consciousness.
+                          Tick it if unsure; an admin confirms during review.
+                        </span>
+                      </label>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={fieldLabel}>When did it happen?</label>
+                        <input
+                          type="datetime-local"
+                          value={incidentDraft.occurredAt}
+                          onChange={e => setIncidentDraft({ ...incidentDraft, occurredAt: e.target.value })}
+                          className={fieldBox}
+                        />
+                      </div>
+                      <div>
+                        <label className={fieldLabel}>Job number (optional)</label>
+                        <input
+                          value={incidentDraft.jobReference}
+                          onChange={e => setIncidentDraft({ ...incidentDraft, jobReference: e.target.value })}
+                          placeholder="e.g. 4821"
+                          className={fieldBox}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={fieldLabel}>Where?</label>
+                      <input
+                        value={incidentDraft.location}
+                        onChange={e => setIncidentDraft({ ...incidentDraft, location: e.target.value })}
+                        placeholder="Customer address, or which part of the property"
+                        className={fieldBox}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={fieldLabel}>What happened?</label>
+                      <RichTextarea
+                        rows={8}
+                        value={incidentDraft.description}
+                        onChange={v => setIncidentDraft({ ...incidentDraft, description: v })}
+                        placeholder={'Plain facts, in order. What you were doing, what went wrong, what the result was.\n\nWrite what you saw rather than what you think caused it — the review works out the cause.'}
+                        className="w-full p-3 bg-white border border-gray-200 rounded-xl text-base text-gray-900 leading-relaxed focus:border-orange-600 focus:outline-none shadow-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className={fieldLabel}>What did you do straight away?</label>
+                      <RichTextarea
+                        rows={4}
+                        value={incidentDraft.immediateActions}
+                        onChange={v => setIncidentDraft({ ...incidentDraft, immediateActions: v })}
+                        placeholder={'First aid given, area made safe, work stopped, supervisor called, customer told…'}
+                        className="w-full p-3 bg-white border border-gray-200 rounded-xl text-base text-gray-900 leading-relaxed focus:border-orange-600 focus:outline-none shadow-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={fieldLabel}>Who was involved?</label>
+                        <input
+                          value={incidentDraft.peopleInvolved}
+                          onChange={e => setIncidentDraft({ ...incidentDraft, peopleInvolved: e.target.value })}
+                          placeholder="Names, separated by commas"
+                          className={fieldBox}
+                        />
+                      </div>
+                      <div>
+                        <label className={fieldLabel}>Witnesses</label>
+                        <input
+                          value={incidentDraft.witnesses}
+                          onChange={e => setIncidentDraft({ ...incidentDraft, witnesses: e.target.value })}
+                          placeholder="Anyone who saw it"
+                          className={fieldBox}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Property-damage specifics */}
+                    {(incidentDraft.category === 'property' || incidentDraft.category === 'vehicle') && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-3">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={incidentDraft.customerNotified}
+                            onChange={e => setIncidentDraft({ ...incidentDraft, customerNotified: e.target.checked })}
+                            className="w-5 h-5 flex-shrink-0 accent-amber-700"
+                          />
+                          <span className="text-sm font-bold text-amber-900">The customer has been told</span>
+                        </label>
+                        <div>
+                          <label className={fieldLabel}>Rough cost to put right (optional)</label>
+                          <input
+                            inputMode="numeric"
+                            value={incidentDraft.estimatedCost}
+                            onChange={e => setIncidentDraft({ ...incidentDraft, estimatedCost: e.target.value })}
+                            placeholder="Dollars, best guess"
+                            className={fieldBox}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Photos */}
+                    <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-black text-gray-600 uppercase tracking-wider">
+                          Photos ({incidentDraft.photoUrls.length}/10)
+                        </label>
+                        <label className={`h-9 px-3 bg-white border border-gray-200 hover:border-orange-300 rounded-lg text-sm font-extrabold text-gray-700 flex items-center gap-1 cursor-pointer transition-colors ${incidentUploading || incidentDraft.photoUrls.length >= 10 ? 'opacity-50 pointer-events-none' : ''}`}>
+                          {incidentUploading ? 'Uploading…' : <><CloudUploadIcon /> Add photo</>}
+                          <input type="file" accept="image/*" capture="environment" className="hidden"
+                            disabled={incidentUploading || incidentDraft.photoUrls.length >= 10}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) uploadIncidentPhoto(f); e.target.value = ''; }} />
+                        </label>
+                      </div>
+                      {incidentDraft.photoUrls.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2">
+                          {incidentDraft.photoUrls.map((url, i) => (
+                            <div key={`${url}-${i}`} className="relative">
+                              <SafeImage src={url} alt={`Incident photo ${i + 1}`}
+                                wrapperClassName="w-full aspect-square rounded-lg overflow-hidden bg-gray-100"
+                                className="object-cover w-full h-full" />
+                              <button
+                                type="button"
+                                onClick={() => setIncidentDraft({ ...incidentDraft, photoUrls: incidentDraft.photoUrls.filter((_, j) => j !== i) })}
+                                aria-label={`Remove photo ${i + 1}`}
+                                className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-600 text-white rounded-full text-sm font-black flex items-center justify-center shadow-md"
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 leading-relaxed">
+                        Photos help more than any other field here. Take them before anything is cleaned up or moved.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => { setIncidentDraft(null); setIncidentFormError(''); }}
+                        className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50">
+                        Cancel
+                      </button>
+                      <button onClick={saveIncidentDraft} disabled={incidentSaving}
+                        className="flex-1 h-11 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-sm font-black disabled:opacity-50 transition-colors">
+                        {incidentSaving ? 'Filing…' : incidentDraft.id === null ? 'File report' : 'Save changes'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {incidentsLoading && <ListSkeleton rows={3} />}
+
+                {incidentsError && !incidentsLoading && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <p className="text-sm text-amber-900 font-semibold">{incidentsError}</p>
+                  </div>
+                )}
+
+                {/* Status filter — only worth showing once there is a backlog */}
+                {!incidentsLoading && incidents.length > 1 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(['all', 'submitted', 'reviewing', 'closed'] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setIncidentFilter(f)}
+                        className={`h-9 px-3 rounded-lg text-sm font-black border transition-colors ${
+                          incidentFilter === f
+                            ? 'bg-gray-900 border-gray-900 text-white'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        {f === 'all' ? `All (${incidents.length})` : STATUS_META[f].label}
+                      </button>
+                    ))}
+                    {isAdmin && openCount > 0 && (
+                      <span className="text-sm font-bold text-amber-800 ml-auto">
+                        {openCount} still open
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {!incidentsLoading && !incidentsError && incidents.length === 0 && !incidentDraft && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center">
+                    <p className="text-base font-black text-gray-900">No incident reports</p>
+                    <p className="text-sm text-gray-600 mt-1 leading-relaxed max-w-[320px] mx-auto">
+                      {isAdmin
+                        ? 'Nothing has been filed yet. An empty log usually means reports are not being filed, rather than that nothing is happening.'
+                        : 'You have not filed any reports. Use Report if something happens on a job.'}
+                    </p>
+                  </div>
+                )}
+
+                {/* The log */}
+                {visible.length > 0 && (
+                  <section className="space-y-3">
+                    {visible.map(r => {
+                      const isOpen = !!incidentOpen[r.id];
+                      const cat = CATEGORY_META[r.category] ?? CATEGORY_META.other;
+                      const sev = SEVERITY_META[r.severity] ?? SEVERITY_META.minor;
+                      const st  = STATUS_META[r.status] ?? STATUS_META.submitted;
+                      const pending = incidentReview[r.id] ?? {
+                        reviewNotes: r.review_notes ?? '',
+                        correctiveAction: r.corrective_action ?? '',
+                      };
+                      const canFilerEdit = r.reported_by === currentUser.name && r.status === 'submitted';
+
+                      return (
+                        <article key={r.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
+                          <button
+                            type="button"
+                            onClick={() => setIncidentOpen(prev => ({ ...prev, [r.id]: !prev[r.id] }))}
+                            aria-expanded={isOpen}
+                            className="w-full text-left p-3.5 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <svg
+                                className={`w-4 h-4 mt-1 flex-shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+                              </svg>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`px-2 py-0.5 rounded-md text-xs font-black border ${cat.tone}`}>{cat.label}</span>
+                                  <span className={`px-2 py-0.5 rounded-md text-xs font-black ${sev.tone}`}>{sev.label}</span>
+                                  <span className={`px-2 py-0.5 rounded-md text-xs font-black ${st.tone}`}>{st.label}</span>
+                                  {r.osha_recordable && (
+                                    <span className="px-2 py-0.5 rounded-md text-xs font-black bg-red-700 text-white">OSHA</span>
+                                  )}
+                                </div>
+                                <p className="text-sm font-bold text-gray-900 mt-1.5 leading-snug line-clamp-2">
+                                  {r.description.replace(/[*_#-]/g, '').slice(0, 140) || 'No description'}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {fmtDate(r.occurred_at)}
+                                  {r.location ? ` · ${r.location}` : ''}
+                                  {isAdmin ? ` · ${r.reported_by}` : ''}
+                                </p>
+                              </div>
+                            </div>
+                          </button>
+
+                          {isOpen && (
+                            <div className="border-t border-gray-100 p-4 space-y-4">
+                              {r.photo_urls?.length > 0 && (
+                                <div className="grid grid-cols-3 gap-2">
+                                  {r.photo_urls.map((url, i) => (
+                                    <a key={`${url}-${i}`} href={url} target="_blank" rel="noopener noreferrer">
+                                      <SafeImage src={url} alt={`Incident photo ${i + 1}`}
+                                        wrapperClassName="w-full aspect-square rounded-lg overflow-hidden bg-gray-100"
+                                        className="object-cover w-full h-full" />
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div>
+                                <h3 className="text-xs font-black text-gray-600 uppercase tracking-wider mb-1">What happened</h3>
+                                <RichText className="text-sm text-gray-800 leading-relaxed" text={r.description} />
+                              </div>
+
+                              {r.immediate_actions && (
+                                <div>
+                                  <h3 className="text-xs font-black text-gray-600 uppercase tracking-wider mb-1">Immediate actions</h3>
+                                  <RichText className="text-sm text-gray-800 leading-relaxed" text={r.immediate_actions} />
+                                </div>
+                              )}
+
+                              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                {r.job_reference && (<><dt className="text-gray-500 font-semibold">Job</dt><dd className="text-gray-900 font-bold">{r.job_reference}</dd></>)}
+                                {r.people_involved && (<><dt className="text-gray-500 font-semibold">Involved</dt><dd className="text-gray-900">{r.people_involved}</dd></>)}
+                                {r.witnesses && (<><dt className="text-gray-500 font-semibold">Witnesses</dt><dd className="text-gray-900">{r.witnesses}</dd></>)}
+                                {(r.category === 'property' || r.category === 'vehicle') && (
+                                  <><dt className="text-gray-500 font-semibold">Customer told</dt>
+                                    <dd className={r.customer_notified ? 'text-emerald-800 font-bold' : 'text-red-700 font-bold'}>
+                                      {r.customer_notified ? 'Yes' : 'Not yet'}
+                                    </dd></>
+                                )}
+                                {r.estimated_cost != null && (<><dt className="text-gray-500 font-semibold">Est. cost</dt><dd className="text-gray-900 font-bold">${r.estimated_cost.toLocaleString()}</dd></>)}
+                                <dt className="text-gray-500 font-semibold">Filed by</dt><dd className="text-gray-900">{r.reported_by}</dd>
+                                {r.reviewed_by && (<><dt className="text-gray-500 font-semibold">Reviewed by</dt><dd className="text-gray-900">{r.reviewed_by}</dd></>)}
+                              </dl>
+
+                              {/* Corrective action is shown to the filer too — knowing
+                                  the fix is the reason for reporting in the first place. */}
+                              {r.corrective_action && (
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                                  <h3 className="text-xs font-black text-emerald-800 uppercase tracking-wider mb-1">Corrective action</h3>
+                                  <RichText className="text-sm text-emerald-900 leading-relaxed" text={r.corrective_action} />
+                                </div>
+                              )}
+
+                              {canFilerEdit && !isAdmin && (
+                                <button
+                                  onClick={() => { setIncidentFormError(''); setIncidentDraft(editIncidentDraft(r)); }}
+                                  className="w-full h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50"
+                                >
+                                  Correct this report
+                                </button>
+                              )}
+                              {!isAdmin && !canFilerEdit && r.status !== 'submitted' && (
+                                <p className="text-xs text-gray-500 leading-relaxed">
+                                  This report is under review and can no longer be edited. Anything further goes through your supervisor.
+                                </p>
+                              )}
+
+                              {/* Admin review panel */}
+                              {isAdmin && (
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-3">
+                                  <h3 className="text-xs font-black text-gray-600 uppercase tracking-wider">Review</h3>
+
+                                  <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Findings (management only)</label>
+                                    <RichTextarea
+                                      rows={4}
+                                      value={pending.reviewNotes}
+                                      onChange={v => setIncidentReview(prev => ({ ...prev, [r.id]: { ...pending, reviewNotes: v } }))}
+                                      placeholder="Root cause, contributing factors, whether it is recordable…"
+                                      className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 leading-relaxed focus:border-emerald-600 focus:outline-none"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Corrective action (the filer sees this)</label>
+                                    <RichTextarea
+                                      rows={3}
+                                      value={pending.correctiveAction}
+                                      onChange={v => setIncidentReview(prev => ({ ...prev, [r.id]: { ...pending, correctiveAction: v } }))}
+                                      placeholder="What changed so this does not happen again."
+                                      className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 leading-relaxed focus:border-emerald-600 focus:outline-none"
+                                    />
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2">
+                                    {r.status === 'submitted' && (
+                                      <button onClick={() => saveIncidentReview(r, 'reviewing')} disabled={incidentSaving}
+                                        className="h-10 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-black disabled:opacity-50">
+                                        Start review
+                                      </button>
+                                    )}
+                                    {r.status !== 'closed' && (
+                                      <button onClick={() => saveIncidentReview(r, 'closed')} disabled={incidentSaving}
+                                        className="h-10 px-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-black disabled:opacity-50">
+                                        Close out
+                                      </button>
+                                    )}
+                                    {r.status !== 'submitted' && (
+                                      <button onClick={() => saveIncidentReview(r, r.status)} disabled={incidentSaving}
+                                        className="h-10 px-3 bg-white border border-gray-200 hover:border-emerald-300 rounded-xl text-sm font-black text-gray-700 disabled:opacity-50">
+                                        Save notes
+                                      </button>
+                                    )}
+                                    {r.status === 'closed' && (
+                                      <button onClick={() => saveIncidentReview(r, 'reviewing')} disabled={incidentSaving}
+                                        className="h-10 px-3 bg-white border border-gray-200 hover:border-amber-300 rounded-xl text-sm font-black text-gray-700 disabled:opacity-50">
+                                        Reopen
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => { setIncidentFormError(''); setIncidentDraft(editIncidentDraft(r)); }}
+                                      className="h-10 px-3 bg-white border border-gray-200 hover:border-gray-300 rounded-xl text-sm font-black text-gray-700"
+                                    >
+                                      Amend facts
+                                    </button>
+                                    <div className="ml-auto flex items-center gap-1">
+                                      {incidentDeleteConfirm === r.id ? (
+                                        <>
+                                          <button onClick={() => deleteIncident(r.id)} disabled={incidentSaving}
+                                            className="h-10 px-2.5 bg-red-600 text-white rounded-xl text-sm font-black disabled:opacity-50">
+                                            Confirm
+                                          </button>
+                                          <button onClick={() => setIncidentDeleteConfirm(null)}
+                                            className="h-10 px-2 text-gray-600 rounded-xl text-sm font-black">
+                                            Cancel
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <button onClick={() => setIncidentDeleteConfirm(r.id)}
+                                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Delete report">
+                                          <TrashIcon />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </section>
+                )}
+
+                {!incidentsLoading && incidents.length > 0 && visible.length === 0 && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center">
+                    <p className="text-sm text-gray-600 font-semibold">No reports with that status.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* VIEW: GLOBAL SEARCH */}
           {currentView === 'search' && currentUser && (() => {
             const q = globalQuery.trim().toLowerCase();
@@ -2862,6 +3634,12 @@ export default function App() {
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                     </span>
                     <span className="min-w-0"><span className={label}>Safety</span></span>
+                  </button>
+                  <button onClick={() => setCurrentView('incidents')} className={tile('bg-orange-600 hover:bg-orange-700')}>
+                    <span className={circle('text-orange-600')}>
+                      <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 9v3.75m9.303 3.376c.866 1.5-.217 3.374-1.948 3.374H4.645c-1.73 0-2.813-1.874-1.948-3.374l7.108-12.32c.866-1.5 3.032-1.5 3.898 0l7.1 12.32zM12 15.75h.007v.008H12v-.008z"/></svg>
+                    </span>
+                    <span className="min-w-0"><span className={label}>Incidents</span></span>
                   </button>
                   <button onClick={() => setCurrentView('userNotifications')} className={tile('bg-rose-600 hover:bg-rose-700')}>
                     <span className={circle('text-rose-600')}>
