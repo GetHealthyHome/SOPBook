@@ -14,6 +14,7 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { jobsRepo } from '@/db';
+import { canExport, explainExportFailure, saveToPhotoLibrary, sharePhoto } from '@/export/photoExport';
 import { useCaptureStore } from '@/state';
 import { HIT_TARGET, JOB_STATUS_STYLE, palette, radius, spacing, typography, useTheme } from '@/theme';
 import { formatBytes, formatDateTime, formatScheduleWindow } from '@/utils/format';
@@ -192,9 +193,36 @@ function PhotoViewer({
   onClose: () => void;
   onDelete: (photo: Photo) => void;
 }) {
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Hooks must run before the early return, so this guards on null rather
+  // than living below it.
+  const runExport = useCallback(
+    async (action: (photo: Photo) => Promise<{ ok: boolean; reason?: string }>, photo: Photo | null) => {
+      if (!photo || isExporting) return;
+      setIsExporting(true);
+      try {
+        const result = await action(photo);
+        if (result.ok) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else if (result.reason) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          Alert.alert(
+            'Cannot export photo',
+            explainExportFailure(result.reason as Parameters<typeof explainExportFailure>[0]),
+          );
+        }
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [isExporting],
+  );
+
   if (!photo) return null;
 
   const location = photo.metadata.location;
+  const exportable = canExport(photo).ok;
 
   return (
     <Modal visible transparent={false} animationType="slide" onRequestClose={onClose}>
@@ -213,12 +241,43 @@ function PhotoViewer({
             <Text style={styles.uploadedGlyph}>✓</Text>
             <Text style={styles.viewerEmptyTitle}>Uploaded to Housecall Pro</Text>
             <Text style={styles.viewerEmptyBody}>
-              The local copy was removed to free space. View it on the job in Housecall Pro.
+              The local copy was removed to free space. Download it from the job in Housecall Pro.
             </Text>
           </View>
         ) : (
           <Image source={{ uri: photo.localUri }} style={styles.viewerImage} contentFit="contain" />
         )}
+
+        {exportable ? (
+          <View style={styles.viewerActions}>
+            <Pressable
+              onPress={() => void runExport(saveToPhotoLibrary, photo)}
+              disabled={isExporting}
+              accessibilityRole="button"
+              accessibilityLabel="Save photo to your photo library"
+              style={({ pressed }) => [
+                styles.viewerAction,
+                isExporting && styles.viewerActionDisabled,
+                pressed && styles.viewerActionPressed,
+              ]}
+            >
+              <Text style={styles.viewerActionLabel}>Save to Photos</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void runExport(sharePhoto, photo)}
+              disabled={isExporting}
+              accessibilityRole="button"
+              accessibilityLabel="Share photo"
+              style={({ pressed }) => [
+                styles.viewerAction,
+                isExporting && styles.viewerActionDisabled,
+                pressed && styles.viewerActionPressed,
+              ]}
+            >
+              <Text style={styles.viewerActionLabel}>Share</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <ScrollView contentContainerStyle={styles.viewerMeta}>
           {photo.tags.length ? (
@@ -294,6 +353,18 @@ const styles = StyleSheet.create({
   },
   viewerClose: { ...typography.headline, color: '#FFFFFF' },
   viewerDelete: { ...typography.headline, color: palette.red },
+  viewerActions: { flexDirection: 'row', gap: spacing.md, paddingHorizontal: spacing.lg },
+  viewerAction: {
+    flex: 1,
+    minHeight: HIT_TARGET,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  viewerActionDisabled: { opacity: 0.4 },
+  viewerActionPressed: { opacity: 0.7 },
+  viewerActionLabel: { ...typography.headline, color: '#FFFFFF' },
   viewerImage: { flex: 1, width: '100%' },
   viewerEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
   viewerEmptyTitle: { ...typography.title3, color: '#FFFFFF' },

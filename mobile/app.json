@@ -42,6 +42,13 @@
         {
           "locationWhenInUsePermission": "Retrofit Field stamps each jobsite photo with the coordinates where it was taken."
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Retrofit Field saves stamped jobsite photos to your photo library so you can get them onto a computer.",
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ],
     "experiments": {
