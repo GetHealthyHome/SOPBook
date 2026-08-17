@@ -30,7 +30,6 @@
     "**/*.tsx"
   ],
   "exclude": [
-    "node_modules",
-    "mobile"
+    "node_modules"
   ]
 }
