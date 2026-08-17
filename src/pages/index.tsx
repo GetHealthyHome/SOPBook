@@ -283,6 +283,56 @@ interface IncidentReport {
   closed_at: string | null;
   reported_by: string;
   created_at: string;
+  // OSHA recordkeeping (29 CFR 1904) — filled in by an admin during review
+  osha_case_number?: string | null;
+  osha_privacy_case?: boolean;
+  employee_name?: string;
+  employee_job_title?: string;
+  employee_address?: string;
+  employee_dob?: string | null;
+  employee_hire_date?: string | null;
+  employee_sex?: string;
+  physician_name?: string;
+  treatment_facility?: string;
+  treated_in_er?: boolean;
+  hospitalized?: boolean;
+  time_began_work?: string;
+  time_of_event?: string;
+  activity_before?: string;
+  injury_description?: string;
+  harm_source?: string;
+  date_of_death?: string | null;
+  case_outcome?: string;
+  days_away?: number;
+  days_restricted?: number;
+  illness_type?: string;
+}
+
+/** The OSHA recordkeeping determination — 29 CFR 1904. Admin-only. */
+interface IncidentOshaFields {
+  oshaRecordable: boolean;
+  oshaPrivacyCase: boolean;
+  oshaCaseNumber: string;
+  employeeName: string;
+  employeeJobTitle: string;
+  employeeAddress: string;
+  employeeDob: string;
+  employeeHireDate: string;
+  employeeSex: string;
+  physicianName: string;
+  treatmentFacility: string;
+  treatedInEr: boolean;
+  hospitalized: boolean;
+  timeBeganWork: string;
+  timeOfEvent: string;
+  activityBefore: string;
+  injuryDescription: string;
+  harmSource: string;
+  dateOfDeath: string;
+  caseOutcome: string;
+  daysAway: string;
+  daysRestricted: string;
+  illnessType: string;
 }
 
 interface IncidentDraft {
@@ -631,6 +681,9 @@ export default function App() {
   const [incidentFilter, setIncidentFilter] = useState<'all' | IncidentStatus>('all');
   const [incidentReview, setIncidentReview] = useState<Record<number, { reviewNotes: string; correctiveAction: string }>>({});
   const [incidentDeleteConfirm, setIncidentDeleteConfirm] = useState<number | null>(null);
+  const [incidentOsha, setIncidentOsha] = useState<Record<number, IncidentOshaFields>>({});
+  const [oshaPanelOpen, setOshaPanelOpen] = useState<Record<number, boolean>>({});
+  const [oshaYear, setOshaYear] = useState(() => new Date().getFullYear());
   // Which safety modules are expanded, and whether the admin is reordering
   const [safetyOpen, setSafetyOpen] = useState<Record<number, boolean>>({});
   const [safetyReorderMode, setSafetyReorderMode] = useState(false);
@@ -1567,9 +1620,37 @@ export default function App() {
     }
   };
 
+  /** Pull the stored OSHA determination into editable form state. */
+  const oshaFieldsFrom = (r: IncidentReport): IncidentOshaFields => ({
+    oshaRecordable:    r.osha_recordable,
+    oshaPrivacyCase:   r.osha_privacy_case ?? false,
+    oshaCaseNumber:    r.osha_case_number ?? '',
+    employeeName:      r.employee_name || r.reported_by,
+    employeeJobTitle:  r.employee_job_title ?? '',
+    employeeAddress:   r.employee_address ?? '',
+    employeeDob:       r.employee_dob ?? '',
+    employeeHireDate:  r.employee_hire_date ?? '',
+    employeeSex:       r.employee_sex ?? '',
+    physicianName:     r.physician_name ?? '',
+    treatmentFacility: r.treatment_facility ?? '',
+    treatedInEr:       r.treated_in_er ?? false,
+    hospitalized:      r.hospitalized ?? false,
+    timeBeganWork:     r.time_began_work ?? '',
+    timeOfEvent:       r.time_of_event ?? '',
+    activityBefore:    r.activity_before ?? '',
+    injuryDescription: r.injury_description ?? '',
+    harmSource:        r.harm_source ?? '',
+    dateOfDeath:       r.date_of_death ?? '',
+    caseOutcome:       r.case_outcome ?? '',
+    daysAway:          String(r.days_away ?? 0),
+    daysRestricted:    String(r.days_restricted ?? 0),
+    illnessType:       r.illness_type ?? 'injury',
+  });
+
   /** Admin: move a report through the review workflow and record findings. */
   const saveIncidentReview = async (r: IncidentReport, status: IncidentStatus) => {
     const pending = incidentReview[r.id] ?? { reviewNotes: r.review_notes ?? '', correctiveAction: r.corrective_action ?? '' };
+    const osha = incidentOsha[r.id] ?? oshaFieldsFrom(r);
     setIncidentSaving(true);
     try {
       const res = await fetch('/api/incidents', {
@@ -1580,12 +1661,14 @@ export default function App() {
           reviewNotes: pending.reviewNotes,
           correctiveAction: pending.correctiveAction,
           // Preserve the factual account — the admin PUT rewrites these fields
-          category: r.category, severity: r.severity, oshaRecordable: r.osha_recordable,
+          category: r.category, severity: r.severity,
           occurredAt: r.occurred_at, location: r.location, jobReference: r.job_reference,
           description: r.description, immediateActions: r.immediate_actions,
           peopleInvolved: r.people_involved, witnesses: r.witnesses,
           photoUrls: r.photo_urls, customerNotified: r.customer_notified,
           estimatedCost: r.estimated_cost,
+          // OSHA recordkeeping determination
+          ...osha,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -2996,6 +3079,44 @@ export default function App() {
                   )}
                 </div>
 
+                {/* OSHA recordkeeping exports — 29 CFR 1904 */}
+                {isAdmin && !incidentDraft && (
+                  <div className="bg-gray-900 text-white rounded-2xl p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <h2 className="text-base font-black">OSHA recordkeeping</h2>
+                        <p className="text-sm text-gray-300 mt-0.5 leading-relaxed">
+                          Forms 300, 300A and 301 as PDFs, built from the cases marked recordable.
+                        </p>
+                      </div>
+                      <select
+                        value={oshaYear}
+                        onChange={e => setOshaYear(Number(e.target.value))}
+                        aria-label="Calendar year"
+                        className="h-10 px-3 bg-white text-gray-900 rounded-xl text-sm font-black focus:outline-none"
+                      >
+                        {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <a href={`/api/incidents/osha?form=300&year=${oshaYear}`}
+                        className="h-11 px-4 bg-white hover:bg-gray-100 text-gray-900 rounded-xl text-sm font-black flex items-center">
+                        Form 300 Log
+                      </a>
+                      <a href={`/api/incidents/osha?form=300A&year=${oshaYear}`}
+                        className="h-11 px-4 bg-white hover:bg-gray-100 text-gray-900 rounded-xl text-sm font-black flex items-center">
+                        Form 300A Summary
+                      </a>
+                    </div>
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      Post the 300A from February 1 to April 30 of {oshaYear + 1}. Keep these five years.
+                      Establishment details and the certifying executive come from Admin Console settings.
+                    </p>
+                  </div>
+                )}
+
                 {/* Anyone can file; nobody is disciplined for filing. Saying so
                     on the screen is what actually gets reports filed. */}
                 {!incidentDraft && !isAdmin && (
@@ -3368,6 +3489,14 @@ export default function App() {
                                 </div>
                               )}
 
+                              {!isAdmin && r.osha_recordable && (
+                                <a
+                                  href={`/api/incidents/osha?form=301&id=${r.id}`}
+                                  className="w-full h-11 bg-gray-900 hover:bg-black text-white rounded-xl text-sm font-black flex items-center justify-center"
+                                >
+                                  Download my OSHA 301 form
+                                </a>
+                              )}
                               {canFilerEdit && !isAdmin && (
                                 <button
                                   onClick={() => { setIncidentFormError(''); setIncidentDraft(editIncidentDraft(r)); }}
@@ -3409,6 +3538,149 @@ export default function App() {
                                     />
                                   </div>
 
+
+                                  {/* OSHA recordkeeping — 29 CFR 1904 */}
+                                  {(() => {
+                                    const o = incidentOsha[r.id] ?? oshaFieldsFrom(r);
+                                    const setO = (patch: Partial<IncidentOshaFields>) =>
+                                      setIncidentOsha(prev => ({ ...prev, [r.id]: { ...o, ...patch } }));
+                                    const panelOpen = !!oshaPanelOpen[r.id];
+                                    const inp = 'w-full h-10 px-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-emerald-600 focus:outline-none';
+                                    const lbl = 'block text-[11px] font-bold text-gray-500 mb-0.5';
+
+                                    return (
+                                      <div className="border-t border-gray-200 pt-3 space-y-3">
+                                        <label className="flex items-start gap-2.5 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={o.oshaRecordable}
+                                            onChange={e => { setO({ oshaRecordable: e.target.checked }); if (e.target.checked) setOshaPanelOpen(p => ({ ...p, [r.id]: true })); }}
+                                            className="mt-0.5 w-5 h-5 flex-shrink-0 accent-red-700"
+                                          />
+                                          <span className="text-sm text-gray-900 leading-relaxed">
+                                            <span className="font-black">OSHA recordable</span>
+                                            <span className="text-gray-600"> — death, days away, restricted work or transfer, medical treatment beyond first aid, loss of consciousness, or a significant diagnosis (1904.7).</span>
+                                          </span>
+                                        </label>
+
+                                        {o.oshaRecordable && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={() => setOshaPanelOpen(p => ({ ...p, [r.id]: !panelOpen }))}
+                                              className="w-full flex items-center justify-between h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm font-black text-gray-700"
+                                            >
+                                              <span>Recordkeeping details {r.osha_case_number ? `· Case ${r.osha_case_number}` : '· case number assigned on save'}</span>
+                                              <span className={`transition-transform ${panelOpen ? 'rotate-90' : ''}`}>&#8250;</span>
+                                            </button>
+
+                                            {panelOpen && (
+                                              <div className="space-y-3 bg-white border border-gray-200 rounded-xl p-3">
+                                                <label className="flex items-start gap-2.5 cursor-pointer">
+                                                  <input type="checkbox" checked={o.oshaPrivacyCase}
+                                                    onChange={e => setO({ oshaPrivacyCase: e.target.checked })}
+                                                    className="mt-0.5 w-4 h-4 flex-shrink-0 accent-red-700" />
+                                                  <span className="text-xs text-gray-700 leading-relaxed">
+                                                    <span className="font-black">Privacy case</span> (1904.29(b)(7)) — the name is left off the 300 log and kept on a separate confidential list. Required for sexual assault, HIV/hepatitis/TB, needlestick or sharps injury from a contaminated object, mental illness, and any illness where the employee asks.
+                                                  </span>
+                                                </label>
+
+                                                <div>
+                                                  <p className="text-[11px] font-black text-gray-600 uppercase tracking-wider mb-1.5">Employee (Form 301, 1–5)</p>
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                    <div><label className={lbl}>Full name</label>
+                                                      <input value={o.employeeName} onChange={e => setO({ employeeName: e.target.value })} className={inp} /></div>
+                                                    <div><label className={lbl}>Job title</label>
+                                                      <input value={o.employeeJobTitle} onChange={e => setO({ employeeJobTitle: e.target.value })} className={inp} /></div>
+                                                    <div className="col-span-2"><label className={lbl}>Street / City / State / ZIP</label>
+                                                      <input value={o.employeeAddress} onChange={e => setO({ employeeAddress: e.target.value })} className={inp} /></div>
+                                                    <div><label className={lbl}>Date of birth</label>
+                                                      <input type="date" value={o.employeeDob} onChange={e => setO({ employeeDob: e.target.value })} className={inp} /></div>
+                                                    <div><label className={lbl}>Date hired</label>
+                                                      <input type="date" value={o.employeeHireDate} onChange={e => setO({ employeeHireDate: e.target.value })} className={inp} /></div>
+                                                    <div><label className={lbl}>Sex</label>
+                                                      <select value={o.employeeSex} onChange={e => setO({ employeeSex: e.target.value })} className={inp}>
+                                                        <option value="">Not stated</option>
+                                                        <option value="male">Male</option>
+                                                        <option value="female">Female</option>
+                                                      </select></div>
+                                                  </div>
+                                                </div>
+
+                                                <div>
+                                                  <p className="text-[11px] font-black text-gray-600 uppercase tracking-wider mb-1.5">Health care (Form 301, 6–9)</p>
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                    <div className="col-span-2"><label className={lbl}>Physician or health care professional</label>
+                                                      <input value={o.physicianName} onChange={e => setO({ physicianName: e.target.value })} className={inp} /></div>
+                                                    <div className="col-span-2"><label className={lbl}>If treated away from the worksite, where?</label>
+                                                      <input value={o.treatmentFacility} onChange={e => setO({ treatmentFacility: e.target.value })} className={inp} /></div>
+                                                    <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                                                      <input type="checkbox" checked={o.treatedInEr} onChange={e => setO({ treatedInEr: e.target.checked })} className="w-4 h-4 accent-emerald-700" />
+                                                      Treated in an ER
+                                                    </label>
+                                                    <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                                                      <input type="checkbox" checked={o.hospitalized} onChange={e => setO({ hospitalized: e.target.checked })} className="w-4 h-4 accent-emerald-700" />
+                                                      Hospitalised overnight
+                                                    </label>
+                                                  </div>
+                                                </div>
+
+                                                <div>
+                                                  <p className="text-[11px] font-black text-gray-600 uppercase tracking-wider mb-1.5">The case (Form 301, 12–18)</p>
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                    <div><label className={lbl}>Time began work</label>
+                                                      <input type="time" value={o.timeBeganWork} onChange={e => setO({ timeBeganWork: e.target.value })} className={inp} /></div>
+                                                    <div><label className={lbl}>Time of event</label>
+                                                      <input type="time" value={o.timeOfEvent} onChange={e => setO({ timeOfEvent: e.target.value })} className={inp} />
+                                                      <p className="text-[10px] text-gray-500 mt-0.5">Leave blank if it cannot be determined.</p></div>
+                                                    <div className="col-span-2"><label className={lbl}>14) Doing just before the incident</label>
+                                                      <input value={o.activityBefore} onChange={e => setO({ activityBefore: e.target.value })} placeholder="Activity, tools, equipment, materials — be specific" className={inp} /></div>
+                                                    <div className="col-span-2"><label className={lbl}>16) The injury or illness</label>
+                                                      <input value={o.injuryDescription} onChange={e => setO({ injuryDescription: e.target.value })} placeholder='Part of the body and how — more specific than "hurt" or "sore"' className={inp} /></div>
+                                                    <div className="col-span-2"><label className={lbl}>17) Object or substance that directly harmed</label>
+                                                      <input value={o.harmSource} onChange={e => setO({ harmSource: e.target.value })} placeholder='e.g. "concrete floor", "radial arm saw"' className={inp} /></div>
+                                                    <div className="col-span-2"><label className={lbl}>18) Date of death, if applicable</label>
+                                                      <input type="date" value={o.dateOfDeath} onChange={e => setO({ dateOfDeath: e.target.value })} className={inp} /></div>
+                                                  </div>
+                                                </div>
+
+                                                <div>
+                                                  <p className="text-[11px] font-black text-gray-600 uppercase tracking-wider mb-1.5">Classification (Form 300, G–M)</p>
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                    <div><label className={lbl}>Outcome — most serious applies</label>
+                                                      <select value={o.caseOutcome} onChange={e => setO({ caseOutcome: e.target.value })} className={inp}>
+                                                        <option value="">Choose…</option>
+                                                        <option value="death">G — Death</option>
+                                                        <option value="days_away">H — Days away from work</option>
+                                                        <option value="restricted">I — Job transfer or restriction</option>
+                                                        <option value="other">J — Other recordable case</option>
+                                                      </select></div>
+                                                    <div><label className={lbl}>Injury / illness type</label>
+                                                      <select value={o.illnessType} onChange={e => setO({ illnessType: e.target.value })} className={inp}>
+                                                        <option value="injury">1 — Injury</option>
+                                                        <option value="skin">2 — Skin disorder</option>
+                                                        <option value="respiratory">3 — Respiratory condition</option>
+                                                        <option value="poisoning">4 — Poisoning</option>
+                                                        <option value="hearing">5 — Hearing loss</option>
+                                                        <option value="other">6 — All other illnesses</option>
+                                                      </select></div>
+                                                    <div><label className={lbl}>K — Days away</label>
+                                                      <input inputMode="numeric" value={o.daysAway} onChange={e => setO({ daysAway: e.target.value })} className={inp} /></div>
+                                                    <div><label className={lbl}>L — Days restricted / transferred</label>
+                                                      <input inputMode="numeric" value={o.daysRestricted} onChange={e => setO({ daysRestricted: e.target.value })} className={inp} /></div>
+                                                  </div>
+                                                  <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
+                                                    Day counts are capped at 180 for the log. Count calendar days, not scheduled work days, and stop counting at 180.
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+
                                   <div className="flex flex-wrap gap-2">
                                     {r.status === 'submitted' && (
                                       <button onClick={() => saveIncidentReview(r, 'reviewing')} disabled={incidentSaving}
@@ -3440,6 +3712,14 @@ export default function App() {
                                     >
                                       Amend facts
                                     </button>
+                                    {r.osha_recordable && (
+                                      <a
+                                        href={`/api/incidents/osha?form=301&id=${r.id}`}
+                                        className="h-10 px-3 bg-gray-900 hover:bg-black text-white rounded-xl text-sm font-black flex items-center"
+                                      >
+                                        OSHA 301 PDF
+                                      </a>
+                                    )}
                                     <div className="ml-auto flex items-center gap-1">
                                       {incidentDeleteConfirm === r.id ? (
                                         <>

@@ -11,8 +11,14 @@ const CATEGORIES = ['injury', 'property', 'near_miss', 'vehicle', 'other'] as co
 const SEVERITIES = ['minor', 'moderate', 'major'] as const;
 const STATUSES   = ['submitted', 'reviewing', 'closed'] as const;
 
+// OSHA recordkeeping vocabularies — 29 CFR 1904, Form 300 columns G-M.
+const OUTCOMES = ['', 'death', 'days_away', 'restricted', 'other'] as const;
+const ILLNESS_TYPES = ['injury', 'skin', 'respiratory', 'poisoning', 'hearing', 'other'] as const;
+const SEXES = ['', 'male', 'female'] as const;
+
 const MAX_PHOTOS = 10;
 const MAX_COST = 10_000_000; // whole dollars
+const MAX_DAYS = 999;        // OSHA caps the day counts at 180; this is a sanity bound
 
 function oneOf<T extends readonly string[]>(allowed: T, value: unknown, fallback: T[number]): T[number] {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
@@ -64,6 +70,68 @@ function cleanReport(body: Record<string, unknown>) {
     photo_urls:        safePhotos(body.photoUrls),
     customer_notified: body.customerNotified === true,
     estimated_cost:    safeCost(body.estimatedCost),
+  };
+}
+
+/** A date-only value (YYYY-MM-DD) or null. */
+function safeDate(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const t = Date.parse(`${value}T00:00:00Z`);
+  return Number.isNaN(t) ? null : value;
+}
+
+/** A 24-hour clock time, or ''. */
+function safeTime(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const m = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return '';
+  const h = Number(m[1]), min = Number(m[2]);
+  if (h > 23 || min > 59) return '';
+  return `${String(h).padStart(2, '0')}:${m[2]}`;
+}
+
+function safeDays(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(String(value ?? '').trim());
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(MAX_DAYS, Math.round(n));
+}
+
+/**
+ * The OSHA recordkeeping determination — admin-only, written during review.
+ * Deliberately separate from cleanReport: the crew describe what happened,
+ * management decide whether it is recordable and how it classifies.
+ */
+function cleanOshaFields(body: Record<string, unknown>) {
+  return {
+    osha_recordable:    body.oshaRecordable === true,
+    osha_privacy_case:  body.oshaPrivacyCase === true,
+    osha_case_number:   sanitize(String(body.oshaCaseNumber ?? ''), 'name') || null,
+
+    employee_name:      sanitize(String(body.employeeName ?? ''), 'name'),
+    employee_job_title: sanitize(String(body.employeeJobTitle ?? ''), 'name'),
+    employee_address:   sanitize(String(body.employeeAddress ?? ''), 'summary'),
+    employee_dob:       safeDate(body.employeeDob),
+    employee_hire_date: safeDate(body.employeeHireDate),
+    employee_sex:       oneOf(SEXES, body.employeeSex, ''),
+
+    physician_name:     sanitize(String(body.physicianName ?? ''), 'name'),
+    treatment_facility: sanitize(String(body.treatmentFacility ?? ''), 'summary'),
+    treated_in_er:      body.treatedInEr === true,
+    hospitalized:       body.hospitalized === true,
+
+    time_began_work:    safeTime(body.timeBeganWork),
+    time_of_event:      safeTime(body.timeOfEvent),
+    activity_before:    sanitize(String(body.activityBefore ?? ''), 'body'),
+    injury_description: sanitize(String(body.injuryDescription ?? ''), 'body'),
+    harm_source:        sanitize(String(body.harmSource ?? ''), 'summary'),
+    date_of_death:      safeDate(body.dateOfDeath),
+
+    case_outcome:       oneOf(OUTCOMES, body.caseOutcome, ''),
+    days_away:          safeDays(body.daysAway),
+    days_restricted:    safeDays(body.daysRestricted),
+    illness_type:       oneOf(ILLNESS_TYPES, body.illnessType, 'injury'),
   };
 }
 
@@ -145,8 +213,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // --- Admin: may amend the facts and owns the entire review workflow ---
     if (admin) {
       const status = oneOf(STATUSES, body.status, existing.status as typeof STATUSES[number]);
+      const osha = cleanOshaFields(body);
       const patch: Record<string, unknown> = {
         ...cleanReport(body),
+        // The recordkeeping determination is management's, so it is applied
+        // after the factual fields and overrides the filer's own tick.
+        ...osha,
         status,
         review_notes:      sanitize(String(body.reviewNotes ?? ''), 'article'),
         corrective_action: sanitize(String(body.correctiveAction ?? ''), 'body'),
@@ -158,6 +230,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         patch.reviewed_at = new Date().toISOString();
       }
       patch.closed_at = status === 'closed' ? new Date().toISOString() : null;
+
+      // A recordable case needs a case number for the Log's column (A). Assign
+      // the next sequential one for the year the incident occurred in, so the
+      // numbering follows the log rather than the order of data entry.
+      if (osha.osha_recordable && !osha.osha_case_number) {
+        const year = new Date(String(patch.occurred_at ?? existing.occurred_at)).getUTCFullYear();
+        const { data: peers, error: peerErr } = await db
+          .from('incident_reports')
+          .select('osha_case_number')
+          .not('osha_case_number', 'is', null)
+          .like('osha_case_number', `${year}-%`);
+        if (peerErr) {
+          logError('incidents case-number', peerErr);
+        } else {
+          const highest = (peers ?? []).reduce((max: number, r: { osha_case_number: string | null }) => {
+            const n = Number(String(r.osha_case_number ?? '').split('-')[1]);
+            return Number.isFinite(n) && n > max ? n : max;
+          }, 0);
+          patch.osha_case_number = `${year}-${String(highest + 1).padStart(3, '0')}`;
+        }
+      }
+      if (osha.osha_recordable) {
+        patch.osha_determined_by = session.name;
+        patch.osha_determined_at = new Date().toISOString();
+      }
 
       const { data, error } = await db
         .from('incident_reports').update(patch).eq('id', body.id).select().single();
