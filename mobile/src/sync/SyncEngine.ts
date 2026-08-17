@@ -4,6 +4,7 @@ import { uploadJobAttachment } from '@/api/housecallPro';
 import { ApiError, describeApiError } from '@/api/errors';
 import { hasApiToken } from '@/auth/credentials';
 import { getDatabase, photosRepo, uploadQueueRepo } from '@/db';
+import { deferDeleteWhileExporting } from '@/export/exportHold';
 import { deleteFile, fileExists } from '@/storage/photoFiles';
 import { logger } from '@/utils/logger';
 import { MAX_AUTO_ATTEMPTS, PARKED_UNTIL, isExhausted, nextAttemptAt } from './backoff';
@@ -297,7 +298,14 @@ class SyncEngine {
 
       // The bytes are safe upstream and this is the tech's only storage. Freeing
       // it now is what keeps a 60-photo day from filling a 64 GB phone.
-      await deleteFile(photo.localUri);
+      //
+      // Unless an export is mid-flight on this photo — a share sheet holding
+      // the URI, a save still writing. Then the delete is owed rather than
+      // skipped: `exportHold` runs it the moment the export finishes, so the
+      // photo lands in the same state it would have anyway.
+      if (!deferDeleteWhileExporting(photo.id, photo.localUri)) {
+        await deleteFile(photo.localUri);
+      }
 
       this.lastSyncedAt = new Date().toISOString();
       logger.info('sync.uploaded', { photoId: photo.id, attachmentId: attachment.id });

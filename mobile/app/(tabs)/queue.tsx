@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadQueueRepo } from '@/db';
 import { isBackgroundSyncAvailable } from '@/sync/backgroundTask';
-import { useSessionStore, useSyncStore } from '@/state';
+import { useSessionStore, useSettingsStore, useSyncStore } from '@/state';
 import { HIT_TARGET, radius, spacing, typography, useTheme } from '@/theme';
 import { formatDateTime, pluralize } from '@/utils/format';
 import type { UploadTask } from '@/types';
@@ -88,12 +88,50 @@ export default function QueueScreen() {
           </Text>
         }
         ListFooterComponent={
-          <Pressable onPress={() => void signOut()} style={styles.signOut} accessibilityRole="button">
-            <Text style={[styles.signOutLabel, { color: theme.danger }]}>Disconnect Housecall Pro</Text>
-          </Pressable>
+          <>
+            <AutoSaveSetting />
+            <Pressable onPress={() => void signOut()} style={styles.signOut} accessibilityRole="button">
+              <Text style={[styles.signOutLabel, { color: theme.danger }]}>Disconnect Housecall Pro</Text>
+            </Pressable>
+          </>
         }
       />
     </SafeAreaView>
+  );
+}
+
+/**
+ * Off by default, and the caption says plainly where the photos go. A tech who
+ * turns this on is agreeing to work photos landing in their personal library,
+ * which is a thing to opt into knowingly rather than discover later.
+ */
+function AutoSaveSetting() {
+  const theme = useTheme();
+  const { autoSaveToCameraRoll, isLoaded, load, setAutoSaveToCameraRoll } = useSettingsStore();
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <View style={[styles.setting, { backgroundColor: theme.backgroundSecondary }]}>
+      <View style={styles.settingBody}>
+        <Text style={[styles.settingTitle, { color: theme.text }]}>Save to camera roll</Text>
+        <Text style={[styles.settingDetail, { color: theme.textTertiary }]}>
+          Keep a copy of every photo you save in this phone&apos;s photo library, where it syncs to
+          your computer. Off by default.
+        </Text>
+      </View>
+      <Switch
+        value={autoSaveToCameraRoll}
+        disabled={!isLoaded}
+        onValueChange={(next) => {
+          void Haptics.selectionAsync();
+          void setAutoSaveToCameraRoll(next);
+        }}
+        accessibilityLabel="Save every photo to this phone's camera roll"
+      />
+    </View>
   );
 }
 
@@ -176,6 +214,17 @@ const styles = StyleSheet.create({
   rowTitle: { ...typography.callout, fontWeight: '600' },
   rowDetail: { ...typography.footnote },
   empty: { ...typography.subheadline, textAlign: 'center', marginTop: spacing.xxl },
+  setting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    marginTop: spacing.lg,
+  },
+  settingBody: { flex: 1, gap: spacing.xs },
+  settingTitle: { ...typography.headline },
+  settingDetail: { ...typography.footnote },
   signOut: { alignItems: 'center', paddingVertical: spacing.xxl },
   signOutLabel: { ...typography.footnote, fontWeight: '600' },
 });

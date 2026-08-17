@@ -2,6 +2,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import type { Photo } from '@/types';
 import { fileExists } from '@/storage/photoFiles';
+import { withExportHold } from './exportHold';
 import { logger } from '@/utils/logger';
 
 /**
@@ -82,20 +83,22 @@ async function resolveLocalFile(photo: Photo): Promise<ExportResult> {
  * no business reading those.
  */
 export async function saveToPhotoLibrary(photo: Photo): Promise<ExportResult> {
-  const resolved = await resolveLocalFile(photo);
-  if (!resolved.ok) return resolved;
+  return withExportHold(photo.id, async () => {
+    const resolved = await resolveLocalFile(photo);
+    if (!resolved.ok) return resolved;
 
-  try {
-    const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
-    if (!permission.granted) return { ok: false, reason: 'permission-denied' };
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+      if (!permission.granted) return { ok: false, reason: 'permission-denied' };
 
-    await MediaLibrary.saveToLibraryAsync(photo.localUri);
-    logger.info('export.saved_to_library', { photoId: photo.id });
-    return { ok: true };
-  } catch (error) {
-    logger.warn('export.save_failed', { photoId: photo.id, error: String(error) });
-    return { ok: false, reason: 'failed' };
-  }
+      await MediaLibrary.saveToLibraryAsync(photo.localUri);
+      logger.info('export.saved_to_library', { photoId: photo.id });
+      return { ok: true };
+    } catch (error) {
+      logger.warn('export.save_failed', { photoId: photo.id, error: String(error) });
+      return { ok: false, reason: 'failed' };
+    }
+  });
 }
 
 /**
@@ -106,23 +109,25 @@ export async function saveToPhotoLibrary(photo: Photo): Promise<ExportResult> {
  * and Mail attaching an unopenable blob.
  */
 export async function sharePhoto(photo: Photo): Promise<ExportResult> {
-  const resolved = await resolveLocalFile(photo);
-  if (!resolved.ok) return resolved;
+  return withExportHold(photo.id, async () => {
+    const resolved = await resolveLocalFile(photo);
+    if (!resolved.ok) return resolved;
 
-  try {
-    if (!(await Sharing.isAvailableAsync())) {
-      return { ok: false, reason: 'sharing-unavailable' };
+    try {
+      if (!(await Sharing.isAvailableAsync())) {
+        return { ok: false, reason: 'sharing-unavailable' };
+      }
+
+      await Sharing.shareAsync(photo.localUri, {
+        mimeType: 'image/jpeg',
+        UTI: 'public.jpeg',
+        dialogTitle: 'Share photo',
+      });
+      logger.info('export.shared', { photoId: photo.id });
+      return { ok: true };
+    } catch (error) {
+      logger.warn('export.share_failed', { photoId: photo.id, error: String(error) });
+      return { ok: false, reason: 'failed' };
     }
-
-    await Sharing.shareAsync(photo.localUri, {
-      mimeType: 'image/jpeg',
-      UTI: 'public.jpeg',
-      dialogTitle: 'Share photo',
-    });
-    logger.info('export.shared', { photoId: photo.id });
-    return { ok: true };
-  } catch (error) {
-    logger.warn('export.share_failed', { photoId: photo.id, error: String(error) });
-    return { ok: false, reason: 'failed' };
-  }
+  });
 }

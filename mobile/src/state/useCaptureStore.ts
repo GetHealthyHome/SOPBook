@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { photosRepo } from '@/db';
+import { photosRepo, settingsRepo } from '@/db';
+import { saveToPhotoLibrary } from '@/export/photoExport';
 import { syncEngine } from '@/sync/SyncEngine';
 import { deleteFile } from '@/storage/photoFiles';
 import { logger } from '@/utils/logger';
@@ -74,6 +75,18 @@ export const useCaptureStore = create<CaptureState>((set, get) => ({
     await syncEngine.enqueue(draft.photoId, draft.jobId);
 
     const saved = await photosRepo.getPhoto(draft.photoId);
+
+    // Opt-in copy to the camera roll, taken here rather than at capture: this
+    // is the flattened, annotated, stamped image the tech actually meant to
+    // keep, not the raw frame. Failure is logged and swallowed — a declined
+    // photo-library permission must not turn a saved photo into a lost one.
+    if (saved && (await settingsRepo.getAutoSaveToCameraRoll())) {
+      const result = await saveToPhotoLibrary(saved);
+      if (!result.ok) {
+        logger.warn('capture.auto_save_failed', { photoId: saved.id, reason: result.reason });
+      }
+    }
+
     set({ draft: null });
     await get().loadPhotosForJob(draft.jobId);
 
