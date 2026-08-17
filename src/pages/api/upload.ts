@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import crypto from 'crypto';
-import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
+import { getSession, checkIpRateLimit } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { IncomingForm, File as FormidableFile } from 'formidable';
 import fs from 'fs/promises';
@@ -41,7 +41,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!checkIpRateLimit(req)) return res.status(429).json({ error: 'Too many requests.' });
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Not authenticated.' });
-  if (!(await isCurrentAdmin(session))) return res.status(403).json({ error: 'Admin only.' });
+  // Any signed-in crew member may upload, because incident reports are filed
+  // from the field and a photo of the damage is the most useful thing in them.
+  // The protections that matter are unchanged: the session must be valid, the
+  // file has to actually be an image by its magic bytes rather than its name,
+  // it is capped at 10 MB, it is stored under a random UUID, and the request
+  // passes the IP rate limit above.
 
   const form = new IncomingForm({ maxFileSize: 10 * 1024 * 1024 });
 

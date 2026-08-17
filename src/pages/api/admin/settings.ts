@@ -5,7 +5,15 @@ import { logError } from '@/lib/log';
 
 // Only known settings may be written — prevents an arbitrary-key/value
 // dumping ground in app_settings.
-const ALLOWED_KEYS = ['notifications_enabled'];
+const ALLOWED_KEYS = [
+  'notifications_enabled',
+  // Establishment details for the OSHA 300 / 300A / 301 form headers and the
+  // 300A certification block (29 CFR 1904).
+  'osha_establishment_name', 'osha_establishment_street', 'osha_establishment_city',
+  'osha_establishment_state', 'osha_establishment_zip', 'osha_industry_description',
+  'osha_naics', 'osha_annual_avg_employees', 'osha_total_hours_worked',
+  'osha_executive_name', 'osha_executive_title', 'osha_executive_phone',
+];
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!checkIpRateLimit(req)) return res.status(429).json({ error: 'Too many requests.' });
