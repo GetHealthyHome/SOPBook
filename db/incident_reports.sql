@@ -61,10 +61,12 @@ create index if not exists incident_reports_status_idx
 
 alter table incident_reports enable row level security;
 
--- Filing an incident notifies admins through user_notifications. If that table
--- has a CHECK constraint on `type`, 'incident' needs adding to it — the report
--- itself still saves either way, the notification is best-effort:
---
---   alter table user_notifications drop constraint if exists user_notifications_type_check;
---   alter table user_notifications add constraint user_notifications_type_check
---     check (type in ('sop', 'handbook', 'incident'));
+-- Filing an incident notifies admins through user_notifications, whose CHECK
+-- constraint predates this feature and allowed only 'sop' and 'handbook'.
+-- This is required, not optional: the API treats the notification as
+-- best-effort and swallows a failure so it can never cost someone their
+-- incident report — which means without this, reports file correctly and
+-- nobody is ever told about them.
+alter table user_notifications drop constraint if exists user_notifications_type_check;
+alter table user_notifications add constraint user_notifications_type_check
+  check (type = any (array['sop'::text, 'handbook'::text, 'incident'::text]));
