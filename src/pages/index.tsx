@@ -517,27 +517,40 @@ interface UserBadge {
   assigned_at: string;
 }
 
-const ALL_BADGES = ['EPA 608', 'Spray Foam', 'BPI', 'Radon', 'Lead', 'Mold Testing', 'Forklift'] as const;
-type BadgeType = typeof ALL_BADGES[number];
+/** Badge types are authored by admins and loaded from /api/badges/types.
+ *  The palette lives here because Tailwind needs the class names present at
+ *  build time — a colour arriving as a string from the database cannot be
+ *  interpolated into a class or it gets purged. */
+interface BadgeType {
+  id: number;
+  name: string;
+  colour: string;
+  order_index: number;
+  created_by: string;
+}
 
-const BADGE_STYLES: Record<BadgeType, { bg: string; text: string; border: string; emoji: string }> = {
-  'EPA 608':      { bg: 'bg-blue-50',    text: 'text-blue-800',    border: 'border-blue-200',    emoji: '❄️' },
-  'Spray Foam':   { bg: 'bg-purple-50',  text: 'text-purple-800',  border: 'border-purple-200',  emoji: '🔫' },
-  'BPI':          { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', emoji: '🏠' },
-  'Radon':        { bg: 'bg-amber-50',   text: 'text-amber-800',   border: 'border-amber-200',   emoji: '☢️' },
-  'Lead':         { bg: 'bg-orange-50',  text: 'text-orange-800',  border: 'border-orange-200',  emoji: '⚠️' },
-  'Mold Testing': { bg: 'bg-teal-50',    text: 'text-teal-800',    border: 'border-teal-200',    emoji: '🔬' },
-  'Forklift':     { bg: 'bg-yellow-50',  text: 'text-yellow-800',  border: 'border-yellow-200',  emoji: '🏗️' },
+const BADGE_PALETTE: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  red:     { bg: 'bg-red-50',     text: 'text-red-800',     border: 'border-red-200',     dot: 'bg-red-500' },
+  orange:  { bg: 'bg-orange-50',  text: 'text-orange-800',  border: 'border-orange-200',  dot: 'bg-orange-500' },
+  amber:   { bg: 'bg-amber-50',   text: 'text-amber-900',   border: 'border-amber-200',   dot: 'bg-amber-500' },
+  yellow:  { bg: 'bg-yellow-50',  text: 'text-yellow-800',  border: 'border-yellow-200',  dot: 'bg-yellow-500' },
+  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+  teal:    { bg: 'bg-teal-50',    text: 'text-teal-800',    border: 'border-teal-200',    dot: 'bg-teal-500' },
+  blue:    { bg: 'bg-blue-50',    text: 'text-blue-800',    border: 'border-blue-200',    dot: 'bg-blue-500' },
+  purple:  { bg: 'bg-purple-50',  text: 'text-purple-800',  border: 'border-purple-200',  dot: 'bg-purple-500' },
+  gray:    { bg: 'bg-gray-100',   text: 'text-gray-700',    border: 'border-gray-200',    dot: 'bg-gray-400' },
 };
+const BADGE_COLOUR_KEYS = Object.keys(BADGE_PALETTE);
 
-const BadgeChip = ({ badge, onRemove }: { badge: string; onRemove?: () => void }) => {
-  const style = BADGE_STYLES[badge as BadgeType] ?? { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', emoji: '🏅' };
+const badgeStyle = (colour?: string) => BADGE_PALETTE[colour ?? 'gray'] ?? BADGE_PALETTE.gray;
+
+const BadgeChip = ({ badge, colour, onRemove }: { badge: string; colour?: string; onRemove?: () => void }) => {
+  const style = badgeStyle(colour);
   return (
-    <span className={`inline-flex items-center gap-1 text-base font-black px-1.5 py-0.5 rounded-md border ${style.bg} ${style.text} ${style.border} leading-none`}>
-      <span>{style.emoji}</span>
+    <span className={`inline-flex items-center gap-1 text-base font-black px-2 py-0.5 rounded-md border ${style.bg} ${style.text} ${style.border} leading-none`}>
       <span>{badge}</span>
       {onRemove && (
-        <button onClick={onRemove} className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none">✕</button>
+        <button onClick={onRemove} aria-label={`Remove ${badge}`} className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none">✕</button>
       )}
     </span>
   );
@@ -697,6 +710,14 @@ export default function App() {
 
   const [allBadges, setAllBadges] = useState<UserBadge[]>([]);
   const [badgesLoaded, setBadgesLoaded] = useState(false);
+  const [badgeTypes, setBadgeTypes] = useState<BadgeType[]>([]);
+  const [newBadgeName, setNewBadgeName] = useState('');
+  const [newBadgeColour, setNewBadgeColour] = useState('emerald');
+  const [badgeTypeBusy, setBadgeTypeBusy] = useState(false);
+  const [badgeTypeError, setBadgeTypeError] = useState('');
+  const [oshaSettings, setOshaSettings] = useState<Record<string, string>>({});
+  const [oshaSettingsBusy, setOshaSettingsBusy] = useState(false);
+  const [oshaSettingsSaved, setOshaSettingsSaved] = useState(false);
 
   const [teamUsers, setTeamUsers] = useState<User[]>([]);
   const [teamUsersLoaded, setTeamUsersLoaded] = useState(false);
@@ -919,6 +940,10 @@ export default function App() {
     fetch('/api/badges')
       .then(r => r.ok ? r.json() : { badges: [] })
       .then(data => { setAllBadges(data.badges ?? []); setBadgesLoaded(true); })
+      .catch(() => {});
+    fetch('/api/badges/types')
+      .then(r => r.ok ? r.json() : { types: [] })
+      .then(data => { setBadgeTypes(data.types ?? []); })
       .catch(() => setBadgesLoaded(true));
   }, [currentUser, badgesLoaded]);
 
@@ -936,7 +961,14 @@ export default function App() {
     if (!currentUser || currentUser.userType !== 'admin') return;
     fetch('/api/admin/settings')
       .then(r => r.ok ? r.json() : { settings: {} })
-      .then(data => { setNotificationsEnabled(data.settings?.notifications_enabled !== 'false'); })
+      .then(data => {
+        setNotificationsEnabled(data.settings?.notifications_enabled !== 'false');
+        const osha: Record<string, string> = {};
+        for (const [k, v] of Object.entries(data.settings ?? {})) {
+          if (k.startsWith('osha_')) osha[k] = String(v ?? '');
+        }
+        setOshaSettings(osha);
+      })
       .catch(() => {});
   }, [currentUser]);
 
@@ -3956,7 +3988,7 @@ export default function App() {
                     {allBadges.filter(b => b.user_name === currentUser.name).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {allBadges.filter(b => b.user_name === currentUser.name).map(b => (
-                          <BadgeChip key={b.id} badge={b.badge} />
+                          <BadgeChip key={b.id} badge={b.badge} colour={badgeTypes.find(t => t.name === b.badge)?.colour} />
                         ))}
                       </div>
                     )}
@@ -5334,15 +5366,177 @@ export default function App() {
                 </div>
               </div>
 
+              {/* OSHA establishment details — these fill the headers on the
+                  300 log, the 300A summary and every 301, plus the 300A
+                  certification block. Without them the forms print blanks. */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">
+                  OSHA Establishment Details
+                </h3>
+                <div className="bg-white border border-gray-200 rounded-2xl p-3.5 space-y-3">
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    Printed on the 300 log, the 300A summary and every 301. The 300A also carries the
+                    certifying executive&apos;s name and title above the signature line, so a summary posted
+                    without these is incomplete.
+                  </p>
+
+                  {oshaSettingsSaved && (
+                    <p className="text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                      Saved.
+                    </p>
+                  )}
+
+                  {([
+                    ['osha_establishment_name',   'Establishment name',        'Healthy Home Energy & Consulting, Inc.'],
+                    ['osha_establishment_street', 'Street',                    '1420 Industrial Parkway'],
+                    ['osha_establishment_city',   'City',                      'Columbus'],
+                    ['osha_establishment_state',  'State',                     'OH'],
+                    ['osha_establishment_zip',    'ZIP',                       '43215'],
+                    ['osha_industry_description', 'Industry description',      'Residential HVAC and home performance contracting'],
+                    ['osha_naics',                'NAICS code',                '238220'],
+                    ['osha_annual_avg_employees', 'Annual average employees',  '18'],
+                    ['osha_total_hours_worked',   'Total hours worked last year', '37,440'],
+                    ['osha_executive_name',       'Certifying executive',      'Full name'],
+                    ['osha_executive_title',      'Executive title',           'President'],
+                    ['osha_executive_phone',      'Executive phone',           '(614) 555-0142'],
+                  ] as const).map(([key, label, placeholder]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">{label}</label>
+                      <input
+                        value={oshaSettings[key] ?? ''}
+                        onChange={e => setOshaSettings(prev => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={placeholder}
+                        className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-emerald-600 focus:outline-none"
+                      />
+                    </div>
+                  ))}
+
+                  <button
+                    disabled={oshaSettingsBusy}
+                    onClick={async () => {
+                      setOshaSettingsBusy(true);
+                      setOshaSettingsSaved(false);
+                      // One PUT per key — the settings endpoint writes a single
+                      // allowlisted key at a time, which is what keeps it from
+                      // becoming an arbitrary key/value dumping ground.
+                      for (const [key, value] of Object.entries(oshaSettings)) {
+                        await fetch('/api/admin/settings', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ key, value }),
+                        });
+                      }
+                      setOshaSettingsBusy(false);
+                      setOshaSettingsSaved(true);
+                      setTimeout(() => setOshaSettingsSaved(false), 4000);
+                    }}
+                    className="w-full h-11 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-black disabled:opacity-50 transition-colors"
+                  >
+                    {oshaSettingsBusy ? 'Saving…' : 'Save establishment details'}
+                  </button>
+                </div>
+              </div>
+
               {/* Badge Management Panel */}
               <div className="space-y-3">
                 <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
-                  🏅 Badge Management
+                  Badge Management
                 </h3>
+                {/* Create a badge type — the catalogue everyone is assigned from */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-3.5 space-y-3">
+                  <div>
+                    <p className="text-sm font-black text-gray-900">Badge types</p>
+                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                      Certifications and cards the crew can hold. Add one here and it becomes assignable to everyone below.
+                    </p>
+                  </div>
+
+                  {badgeTypeError && (
+                    <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      {badgeTypeError}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {badgeTypes.map(type => (
+                      <span key={type.id} className="inline-flex items-center gap-1.5">
+                        <BadgeChip
+                          badge={type.name}
+                          colour={type.colour}
+                          onRemove={async () => {
+                            setBadgeTypeError('');
+                            const res = await fetch('/api/badges/types', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ id: type.id }),
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok) { setBadgeTypeError(data.error || 'Could not remove that badge.'); return; }
+                            setBadgeTypes(prev => prev.filter(t => t.id !== type.id));
+                          }}
+                        />
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-2 pt-1">
+                    <div className="flex-1 min-w-[160px]">
+                      <label className="block text-xs font-bold text-gray-500 mb-1">New badge</label>
+                      <input
+                        value={newBadgeName}
+                        onChange={e => setNewBadgeName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        placeholder="e.g. Confined Space"
+                        className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:border-emerald-600 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Colour</label>
+                      <div className="flex gap-1">
+                        {BADGE_COLOUR_KEYS.map(key => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setNewBadgeColour(key)}
+                            aria-label={key}
+                            title={key}
+                            className={`w-7 h-7 rounded-full ${badgeStyle(key).dot} transition-all ${
+                              newBadgeColour === key ? 'ring-2 ring-offset-2 ring-gray-900 scale-110' : 'opacity-70 hover:opacity-100'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      disabled={badgeTypeBusy || !newBadgeName.trim()}
+                      onClick={async () => {
+                        setBadgeTypeBusy(true);
+                        setBadgeTypeError('');
+                        const res = await fetch('/api/badges/types', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ name: newBadgeName.trim(), colour: newBadgeColour }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        setBadgeTypeBusy(false);
+                        if (!res.ok || !data.type) { setBadgeTypeError(data.error || 'Could not create that badge.'); return; }
+                        setBadgeTypes(prev => [...prev, data.type]);
+                        setNewBadgeName('');
+                      }}
+                      className="h-10 px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-sm font-black disabled:opacity-40 transition-colors"
+                    >
+                      {badgeTypeBusy ? 'Adding…' : 'Add badge'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Removing a type is refused while anyone still holds it — the assignments are the record of who is qualified for what.
+                  </p>
+                </div>
+
                 <div className="space-y-3">
                   {effectiveUsers.map(account => {
                     const userBadges = allBadges.filter(b => b.user_name === account.name);
-                    const unassigned = ALL_BADGES.filter(b => !userBadges.some(ub => ub.badge === b));
+                    const unassigned = badgeTypes.filter(t => !userBadges.some(ub => ub.badge === t.name));
                     return (
                       <div key={account.name} className="bg-white border border-gray-100 p-3.5 rounded-2xl shadow-xs space-y-2">
                         <div className="flex items-center justify-between">
@@ -5353,7 +5547,7 @@ export default function App() {
                         </div>
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {userBadges.map(ub => (
-                            <BadgeChip key={ub.id} badge={ub.badge} onRemove={() => {
+                            <BadgeChip key={ub.id} badge={ub.badge} colour={badgeTypes.find(t => t.name === ub.badge)?.colour} onRemove={() => {
                               fetch('/api/badges', {
                                 method: 'DELETE',
                                 headers: { 'Content-Type': 'application/json' },
@@ -5363,21 +5557,21 @@ export default function App() {
                               });
                             }} />
                           ))}
-                          {unassigned.map(badge => (
+                          {unassigned.map(type => (
                             <button
-                              key={badge}
+                              key={type.id}
                               onClick={() => {
                                 fetch('/api/badges', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ userName: account.name, badge }),
+                                  body: JSON.stringify({ userName: account.name, badge: type.name }),
                                 }).then(r => r.ok ? r.json() : null).then(data => {
                                   if (data?.badge) setAllBadges(prev => [...prev, data.badge]);
                                 });
                               }}
-                              className="inline-flex items-center gap-1 text-xs font-black px-1.5 py-0.5 rounded-md border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
+                              className="inline-flex items-center gap-1 text-sm font-black px-2 py-0.5 rounded-md border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-700 transition-colors leading-none"
                             >
-                              + {badge}
+                              + {type.name}
                             </button>
                           ))}
                         </div>

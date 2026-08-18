@@ -3,7 +3,17 @@ import { getSession, checkIpRateLimit, isCurrentAdmin } from '@/lib/serverAuth';
 import { getSupabase } from '@/lib/supabaseServer';
 import { logError } from '@/lib/log';
 
-const VALID_BADGES = ['EPA 608', 'Spray Foam', 'BPI', 'Radon', 'Lead', 'Mold Testing', 'Forklift'] as const;
+/** A badge may only be assigned if it exists in the badge_types catalogue.
+ *  This used to be a hardcoded array, which meant adding a certification
+ *  needed a code change; it is now whatever an admin has created. */
+async function isKnownBadge(db: ReturnType<typeof getSupabase>, badge: string): Promise<boolean> {
+  const { data, error } = await db.from('badge_types').select('name').eq('name', badge).maybeSingle();
+  if (error) {
+    logError('badges validate', error);
+    return false; // fail closed
+  }
+  return !!data;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!checkIpRateLimit(req)) return res.status(429).json({ error: 'Too many requests.' });
@@ -32,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!userName || typeof userName !== 'string' || userName.length > 80 || !badge) {
       return res.status(400).json({ error: 'userName and badge required.' });
     }
-    if (!(VALID_BADGES as readonly string[]).includes(badge)) return res.status(400).json({ error: 'Invalid badge type.' });
+    if (!(await isKnownBadge(db, badge))) return res.status(400).json({ error: 'Unknown badge type.' });
 
     const { data, error } = await db
       .from('user_badges')
