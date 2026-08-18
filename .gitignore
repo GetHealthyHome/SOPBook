@@ -34,6 +34,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# next-pwa build output
+# service worker build output (Serwist)
 /public/sw.js
+/public/sw.js.map
+/public/swe-worker-*.js
+# left from next-pwa; harmless if absent
 /public/workbox-*.js
