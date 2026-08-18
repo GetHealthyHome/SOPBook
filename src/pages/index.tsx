@@ -542,6 +542,16 @@ const BADGE_PALETTE: Record<string, { bg: string; text: string; border: string; 
 };
 const BADGE_COLOUR_KEYS = Object.keys(BADGE_PALETTE);
 
+/** Admin console sections, in the order an admin needs them: the numbers
+ *  first, then the things they came to change. */
+const ADMIN_TABS = [
+  { key: 'overview',   label: 'Overview' },
+  { key: 'team',       label: 'Team & Badges' },
+  { key: 'compliance', label: 'Compliance' },
+  { key: 'content',    label: 'Content' },
+  { key: 'settings',   label: 'Settings' },
+] as const;
+
 const badgeStyle = (colour?: string) => BADGE_PALETTE[colour ?? 'gray'] ?? BADGE_PALETTE.gray;
 
 const BadgeChip = ({ badge, colour, onRemove }: { badge: string; colour?: string; onRemove?: () => void }) => {
@@ -718,6 +728,8 @@ export default function App() {
   const [oshaSettings, setOshaSettings] = useState<Record<string, string>>({});
   const [oshaSettingsBusy, setOshaSettingsBusy] = useState(false);
   const [oshaSettingsSaved, setOshaSettingsSaved] = useState(false);
+  type AdminTab = 'overview' | 'team' | 'compliance' | 'content' | 'settings';
+  const [adminTab, setAdminTab] = useState<AdminTab>('overview');
 
   const [teamUsers, setTeamUsers] = useState<User[]>([]);
   const [teamUsersLoaded, setTeamUsersLoaded] = useState(false);
@@ -2536,6 +2548,7 @@ export default function App() {
                 key={view}
                 onClick={() => {
                   if (view === 'new') resetSopForm(); // sidebar always starts a blank draft
+                  if (view === 'adminConsole' && currentView !== 'adminConsole') setAdminTab('overview');
                   setCurrentView(view as typeof currentView);
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
@@ -2553,6 +2566,28 @@ export default function App() {
                 )}
               </button>
             ))}
+
+            {/* Admin console sections, nested under their parent. Only while
+                the console is open — a permanent tree of sub-items would push
+                everything else down for the sake of one screen. */}
+            {currentUser.userType === 'admin' && currentView === 'adminConsole' && (
+              <div className="pl-4 ml-3 border-l border-gray-200 space-y-0.5 pt-1">
+                {ADMIN_TABS.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setAdminTab(tab.key)}
+                    aria-current={adminTab === tab.key ? 'page' : undefined}
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${
+                      adminTab === tab.key
+                        ? 'text-emerald-800 bg-emerald-50'
+                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </nav>
           <div className="px-3 py-4 border-t border-gray-100">
             <div className="px-3 py-2 mb-2">
@@ -4977,12 +5012,36 @@ export default function App() {
                   <span className="text-xs uppercase tracking-wider text-emerald-800 font-extrabold flex items-center gap-1">
                     <ShieldIcon /> ADMIN
                   </span>
-                  <h1 className="text-xl font-black text-gray-950 leading-tight">Dashboard</h1>
+                  <h1 className="text-xl font-black text-gray-950 leading-tight">
+                    {ADMIN_TABS.find(t => t.key === adminTab)?.label ?? 'Dashboard'}
+                  </h1>
                 </div>
               </div>
 
-              {/* ---------- Dashboard ---------- */}
-              {(() => {
+              {/* Section switcher. The console had grown to ten panels on one
+                  scroll; grouping them means an admin lands on the numbers and
+                  goes looking for the rest only when they need it. */}
+              <div className="-mx-1 overflow-x-auto">
+                <div className="flex gap-1.5 px-1 pb-1 min-w-max">
+                  {ADMIN_TABS.map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setAdminTab(tab.key)}
+                      aria-current={adminTab === tab.key ? 'page' : undefined}
+                      className={`h-9 px-3.5 rounded-xl text-sm font-black whitespace-nowrap transition-colors border ${
+                        adminTab === tab.key
+                          ? 'bg-emerald-800 border-emerald-800 text-white'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-800'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ---------- Overview ---------- */}
+              {adminTab === 'overview' && (() => {
                 const members = effectiveUsers.filter(u => u.userType !== 'admin' || effectiveUsers.length === 1);
                 const roster = members.length ? members : effectiveUsers;
                 const sopTotal = documents.length;
@@ -5138,6 +5197,7 @@ export default function App() {
                 );
               })()}
 
+              {adminTab === 'content' && (<>
               {/* Admin Pending Notifications viewport */}
               <div className="space-y-2">
                 <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
@@ -5211,10 +5271,11 @@ export default function App() {
                 </div>
                 <ChevronRightIcon />
               </button>
+              </>)}
 
-              {/* Panels grid — single column on mobile, two columns on desktop */}
-              <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-5 lg:space-y-0">
+              <div className="space-y-5">
 
+              {adminTab === 'team' && (<>
               {/* Team Member Management */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -5366,6 +5427,9 @@ export default function App() {
                 </div>
               </div>
 
+              </>)}
+
+              {adminTab === 'compliance' && (<>
               {/* OSHA establishment details — these fill the headers on the
                   300 log, the 300A summary and every 301, plus the 300A
                   certification block. Without them the forms print blanks. */}
@@ -5437,6 +5501,9 @@ export default function App() {
                 </div>
               </div>
 
+              </>)}
+
+              {adminTab === 'team' && (<>
               {/* Badge Management Panel */}
               <div className="space-y-3">
                 <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
@@ -5581,6 +5648,9 @@ export default function App() {
                 </div>
               </div>
 
+              </>)}
+
+              {adminTab === 'content' && (<>
               {/* Seed Default SOPs — shown only when database has no SOPs */}
               {documents.length === 0 && (
                 <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-3">
@@ -5610,6 +5680,9 @@ export default function App() {
                 </div>
               )}
 
+              </>)}
+
+              {adminTab === 'compliance' && (<>
               {/* Matrix List of SOP Read Statuses */}
               <div className="space-y-3">
                 <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">SOP Readers Audit Matrix</h3>
@@ -5678,6 +5751,9 @@ export default function App() {
                 </div>
               </div>
 
+              </>)}
+
+              {adminTab === 'settings' && (<>
               {/* Notification Settings Panel */}
               <div className="space-y-3">
                 <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
@@ -5709,6 +5785,7 @@ export default function App() {
                   </p>
                 </div>
               </div>
+              </>)}
 
               </div>
             </div>
