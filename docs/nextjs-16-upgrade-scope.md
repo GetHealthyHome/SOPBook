@@ -1,6 +1,7 @@
 # Scope: Next.js 12 → 16 upgrade
 
-Scoping only. Nothing in this document has been implemented.
+> **Done.** Completed in one sitting. This document is kept as the record of
+> what was predicted versus what actually happened — see *Outcome* at the end.
 
 Written to close the one finding left open by the August 2026 security review:
 Next 12 is end of life and no longer receives security patches. Seven npm
@@ -190,3 +191,78 @@ the offline and update-path testing needs the whole change present to be
 meaningful. There is no urgency in the sense of active exploitability, but the
 gap widens every month Next 12 goes unpatched, so it belongs on a calendar
 rather than a backlog.
+
+
+---
+
+# Outcome
+
+Implemented in a single pass. Every version is as predicted: **Next 16.3.1,
+React unchanged at 18.2.0, Node already sufficient.**
+
+## What the estimate got right
+
+The inventory held. The build compiled on Next 16 **on the first attempt**,
+with no source changes at all — no page, component or API route needed
+touching. The framework surface really was four imports, and none of them
+moved. Security headers, the API `no-store` policy and every route survived
+untouched.
+
+## What the estimate got wrong
+
+**The ESLint step could not be done first.** The plan called for it as an
+isolated, zero-risk warm-up, but `eslint-config-next` is versioned with Next
+and 16 requires ESLint 9, so the two had to move together. The sequencing was
+wrong on a point the plan was confident about.
+
+**Turbopack was not anticipated at all.** Next 16 enables it by default, and
+`@serwist/next` 9.5.12 is webpack-only, so the build fails outright with a
+webpack config present. The build script now passes `--webpack`.
+
+That failure was loud, which was lucky. The tempting fix — silencing the
+warning with an empty `turbopack: {}` — produces a clean build **and no
+service worker at all**, which is precisely the "works in the office, fails in
+the field" outcome this document warned about.
+
+## The regression the plan predicted, and the tests caught
+
+next-pwa registered a `start-url` route automatically. Because it never
+appeared in the config being ported, it was invisible during the port — the
+four documented rules were carried across faithfully and the fifth,
+undocumented one was dropped.
+
+The result: every piece of reference data cached correctly, and the app itself
+would not open without a network. A tech in a basement would have had a
+perfectly populated cache behind a browser error page. Caught by the offline
+test, fixed with an explicit navigation rule.
+
+## Verification actually performed
+
+17 browser assertions against a production build in headless Chromium:
+
+- **Offline (8)** — worker registers and controls; app shell precached (19
+  entries); the reference-content rule creates its cache; a navigation is
+  cached; **SOP data served from cache with the network off**; **the app opens
+  with the network off**; video never cached anywhere.
+- **Upgrade path (5)** — with next-pwa's caches and registration present, the
+  new worker takes over, exactly one registration remains, none stuck waiting,
+  and the app still renders.
+- **Stale cache sweep (4)** — on first activation the old `workbox-*` and
+  `start-url` caches are deleted and Serwist's own are left intact. This was
+  added after noticing the orphans survived; an app that avoids caching video
+  to protect a tech's storage should not abandon caches on their phone either.
+
+## Security result
+
+**Zero advisories**, from 8 at the start of this work and 18 when the audit
+began. The last two needed a `postcss` bump on a direct pin that Next no
+longer constrained.
+
+## Left undone
+
+The 11 React Compiler lint errors that Next 16's config introduces are set to
+warn rather than error. They flag long-standing patterns — a reset on prop
+change, effects that set state on mount, lazy loading on first view, a timer
+in a ref — none of which is a bug, and none of which has any effect under
+React 18 without the compiler. Fixing them is a real refactor and belongs in
+its own change, not bolted onto a framework upgrade.

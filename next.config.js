@@ -1,59 +1,13 @@
 const isDev = process.env.NODE_ENV === 'development';
 
-/** @type {import('next').NextConfig} */
-const withPWA = require('next-pwa')({
-  dest: 'public',
+// Service worker. The caching rules themselves live in src/sw.ts — Serwist has
+// you write the worker rather than declare it in config, which is why this is
+// only a handful of lines where next-pwa needed fifty.
+const withSerwist = require('@serwist/next').default({
+  swSrc: 'src/sw.ts',
+  swDest: 'public/sw.js',
   disable: isDev,
-  register: true,
-  skipWaiting: true,
-  // Order matters: Workbox uses the first matching route, so the
-  // specific rules below must come before the next-pwa defaults.
-  runtimeCaching: [
-    // Video is deliberately never cached — respects mobile storage
-    // limits on BYOD phones. (The next-pwa defaults would CacheFirst
-    // it, so this bypass must be registered first.)
-    {
-      urlPattern: ({ request, url }) =>
-        request.destination === 'video' || /\.(?:mp4|webm|mov|m4v|avi)$/i.test(url.pathname),
-      handler: 'NetworkOnly',
-    },
-    // Session check: cached so the installed app can restore a
-    // logged-in session while offline. Bounded to the 8-hour session
-    // lifetime so a cached copy never outlives the cookie it mirrors.
-    {
-      urlPattern: ({ url }) => url.pathname === '/api/auth/me',
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'session-check',
-        networkTimeoutSeconds: 3,
-        expiration: { maxEntries: 1, maxAgeSeconds: 8 * 60 * 60 },
-        cacheableResponse: { statuses: [200] },
-      },
-    },
-    // Reference content (SOPs, training, handbook, career, badges):
-    // network-first so crews always see fresh procedures when online,
-    // with the last good copy served instantly when the network is
-    // slow (5s timeout) or gone. GET only — mutations never cache.
-    {
-      urlPattern: ({ url }) =>
-        /^\/api\/(?:sops|training|handbook|career|badges)(?:\/|$)/.test(url.pathname),
-      method: 'GET',
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'sop-data',
-        networkTimeoutSeconds: 5,
-        expiration: { maxEntries: 64, maxAgeSeconds: 7 * 24 * 60 * 60 },
-        cacheableResponse: { statuses: [200] },
-      },
-    },
-    // Everything else under /api/ (auth mutations, admin, uploads,
-    // notifications) is volatile or sensitive — never cached.
-    {
-      urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-      handler: 'NetworkOnly',
-    },
-    ...require('next-pwa/cache'),
-  ],
+  reloadOnOnline: true,
 });
 
 const securityHeaders = [
@@ -106,4 +60,4 @@ const nextConfig = {
   ],
 };
 
-module.exports = withPWA(nextConfig);
+module.exports = withSerwist(nextConfig);
