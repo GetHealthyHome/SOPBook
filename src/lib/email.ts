@@ -201,6 +201,63 @@ export function inviteMessage(opts: { to: string; name: string; link: string; in
   return { to: opts.to, subject: `${opts.resend ? 'Reminder: set' : 'Set'} up your Healthy Home Field Guide account`, text, html };
 }
 
+/**
+ * One email per person, listing everything they still owe.
+ *
+ * This is what the scheduled run sends. Chasing each item separately would
+ * mean somebody behind on four procedures gets four emails in one morning,
+ * which is how a reminder system teaches people to ignore it.
+ */
+export function digestMessage(opts: {
+  to: string;
+  name: string;
+  items: { title: string; kind: 'sop' | 'handbook' }[];
+  link: string;
+}): Message {
+  const n = opts.items.length;
+  const heading = n === 1 ? 'One item needs your sign-off' : `${n} items need your sign-off`;
+  const label = (k: 'sop' | 'handbook') => (k === 'sop' ? 'Procedure' : 'Handbook');
+
+  const text = [
+    `Hi ${opts.name},`,
+    '',
+    n === 1
+      ? 'This has changed since you last acknowledged it, or you have not acknowledged it yet:'
+      : 'These have changed since you last acknowledged them, or you have not acknowledged them yet:',
+    '',
+    ...opts.items.map(i => `  • ${label(i.kind)}: ${i.title}`),
+    '',
+    'Open the Field Guide to read and sign off:',
+    opts.link,
+    '',
+    'You are getting this because the Field Guide checks for outstanding sign-offs on a schedule.',
+  ].join('\n');
+
+  const rows = opts.items.map(i => `
+    <li style="margin:0 0 8px">
+      <span style="display:inline-block;font-size:11px;font-weight:bold;letter-spacing:.06em;text-transform:uppercase;color:#6b7280">${esc(label(i.kind))}</span><br />
+      <strong>${esc(i.title)}</strong>
+    </li>`).join('');
+
+  const html = wrap(heading, `
+    <p style="margin:0 0 14px">Hi ${esc(opts.name)},</p>
+    <p style="margin:0 0 14px">${n === 1
+      ? 'This has changed since you last acknowledged it, or you have not acknowledged it yet:'
+      : 'These have changed since you last acknowledged them, or you have not acknowledged them yet:'}</p>
+    <ul style="margin:0 0 14px;padding:14px 14px 14px 32px;background:#f3f4f6;border-radius:10px;list-style:disc">${rows}</ul>
+    <p style="margin:0;font-size:13px;color:#6b7280">You are getting this because the Field Guide checks for outstanding sign-offs on a schedule.</p>`,
+    'Open the Field Guide', opts.link);
+
+  return {
+    to: opts.to,
+    subject: n === 1
+      ? `Please acknowledge: ${opts.items[0].title}`.slice(0, 180)
+      : `${n} items need your sign-off in the Field Guide`,
+    text,
+    html,
+  };
+}
+
 export function reminderMessage(opts: {
   to: string; name: string; itemTitle: string; itemKind: 'sop' | 'handbook';
   note: string; link: string; sentBy: string;

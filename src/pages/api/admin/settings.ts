@@ -7,6 +7,10 @@ import { logError } from '@/lib/log';
 // dumping ground in app_settings.
 const ALLOWED_KEYS = [
   'notifications_enabled',
+  // Automatic acknowledgement reminders. The cron runs daily; these decide
+  // which days count, who gets chased, and how hard.
+  'reminder_frequency', 'reminder_weekday', 'reminder_monthday',
+  'reminder_scope', 'reminder_grace_days', 'reminder_quiet_days',
   // Establishment details for the OSHA 300 / 300A / 301 form headers and the
   // 300A certification block (29 CFR 1904).
   'osha_establishment_name', 'osha_establishment_street', 'osha_establishment_city',
