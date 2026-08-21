@@ -1,21 +1,16 @@
 /**
- * Outbound email over SMTP.
+ * Outbound email — invitations and acknowledgement reminders.
  *
- * Sends through the company's own Microsoft 365 or Google Workspace mailbox
- * rather than a third-party sending service, so invitations and reminders
- * arrive from a real address the crew already recognises.
+ * Sends through Resend's HTTP API rather than SMTP. For a crew this size the
+ * free tier (3,000 messages a month, 100 a day) is far more than enough, and
+ * an HTTPS POST behaves much better in a serverless function than an SMTP
+ * dialogue does: one short request instead of a multi-step conversation that
+ * can hang on a socket.
  *
- * That choice has one consequence worth knowing: hosted mailboxes throttle
- * hard. Microsoft 365 allows roughly 30 messages a minute and 10,000 a day;
- * Google Workspace is similar. Nothing here should ever send in bulk without
- * the caller bounding the batch — see MAX_BATCH below.
- *
- * Everything is optional. With no SMTP settings configured the app still
- * works: sends are reported as 'skipped' and the admin console falls back to
- * showing an invite link to copy by hand.
+ * Everything is optional. With no API key configured the app still works:
+ * sends are reported as 'skipped' and the admin console falls back to showing
+ * an invite link to copy by hand.
  */
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
 import { logError } from './log';
 
 export interface SendResult {
@@ -23,11 +18,20 @@ export interface SendResult {
   detail: string;
 }
 
-/** Hosted mailboxes throttle; refuse to fan out further than this in one go. */
-export const MAX_BATCH = 40;
+/**
+ * Most recipients in one reminder.
+ *
+ * Resend accepts 100 messages per batch call, and the free tier allows 100 a
+ * day; 50 keeps a single send comfortably inside the daily allowance rather
+ * than spending it all at once.
+ */
+export const MAX_BATCH = 50;
+
+/** Overridable so tests can point at a local stand-in for the API. */
+const apiBase = () => (process.env.RESEND_API_BASE || 'https://api.resend.com').replace(/\/+$/, '');
 
 export function isEmailConfigured(): boolean {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(process.env.RESEND_API_KEY && fromAddress());
 }
 
 /**
@@ -44,27 +48,7 @@ export function appUrl(): string {
 }
 
 function fromAddress(): string {
-  return process.env.SMTP_FROM || process.env.SMTP_USER || '';
-}
-
-// Read env per call rather than at module load: a serverless instance can
-// outlive a configuration change, and freezing the transport at import time
-// would keep using stale credentials until the instance recycled.
-function makeTransport(): Transporter {
-  const port = Number(process.env.SMTP_PORT || 587);
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    // 465 is implicit TLS; 587 starts plaintext and upgrades via STARTTLS.
-    secure: port === 465,
-    requireTLS: port !== 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    // Bound every stage. A hung SMTP dialogue must not hold a serverless
-    // function open until the platform kills it mid-send.
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 20_000,
-  });
+  return process.env.EMAIL_FROM || '';
 }
 
 export interface Message {
@@ -74,44 +58,97 @@ export interface Message {
   html: string;
 }
 
+const payload = (m: Message) => ({
+  from: fromAddress(), to: [m.to], subject: m.subject, text: m.text, html: m.html,
+});
+
 /**
- * Send one message. Never throws — the caller is always doing something more
- * important than the email (creating an account, recording a reminder), and
- * that work must not be lost because a mail server was unreachable.
+ * Turn a Resend error response into something an admin can act on.
+ *
+ * The 403 is worth naming explicitly: until a sending domain is verified,
+ * Resend only permits sending to the account owner's own address. Everything
+ * looks configured, and invitations to the crew fail. "Validation error" would
+ * send someone hunting through the wrong settings entirely.
  */
-export async function sendEmail(msg: Message): Promise<SendResult> {
-  if (!isEmailConfigured()) {
-    return { status: 'skipped', detail: 'SMTP is not configured.' };
-  }
+async function describeFailure(res: Response): Promise<string> {
+  let message = '';
   try {
-    const transport = makeTransport();
-    await transport.sendMail({
-      from: fromAddress(),
-      to: msg.to,
-      subject: msg.subject,
-      text: msg.text,
-      html: msg.html,
+    const body = await res.json() as { message?: string; error?: string; name?: string };
+    message = body?.message || body?.error || body?.name || '';
+  } catch {
+    message = await res.text().catch(() => '');
+  }
+  if (res.status === 401 || res.status === 403) {
+    if (/domain is not verified|only send testing emails|your own email/i.test(message)) {
+      return `${message} — verify your sending domain in Resend before inviting anyone other than the account owner.`;
+    }
+    if (res.status === 401) return `${message || 'Unauthorized'} — check RESEND_API_KEY.`;
+  }
+  if (res.status === 429) return `${message || 'Rate limited'} — Resend's free tier allows 100 emails a day.`;
+  return (message || `HTTP ${res.status}`).slice(0, 300);
+}
+
+async function post(path: string, body: unknown): Promise<{ ok: true } | { ok: false; detail: string }> {
+  // Bound the request. A hung call must not hold a serverless function open
+  // until the platform kills it mid-send.
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 15_000);
+  try {
+    const res = await fetch(`${apiBase()}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: abort.signal,
     });
-    transport.close();
-    return { status: 'sent', detail: '' };
+    if (!res.ok) return { ok: false, detail: await describeFailure(res) };
+    return { ok: true };
   } catch (err) {
     logError('email/send', err);
-    const detail = err instanceof Error ? err.message : String(err);
-    return { status: 'failed', detail: detail.slice(0, 300) };
+    const detail = err instanceof Error
+      ? (err.name === 'AbortError' ? 'Timed out reaching Resend.' : err.message)
+      : String(err);
+    return { ok: false, detail: detail.slice(0, 300) };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 /**
- * Send to several recipients one at a time.
+ * Send one message. Never throws — the caller is always doing something more
+ * important than the email (creating an account, recording a reminder), and
+ * that work must not be lost because a mail provider was unreachable.
+ */
+export async function sendEmail(msg: Message): Promise<SendResult> {
+  if (!isEmailConfigured()) {
+    return { status: 'skipped', detail: 'Email is not configured.' };
+  }
+  const r = await post('/emails', payload(msg));
+  return r.ok ? { status: 'sent', detail: '' } : { status: 'failed', detail: r.detail };
+}
+
+/**
+ * Send to several recipients in one call.
  *
- * Deliberately sequential. A hosted mailbox will start refusing connections
- * if a dozen arrive at once, and a reminder that bounces off a rate limit is
- * worse than one that takes an extra second.
+ * Resend's batch endpoint takes the whole list at once, which keeps a reminder
+ * to the crew inside a single HTTP request. Sending them one at a time would
+ * mean dozens of round trips against a 2-per-second rate limit — slow enough
+ * to risk the function timing out halfway through a send.
+ *
+ * A batch succeeds or fails as a whole, so every recipient gets the same
+ * result. Callers report per-recipient outcomes, and this keeps that shape.
  */
 export async function sendBatch(messages: Message[]): Promise<SendResult[]> {
-  const out: SendResult[] = [];
-  for (const m of messages) out.push(await sendEmail(m));
-  return out;
+  if (!messages.length) return [];
+  if (!isEmailConfigured()) {
+    return messages.map(() => ({ status: 'skipped' as const, detail: 'Email is not configured.' }));
+  }
+  const r = await post('/emails/batch', messages.map(payload));
+  return messages.map(() => r.ok
+    ? { status: 'sent' as const, detail: '' }
+    : { status: 'failed' as const, detail: r.detail });
 }
 
 // ---------------------------------------------------------------------------

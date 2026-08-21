@@ -29,7 +29,7 @@ export interface InviteOutcome {
  * Issue an invitation and email it.
  *
  * The link comes back to the caller as well as going out by mail. That is
- * deliberate: if SMTP is unconfigured or the send fails, the admin can still
+ * deliberate: if email is unconfigured or the send fails, the admin can still
  * copy the link and pass it on, so adding a member never dead-ends on mail
  * server trouble. Only an authenticated admin ever sees it.
  */

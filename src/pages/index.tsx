@@ -5830,9 +5830,9 @@ export default function App() {
                     <p className="text-sm text-amber-900 font-bold leading-snug">
                       Email is not set up yet, so invitations and reminders cannot be sent automatically.
                       Adding a member still works — you will get a link to pass on yourself.
-                      To turn on sending, add <span className="font-mono">SMTP_HOST</span>, <span className="font-mono">SMTP_USER</span>,
-                      {' '}<span className="font-mono">SMTP_PASS</span>, <span className="font-mono">SMTP_FROM</span> and
-                      {' '}<span className="font-mono">APP_URL</span> in your hosting environment.
+                      To turn on sending, add <span className="font-mono">RESEND_API_KEY</span>,
+                      {' '}<span className="font-mono">EMAIL_FROM</span> and <span className="font-mono">APP_URL</span> in
+                      your hosting environment.
                     </p>
                   </div>
                 )}
