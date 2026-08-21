@@ -2,7 +2,7 @@
  * A record of what the app has emailed and whether it landed.
  *
  * Exists so an admin can see that a reminder already went out yesterday
- * rather than sending a fourth one, and so a silent SMTP failure is
+ * rather than sending a fourth one, and so a silent delivery failure is
  * visible in the console instead of only in the server logs.
  */
 import { getSupabase } from './supabaseServer';

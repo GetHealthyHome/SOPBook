@@ -175,7 +175,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!id || typeof id !== 'string') return res.status(400).json({ error: 'id required.' });
     if (scope !== 'all' && scope !== 'division') return res.status(400).json({ error: 'scope must be all or division.' });
     if (!isEmailConfigured()) {
-      return res.status(400).json({ error: 'Email is not set up yet, so reminders cannot be sent. Add the SMTP settings in your hosting environment first.' });
+      return res.status(400).json({ error: 'Email is not set up yet, so reminders cannot be sent. Add RESEND_API_KEY and EMAIL_FROM in your hosting environment first.' });
     }
     const cleanNote = sanitize(String(note ?? ''), 'notes').slice(0, 500);
 
