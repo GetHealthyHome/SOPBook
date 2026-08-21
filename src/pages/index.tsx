@@ -775,6 +775,14 @@ export default function App() {
   const [newBadgeColour, setNewBadgeColour] = useState('emerald');
   const [badgeTypeBusy, setBadgeTypeBusy] = useState(false);
   const [badgeTypeError, setBadgeTypeError] = useState('');
+  // Automatic reminder schedule
+  const [remindSettings, setRemindSettings] = useState<Record<string, string>>({});
+  const [remindSettingsBusy, setRemindSettingsBusy] = useState(false);
+  const [remindSettingsSaved, setRemindSettingsSaved] = useState(false);
+  const [runNowBusy, setRunNowBusy] = useState(false);
+  const [runNowMsg, setRunNowMsg] = useState('');
+  const [showEmailHelp, setShowEmailHelp] = useState(false);
+
   const [oshaSettings, setOshaSettings] = useState<Record<string, string>>({});
   const [oshaSettingsBusy, setOshaSettingsBusy] = useState(false);
   const [oshaSettingsSaved, setOshaSettingsSaved] = useState(false);
@@ -1118,10 +1126,13 @@ export default function App() {
       .then(data => {
         setNotificationsEnabled(data.settings?.notifications_enabled !== 'false');
         const osha: Record<string, string> = {};
+        const remind: Record<string, string> = {};
         for (const [k, v] of Object.entries(data.settings ?? {})) {
           if (k.startsWith('osha_')) osha[k] = String(v ?? '');
+          if (k.startsWith('reminder_')) remind[k] = String(v ?? '');
         }
         setOshaSettings(osha);
+        setRemindSettings(remind);
       })
       .catch(() => {});
   }, [currentUser]);
@@ -5817,13 +5828,89 @@ export default function App() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">👥 Team Members</h3>
-                  <button
-                    onClick={() => { setShowAddUser(v => !v); setNewUserError(''); }}
-                    className="text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
-                  >
-                    {showAddUser ? 'Cancel' : '+ Add Member'}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setShowEmailHelp(v => !v)}
+                      className="w-7 h-7 flex items-center justify-center text-sm font-black text-gray-500 bg-white border border-gray-200 rounded-full hover:border-emerald-300 hover:text-emerald-700 transition-colors"
+                      title="How email invitations work, and how to set them up"
+                      aria-label="Help: setting up email"
+                    >
+                      ?
+                    </button>
+                    <button
+                      onClick={() => { setShowAddUser(v => !v); setNewUserError(''); }}
+                      className="text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5"
+                    >
+                      {showAddUser ? 'Cancel' : '+ Add Member'}
+                    </button>
+                  </div>
                 </div>
+
+                {showEmailHelp && (
+                  <div className="bg-white border border-emerald-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-base font-black text-gray-900">Setting up email</p>
+                        <p className="text-sm text-gray-600 leading-snug mt-0.5">
+                          The Field Guide sends invitations and reminders through Resend. It is free for
+                          up to 3,000 emails a month — far more than this team will use.
+                        </p>
+                      </div>
+                      <button onClick={() => setShowEmailHelp(false)} className="text-sm font-black text-gray-400 hover:text-gray-600 shrink-0">Close</button>
+                    </div>
+
+                    <div className={`rounded-xl p-3 border ${emailConfigured ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                      <p className={`text-sm font-black ${emailConfigured ? 'text-emerald-900' : 'text-amber-900'}`}>
+                        {emailConfigured === null
+                          ? 'Checking whether email is set up…'
+                          : emailConfigured
+                            ? 'Email is set up. Invitations and reminders will send automatically.'
+                            : 'Email is not set up yet. Adding a member still works — you will get a link to pass on yourself.'}
+                      </p>
+                    </div>
+
+                    <ol className="space-y-3 list-decimal list-outside ml-4">
+                      <li className="text-sm text-gray-700 leading-relaxed">
+                        <span className="font-black text-gray-900">Create a Resend account.</span>{' '}
+                        Go to <a href="https://resend.com/signup" target="_blank" rel="noreferrer noopener" className="text-emerald-700 font-bold underline">resend.com/signup</a>{' '}
+                        and sign up. The free plan is all this needs — no card required.
+                      </li>
+                      <li className="text-sm text-gray-700 leading-relaxed">
+                        <span className="font-black text-gray-900">Verify your domain.</span>{' '}
+                        In Resend, open <span className="font-mono text-xs">Domains → Add Domain</span>, enter your company
+                        domain, and add the DNS records it shows you to wherever your domain is managed.
+                        <span className="block mt-1 text-amber-800 font-bold">
+                          Do not skip this. Until a domain is verified, Resend only lets you email
+                          yourself — everything will look configured and invitations to the crew will fail.
+                        </span>
+                      </li>
+                      <li className="text-sm text-gray-700 leading-relaxed">
+                        <span className="font-black text-gray-900">Create an API key.</span>{' '}
+                        <span className="font-mono text-xs">API Keys → Create API Key</span>. Copy it — it starts with{' '}
+                        <span className="font-mono text-xs">re_</span> and is only shown once.
+                      </li>
+                      <li className="text-sm text-gray-700 leading-relaxed">
+                        <span className="font-black text-gray-900">Add three settings in Vercel.</span>{' '}
+                        Open the project, then <span className="font-mono text-xs">Settings → Environment Variables</span>:
+                        <span className="block mt-1.5 space-y-1">
+                          <span className="block"><span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">RESEND_API_KEY</span> — the key from step 3</span>
+                          <span className="block"><span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">EMAIL_FROM</span> — an address at the domain you verified</span>
+                          <span className="block"><span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">APP_URL</span> — this app’s public web address</span>
+                        </span>
+                      </li>
+                      <li className="text-sm text-gray-700 leading-relaxed">
+                        <span className="font-black text-gray-900">Redeploy.</span>{' '}
+                        Environment variables only take effect on a new deployment. Then come back here —
+                        this panel will say email is set up.
+                      </li>
+                    </ol>
+
+                    <p className="text-sm text-gray-500 leading-snug border-t border-gray-100 pt-3">
+                      Adding a member never depends on any of this. If email is not configured, or a send
+                      fails, you always get a link you can text or hand over instead.
+                    </p>
+                  </div>
+                )}
 
                 {emailConfigured === false && (
                   <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5">
@@ -6159,6 +6246,200 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Automatic reminders.
+                  The routine case. A daily job works out who is behind and
+                  sends each of them ONE email listing everything they owe —
+                  rather than an admin picking through a list item by item. */}
+              {(() => {
+                const freq = remindSettings.reminder_frequency ?? 'off';
+                const set = (k: string, v: string) => setRemindSettings(prev => ({ ...prev, [k]: v }));
+                const weekday = remindSettings.reminder_weekday ?? '1';
+                const monthday = remindSettings.reminder_monthday ?? '1';
+                const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+                return (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">Automatic Reminders</h3>
+                    <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+                      <p className="text-sm text-gray-600 leading-snug">
+                        Everyone who is behind gets one email listing everything they still owe. Nobody
+                        gets a separate message per procedure, and nobody is chased twice in the same week.
+                      </p>
+
+                      <div>
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">How often</label>
+                        <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
+                          {(['off','daily','weekly','monthly'] as const).map(f => (
+                            <button
+                              key={f}
+                              onClick={() => set('reminder_frequency', f)}
+                              className={`flex-1 text-sm font-black capitalize transition-colors ${freq === f ? 'bg-emerald-800 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                            >
+                              {f}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {freq === 'weekly' && (
+                        <div>
+                          <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Which day</label>
+                          <select
+                            value={weekday}
+                            onChange={e => set('reminder_weekday', e.target.value)}
+                            className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900"
+                          >
+                            {days.map((d, i) => <option key={d} value={String(i)}>{d}</option>)}
+                          </select>
+                        </div>
+                      )}
+
+                      {freq === 'monthly' && (
+                        <div>
+                          <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Day of the month</label>
+                          <select
+                            value={monthday}
+                            onChange={e => set('reminder_monthday', e.target.value)}
+                            className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900"
+                          >
+                            {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                              <option key={d} value={String(d)}>{d}</option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-400 font-bold mt-1">Stops at 28 so every month has one.</p>
+                        </div>
+                      )}
+
+                      {freq !== 'off' && (
+                        <>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Settle time</label>
+                              <select
+                                value={remindSettings.reminder_grace_days ?? '3'}
+                                onChange={e => set('reminder_grace_days', e.target.value)}
+                                className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900"
+                              >
+                                {['0','1','2','3','5','7','14'].map(d => (
+                                  <option key={d} value={d}>{d === '0' ? 'Immediately' : `After ${d} day${d === '1' ? '' : 's'}`}</option>
+                                ))}
+                              </select>
+                              <p className="text-xs text-gray-400 font-bold mt-1">Wait this long after an edit before chasing it.</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Rest between</label>
+                              <select
+                                value={remindSettings.reminder_quiet_days ?? '7'}
+                                onChange={e => set('reminder_quiet_days', e.target.value)}
+                                className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900"
+                              >
+                                {['0','1','3','7','14','30'].map(d => (
+                                  <option key={d} value={d}>{d === '0' ? 'No limit' : `At most every ${d} day${d === '1' ? '' : 's'}`}</option>
+                                ))}
+                              </select>
+                              <p className="text-xs text-gray-400 font-bold mt-1">How often one person can be chased.</p>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Who gets chased</label>
+                            <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
+                              <button
+                                onClick={() => set('reminder_scope', 'all')}
+                                className={`flex-1 text-sm font-black transition-colors ${(remindSettings.reminder_scope ?? 'all') === 'all' ? 'bg-emerald-800 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                              >
+                                Everyone behind
+                              </button>
+                              <button
+                                onClick={() => set('reminder_scope', 'division')}
+                                className={`flex-1 text-sm font-black transition-colors ${remindSettings.reminder_scope === 'division' ? 'bg-emerald-800 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                              >
+                                Their division only
+                              </button>
+                            </div>
+                            <p className="text-xs text-gray-400 font-bold mt-1">
+                              Division only applies to procedures tagged with one. The handbook always goes to everyone.
+                            </p>
+                          </div>
+                        </>
+                      )}
+
+                      {emailConfigured === false && freq !== 'off' && (
+                        <p className="text-sm text-amber-800 font-bold leading-snug">
+                          Email is not set up yet, so nothing will actually send. Use the ? button above Team Members.
+                        </p>
+                      )}
+
+                      {remindSettingsSaved && <p className="text-sm font-bold text-emerald-700">✓ Schedule saved.</p>}
+                      {runNowMsg && (
+                        <p className={`text-sm font-bold leading-snug ${runNowMsg.startsWith('✓') ? 'text-emerald-700' : 'text-red-600'}`}>{runNowMsg}</p>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button
+                          disabled={remindSettingsBusy}
+                          onClick={async () => {
+                            setRemindSettingsBusy(true);
+                            setRemindSettingsSaved(false);
+                            setRunNowMsg('');
+                            const toSave: Record<string, string> = {
+                              reminder_frequency:   freq,
+                              reminder_weekday:     weekday,
+                              reminder_monthday:    monthday,
+                              reminder_scope:       remindSettings.reminder_scope ?? 'all',
+                              reminder_grace_days:  remindSettings.reminder_grace_days ?? '3',
+                              reminder_quiet_days:  remindSettings.reminder_quiet_days ?? '7',
+                            };
+                            // One PUT per key — the settings endpoint writes a
+                            // single allowlisted key at a time.
+                            for (const [key, value] of Object.entries(toSave)) {
+                              await fetch('/api/admin/settings', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ key, value }),
+                              });
+                            }
+                            setRemindSettings(toSave);
+                            setRemindSettingsBusy(false);
+                            setRemindSettingsSaved(true);
+                            setTimeout(() => setRemindSettingsSaved(false), 4000);
+                          }}
+                          className="flex-1 h-10 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-base font-black disabled:opacity-40 transition-colors"
+                        >
+                          {remindSettingsBusy ? 'Saving…' : 'Save schedule'}
+                        </button>
+                        <button
+                          disabled={runNowBusy || emailConfigured === false}
+                          onClick={async () => {
+                            setRunNowBusy(true);
+                            setRunNowMsg('');
+                            try {
+                              const res = await fetch('/api/cron/reminders', { method: 'POST' });
+                              const d = await res.json().catch(() => ({}));
+                              if (!res.ok) { setRunNowMsg(d.error || 'Could not run the reminders.'); return; }
+                              if (!d.ran) { setRunNowMsg(d.reason || 'Nothing to send.'); return; }
+                              if (!d.total) { setRunNowMsg(d.reason || 'Nobody was due a reminder.'); return; }
+                              const failed = d.failed?.length ? ` ${d.failed.length} did not go through.` : '';
+                              const held = d.quietPeriodSkipped?.length
+                                ? ` ${d.quietPeriodSkipped.length} skipped — chased recently.` : '';
+                              setRunNowMsg(`✓ Emailed ${d.sent} of ${d.total}.${failed}${held}`);
+                              setOutstandingLoaded(false);
+                            } catch {
+                              setRunNowMsg('Could not reach the server.');
+                            } finally {
+                              setRunNowBusy(false);
+                            }
+                          }}
+                          className="h-10 px-4 bg-white border border-gray-200 hover:border-emerald-300 rounded-xl text-sm font-black text-gray-700 disabled:opacity-40 transition-colors"
+                          title="Send now to whoever is due, without waiting for the schedule"
+                        >
+                          {runNowBusy ? 'Sending…' : 'Send now'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Outstanding acknowledgements.
                   An SOP or handbook section counts as outstanding when someone
                   has not signed off on the CURRENT version — so editing a
@@ -6174,6 +6455,11 @@ export default function App() {
                     {outstandingLoading ? 'Checking…' : 'Refresh'}
                   </button>
                 </div>
+
+                <p className="text-sm text-gray-500 leading-snug">
+                  The schedule above handles the routine chasing. This list is for a revision that
+                  cannot wait — pick an item to email the people behind on it right now.
+                </p>
 
                 {outstandingLoading && <ListSkeleton rows={2} />}
 
