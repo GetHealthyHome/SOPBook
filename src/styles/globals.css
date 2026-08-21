@@ -94,6 +94,53 @@ select:focus-visible {
   pointer-events: none;
 }
 
+/* ---------------------------------------------------------------------------
+   Flashcards. Tailwind ships no 3D transform utilities, so the flip lives
+   here. The card is a fixed-height box holding two faces stacked in the same
+   space; rotating the inner element brings the other face forward.
+   --------------------------------------------------------------------------- */
+
+.flip-card {
+  perspective: 1600px;
+}
+
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.flip-card.is-flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+
+.flip-card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.flip-card-back {
+  transform: rotateY(180deg);
+}
+
+/* Without a real 3D rotation the two faces would sit on top of each other, so
+   for reduced-motion users swap them by visibility instead of by rotation. */
+@media (prefers-reduced-motion: reduce) {
+  .flip-card-inner { transition: none; }
+  .flip-card.is-flipped .flip-card-inner { transform: none; }
+  .flip-card-face { backface-visibility: visible; }
+  .flip-card .flip-card-back { transform: none; visibility: hidden; }
+  .flip-card.is-flipped .flip-card-front { visibility: hidden; }
+  .flip-card.is-flipped .flip-card-back { visibility: visible; }
+}
+
 /* Skeleton shimmer used by loading placeholders */
 @keyframes sop-shimmer {
   100% {

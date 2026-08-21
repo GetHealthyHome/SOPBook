@@ -33,6 +33,7 @@ const HistoryIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentCo
 const LogOutIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>;
 const ShieldIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>;
 const HandbookIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>;
+const CardsIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5.5h11a1.5 1.5 0 011.5 1.5v9a1.5 1.5 0 01-1.5 1.5H8A1.5 1.5 0 016.5 16V7A1.5 1.5 0 018 5.5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.5 8.5v10A1.5 1.5 0 005 20h11"/></svg>;
 const AlertIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v3.75m9.303 3.376c.866 1.5-.217 3.374-1.948 3.374H4.645c-1.73 0-2.813-1.874-1.948-3.374l7.108-12.32c.866-1.5 3.032-1.5 3.898 0l7.1 12.32zM12 15.75h.007v.008H12v-.008z"/></svg>;
 const CareerIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>;
 const CalendarIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>;
@@ -132,7 +133,7 @@ function ReferenceSection({ title, text, filled }: { title: string; text: string
 type View =
   | 'login' | 'home' | 'dashboard' | 'new' | 'document' | 'addRevision' | 'adminConsole'
   | 'handbook' | 'careerLadder' | 'careerAdmin' | 'userNotifications' | 'training'
-  | 'trainingAdmin' | 'search' | 'safety' | 'incidents';
+  | 'trainingAdmin' | 'search' | 'safety' | 'incidents' | 'flashcards';
 
 // Chromium's install-prompt event; not yet in the TS DOM lib
 interface BeforeInstallPromptEvent extends Event {
@@ -229,6 +230,23 @@ interface TrainingStep {
   link_url: string;
   link_label: string;
   order_index: number;
+}
+
+/** A flashcard: a scenario on the front, the answer on the back. */
+interface Flashcard {
+  id: number;
+  scenario: string;
+  answer: string;
+  category: string;
+  order_index: number;
+  created_by: string;
+}
+
+interface FlashcardDraft {
+  id: number | null;
+  scenario: string;
+  answer: string;
+  category: string;
 }
 
 /** Authored safety content — OSHA-style overviews and toolbox talks. */
@@ -579,6 +597,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<View>('login');
   // Breadcrumb of previously visited views, powering the global Back button
   const [viewHistory, setViewHistory] = useState<View[]>([]);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
   const skipHistoryPush = useRef(false);
   const lastView = useRef<View>('login');
 
@@ -728,6 +747,20 @@ export default function App() {
   const [oshaSettings, setOshaSettings] = useState<Record<string, string>>({});
   const [oshaSettingsBusy, setOshaSettingsBusy] = useState(false);
   const [oshaSettingsSaved, setOshaSettingsSaved] = useState(false);
+  // Flashcards
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [flashLoaded, setFlashLoaded] = useState(false);
+  const [flashLoading, setFlashLoading] = useState(false);
+  const [flashError, setFlashError] = useState('');
+  const [flashIndex, setFlashIndex] = useState(0);
+  const [flashFlipped, setFlashFlipped] = useState(false);
+  const [flashCategory, setFlashCategory] = useState('all');
+  const [flashOrder, setFlashOrder] = useState<number[] | null>(null); // shuffled ids
+  const [flashSeen, setFlashSeen] = useState<Set<number>>(new Set());
+  const [flashDraft, setFlashDraft] = useState<FlashcardDraft | null>(null);
+  const [flashSaving, setFlashSaving] = useState(false);
+  const [flashFormError, setFlashFormError] = useState('');
+  const [flashDeleteConfirm, setFlashDeleteConfirm] = useState<number | null>(null);
   type AdminTab = 'overview' | 'team' | 'compliance' | 'content' | 'settings';
   const [adminTab, setAdminTab] = useState<AdminTab>('overview');
 
@@ -984,6 +1017,19 @@ export default function App() {
       .catch(() => {});
   }, [currentUser]);
 
+  // Open every screen at its top.
+  //
+  // The body is a scrolling container rather than the window, so it keeps its
+  // offset when the view swaps underneath it — open a long SOP, go back, pick
+  // another section, and it lands halfway down. Reset on anything that
+  // replaces the content: the view itself, a document or module opening, and
+  // the admin console's own sections.
+  useEffect(() => {
+    bodyScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    // Belt and braces for any layout where the window is the scroller.
+    if (typeof window !== 'undefined') window.scrollTo(0, 0);
+  }, [currentView, adminTab, selectedDoc?.id, openTraining?.id]);
+
   // Lockout countdown ticker
   useEffect(() => {
     if (lockoutSeconds <= 0) {
@@ -1139,6 +1185,13 @@ export default function App() {
   useEffect(() => {
     if (currentUser && !divisionPhotosLoaded) loadDivisionPhotos();
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load flashcards on first visit
+  useEffect(() => {
+    if (currentView === 'flashcards' && currentUser && !flashLoaded && !flashLoading) {
+      loadFlashcards();
+    }
+  }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load incident reports on first visit to the Incidents view
   useEffect(() => {
@@ -1553,6 +1606,74 @@ export default function App() {
     const [item] = reordered.splice(index, 1);
     reordered.splice(target, 0, item);
     await persistSafetyOrder(reordered, safetyModules);
+  };
+
+  // ---- Flashcards ---------------------------------------------------------
+  const loadFlashcards = async () => {
+    setFlashLoading(true);
+    setFlashError('');
+    try {
+      const res = await fetch('/api/flashcards');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setFlashcards(data.cards ?? []);
+      setFlashLoaded(true);
+    } catch (err) {
+      setFlashError(err instanceof Error ? err.message : 'Could not load flashcards.');
+    } finally {
+      setFlashLoading(false);
+    }
+  };
+
+  const blankFlashDraft = (): FlashcardDraft => ({ id: null, scenario: '', answer: '', category: '' });
+
+  const saveFlashDraft = async () => {
+    if (!flashDraft) return;
+    if (!flashDraft.scenario.trim()) { setFlashFormError('Write the scenario for the front of the card.'); return; }
+    setFlashSaving(true);
+    setFlashFormError('');
+    try {
+      const res = await fetch('/api/flashcards', {
+        method: flashDraft.id === null ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: flashDraft.id ?? undefined,
+          scenario: flashDraft.scenario,
+          answer: flashDraft.answer,
+          category: flashDraft.category.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.card) throw new Error(data.error || 'Save failed.');
+      setFlashcards(prev => {
+        const exists = prev.some(c => c.id === data.card.id);
+        return exists ? prev.map(c => (c.id === data.card.id ? data.card : c)) : [...prev, data.card];
+      });
+      setFlashDraft(null);
+    } catch (err) {
+      setFlashFormError(err instanceof Error ? err.message : 'Save failed.');
+    } finally {
+      setFlashSaving(false);
+    }
+  };
+
+  const deleteFlashcard = async (id: number) => {
+    setFlashSaving(true);
+    try {
+      const res = await fetch('/api/flashcards', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setFlashcards(prev => prev.filter(c => c.id !== id));
+      setFlashIndex(0);
+      setFlashFlipped(false);
+    } catch (err) {
+      console.error('deleteFlashcard failed:', err);
+    }
+    setFlashDeleteConfirm(null);
+    setFlashSaving(false);
   };
 
   // ---- Incident reports ---------------------------------------------------
@@ -2489,10 +2610,13 @@ export default function App() {
 
   const { totalSOPsCount, totalTeamSize, actualReadLogsCount, aggregateComplianceRate } = useMemo(() => {
     const knownTeamSize = effectiveUsers.length;
-    const uniqueReaderCount = new Set(documents.flatMap(d => d.readLogs.map(l => l.userName))).size;
+    // Guarded like every other readLogs read in this file. The API always
+    // sends the array, but this runs during render, so one SOP arriving
+    // without it would take the whole app down rather than one number.
+    const uniqueReaderCount = new Set(documents.flatMap(d => (d.readLogs ?? []).map(l => l.userName))).size;
     const teamSize = Math.max(knownTeamSize, uniqueReaderCount);
     const sopCount = documents.length;
-    const readCount = documents.reduce((sum, doc) => sum + doc.readLogs.length, 0);
+    const readCount = documents.reduce((sum, doc) => sum + (doc.readLogs?.length ?? 0), 0);
     const potential = sopCount * teamSize;
     const compliance = potential > 0 ? Math.round((readCount / potential) * 100) : 100;
     return { totalSOPsCount: sopCount, totalTeamSize: teamSize, actualReadLogsCount: readCount, aggregateComplianceRate: compliance };
@@ -2538,6 +2662,7 @@ export default function App() {
               { view: 'training', label: 'Training', icon: <TrainingIcon />, match: ['training','trainingAdmin'] },
               { view: 'safety', label: 'Safety', icon: <ShieldIcon />, match: ['safety'] },
               { view: 'incidents', label: 'Incidents', icon: <AlertIcon />, match: ['incidents'] },
+              { view: 'flashcards', label: 'Flashcards', icon: <CardsIcon />, match: ['flashcards'] },
               { view: 'userNotifications', label: 'Notifications', icon: <BellIcon />, match: ['userNotifications'] },
               ...(currentUser.userType === 'admin' ? [
                 { view: 'new', label: 'Draft SOP', icon: <PlusIcon />, match: ['new'] },
@@ -2684,7 +2809,7 @@ export default function App() {
         )}
 
         {/* View Router Body Viewport */}
-        <div className="flex-1 overflow-y-auto pb-24 lg:pb-8 px-5 lg:px-8 pt-4 lg:pt-8 lg:max-w-4xl lg:mx-auto lg:w-full">
+        <div ref={bodyScrollRef} className="flex-1 overflow-y-auto pb-24 lg:pb-8 px-5 lg:px-8 pt-4 lg:pt-8 lg:max-w-4xl lg:mx-auto lg:w-full">
 
           {/* VIEW: COMPREHENSIVE LOGIN PORTAL */}
           {currentView === 'login' && (
@@ -3827,6 +3952,295 @@ export default function App() {
             );
           })()}
 
+          {/* VIEW: FLASHCARDS — a scenario on the front, the answer on the
+              back. Recall rather than re-reading, which is what actually makes
+              a procedure stick. */}
+          {currentView === 'flashcards' && currentUser && (() => {
+            const isAdmin = currentUser.userType === 'admin';
+
+            const categories = Array.from(new Set(flashcards.map(c => c.category).filter(Boolean))).sort();
+            const pool = flashCategory === 'all'
+              ? flashcards
+              : flashcards.filter(c => c.category === flashCategory);
+
+            // A shuffle is stored as an id order so it survives a re-render and
+            // is not re-rolled on every keystroke elsewhere.
+            const ordered = flashOrder
+              ? (flashOrder.map(id => pool.find(c => c.id === id)).filter(Boolean) as Flashcard[])
+              : pool;
+            const deck = ordered.length ? ordered : pool;
+
+            const total = deck.length;
+            const idx = total ? Math.min(flashIndex, total - 1) : 0;
+            const card = deck[idx];
+            const seenCount = deck.filter(c => flashSeen.has(c.id)).length;
+
+            const go = (next: number) => {
+              if (!total) return;
+              setFlashFlipped(false);
+              setFlashIndex(((next % total) + total) % total);
+            };
+            const flip = () => {
+              setFlashFlipped(f => !f);
+              if (card) setFlashSeen(prev => new Set(prev).add(card.id));
+            };
+            const shuffle = () => {
+              const ids = pool.map(c => c.id);
+              for (let i = ids.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [ids[i], ids[j]] = [ids[j], ids[i]];
+              }
+              setFlashOrder(ids);
+              setFlashIndex(0);
+              setFlashFlipped(false);
+            };
+
+            return (
+              <div className="space-y-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span className="p-3 bg-indigo-50 text-indigo-700 rounded-2xl flex-shrink-0">
+                      <CardsIcon />
+                    </span>
+                    <div className="min-w-0">
+                      <h1 className="text-2xl font-black text-gray-950 tracking-tight leading-tight">Flashcards</h1>
+                      <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">
+                        A situation on the front. Work out your answer, then turn the card over.
+                      </p>
+                    </div>
+                  </div>
+                  {isAdmin && !flashDraft && (
+                    <button
+                      onClick={() => { setFlashFormError(''); setFlashDraft(blankFlashDraft()); }}
+                      className="h-10 px-3 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl text-sm font-black flex items-center gap-1 flex-shrink-0 transition-colors"
+                    >
+                      <PlusIcon /> Add
+                    </button>
+                  )}
+                </div>
+
+                {/* Admin builder */}
+                {isAdmin && flashDraft && (
+                  <div className="bg-white border-2 border-indigo-200 rounded-2xl p-4 space-y-3.5 shadow-sm">
+                    <h2 className="text-base font-black text-gray-950">
+                      {flashDraft.id === null ? 'New flashcard' : 'Edit flashcard'}
+                    </h2>
+                    {flashFormError && (
+                      <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm font-semibold">
+                        &#9888; {flashFormError}
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-black text-gray-600 uppercase tracking-wider mb-1">
+                        Front — the scenario
+                      </label>
+                      <RichTextarea
+                        rows={4}
+                        value={flashDraft.scenario}
+                        onChange={v => setFlashDraft({ ...flashDraft, scenario: v })}
+                        placeholder={'A situation someone could actually meet on a job.\n\ne.g. "You open a panel and find the disconnect already pulled, but no lock and no tag. What do you do?"'}
+                        className="w-full p-3 bg-white border border-gray-200 rounded-xl text-base text-gray-900 leading-relaxed focus:border-indigo-600 focus:outline-none shadow-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-gray-600 uppercase tracking-wider mb-1">
+                        Back — the answer
+                      </label>
+                      <RichTextarea
+                        rows={6}
+                        value={flashDraft.answer}
+                        onChange={v => setFlashDraft({ ...flashDraft, answer: v })}
+                        placeholder={'What to do, and why it matters. The why is what makes it stick.'}
+                        className="w-full p-3 bg-white border border-gray-200 rounded-xl text-base text-gray-900 leading-relaxed focus:border-indigo-600 focus:outline-none shadow-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-gray-600 uppercase tracking-wider mb-1">
+                        Category (optional)
+                      </label>
+                      <input
+                        value={flashDraft.category}
+                        onChange={e => setFlashDraft({ ...flashDraft, category: e.target.value })}
+                        list="flash-categories"
+                        placeholder="e.g. Electrical, Ladders, HVAC"
+                        className="w-full h-11 px-3.5 bg-white border border-gray-200 rounded-xl text-base text-gray-900 focus:border-indigo-600 focus:outline-none shadow-xs"
+                      />
+                      <datalist id="flash-categories">
+                        {categories.map(c => <option key={c} value={c} />)}
+                      </datalist>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => { setFlashDraft(null); setFlashFormError(''); }}
+                        className="flex-1 h-11 border border-gray-200 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50">
+                        Cancel
+                      </button>
+                      <button onClick={saveFlashDraft} disabled={flashSaving}
+                        className="flex-1 h-11 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl text-sm font-black disabled:opacity-50 transition-colors">
+                        {flashSaving ? 'Saving…' : 'Save card'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {flashLoading && <ListSkeleton rows={2} />}
+
+                {flashError && !flashLoading && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <p className="text-sm text-amber-900 font-semibold">{flashError}</p>
+                  </div>
+                )}
+
+                {!flashLoading && !flashError && flashcards.length === 0 && !flashDraft && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center">
+                    <p className="text-base font-black text-gray-900">No flashcards yet</p>
+                    <p className="text-sm text-gray-600 mt-1 leading-relaxed max-w-[320px] mx-auto">
+                      {isAdmin
+                        ? 'Use Add to write the first one. A good card poses a situation rather than asking for a definition.'
+                        : 'Cards will appear here once an admin adds them.'}
+                    </p>
+                  </div>
+                )}
+
+                {/* Category filter */}
+                {categories.length > 0 && flashcards.length > 0 && (
+                  <div className="-mx-1 overflow-x-auto">
+                    <div className="flex gap-1.5 px-1 pb-1 min-w-max">
+                      {['all', ...categories].map(c => (
+                        <button
+                          key={c}
+                          onClick={() => { setFlashCategory(c); setFlashOrder(null); setFlashIndex(0); setFlashFlipped(false); }}
+                          className={`h-9 px-3.5 rounded-xl text-sm font-black whitespace-nowrap border transition-colors ${
+                            flashCategory === c
+                              ? 'bg-indigo-700 border-indigo-700 text-white'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-300'
+                          }`}
+                        >
+                          {c === 'all' ? `All (${flashcards.length})` : c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* The deck */}
+                {total > 0 && card && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm font-bold text-gray-500">
+                      <span>Card {idx + 1} of {total}</span>
+                      <span>{seenCount} of {total} turned over</span>
+                    </div>
+                    <span className="block w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <span className="block h-full bg-indigo-600 transition-all duration-300"
+                        style={{ width: `${total ? ((idx + 1) / total) * 100 : 0}%` }} />
+                    </span>
+
+                    <div
+                      className={`flip-card ${flashFlipped ? 'is-flipped' : ''} h-[340px] sm:h-[380px] cursor-pointer select-none`}
+                      onClick={flip}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
+                        if (e.key === 'ArrowRight') go(idx + 1);
+                        if (e.key === 'ArrowLeft') go(idx - 1);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={flashFlipped ? 'Answer. Activate to see the scenario again.' : 'Scenario. Activate to reveal the answer.'}
+                    >
+                      <div className="flip-card-inner">
+                        {/* Front */}
+                        <div className="flip-card-face flip-card-front bg-white border-2 border-indigo-200 rounded-2xl p-5 shadow-sm">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-black text-indigo-700 uppercase tracking-widest">Scenario</span>
+                            {card.category && (
+                              <span className="text-xs font-black text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">{card.category}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 flex items-center">
+                            <RichText className="text-lg text-gray-900 leading-relaxed font-medium" text={card.scenario} />
+                          </div>
+                          <p className="text-xs text-gray-400 font-bold text-center pt-3">Tap to turn over</p>
+                        </div>
+
+                        {/* Back */}
+                        <div className="flip-card-face flip-card-back bg-indigo-900 border-2 border-indigo-900 rounded-2xl p-5 shadow-sm">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-black text-indigo-200 uppercase tracking-widest">Answer</span>
+                            {card.category && (
+                              <span className="text-xs font-black text-indigo-100 bg-indigo-800 px-2 py-0.5 rounded-md">{card.category}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 overflow-y-auto">
+                            {card.answer
+                              ? <RichText className="text-base text-white leading-relaxed" text={card.answer} />
+                              : <p className="text-base text-indigo-200 italic">No answer written on this card yet.</p>}
+                          </div>
+                          <p className="text-xs text-indigo-300 font-bold text-center pt-3">Tap to turn back</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => go(idx - 1)}
+                        className="h-11 px-4 bg-white border border-gray-200 hover:border-indigo-300 rounded-xl text-sm font-black text-gray-700 transition-colors"
+                      >
+                        &#8592; Back
+                      </button>
+                      <button
+                        onClick={shuffle}
+                        className="h-11 px-4 bg-white border border-gray-200 hover:border-indigo-300 rounded-xl text-sm font-black text-gray-700 transition-colors"
+                      >
+                        Shuffle
+                      </button>
+                      <button
+                        onClick={() => go(idx + 1)}
+                        className="flex-1 h-11 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl text-sm font-black transition-colors"
+                      >
+                        Next &#8594;
+                      </button>
+                    </div>
+
+                    {isAdmin && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => { setFlashFormError(''); setFlashDraft({ id: card.id, scenario: card.scenario, answer: card.answer || '', category: card.category || '' }); }}
+                          className="h-10 px-3 bg-white border border-gray-200 hover:border-emerald-300 rounded-xl text-sm font-black text-gray-700"
+                        >
+                          Edit this card
+                        </button>
+                        {flashDeleteConfirm === card.id ? (
+                          <>
+                            <button onClick={() => deleteFlashcard(card.id)} disabled={flashSaving}
+                              className="h-10 px-3 bg-red-600 text-white rounded-xl text-sm font-black disabled:opacity-50">
+                              Confirm
+                            </button>
+                            <button onClick={() => setFlashDeleteConfirm(null)}
+                              className="h-10 px-2 text-gray-600 rounded-xl text-sm font-black">
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={() => setFlashDeleteConfirm(card.id)}
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete this card">
+                            <TrashIcon />
+                          </button>
+                        )}
+                        <span className="ml-auto text-xs text-gray-400 font-bold">by {card.created_by || '—'}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {flashcards.length > 0 && total === 0 && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center">
+                    <p className="text-sm text-gray-600 font-semibold">No cards in that category.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* VIEW: GLOBAL SEARCH */}
           {currentView === 'search' && currentUser && (() => {
             const q = globalQuery.trim().toLowerCase();
@@ -3987,6 +4401,12 @@ export default function App() {
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 9v3.75m9.303 3.376c.866 1.5-.217 3.374-1.948 3.374H4.645c-1.73 0-2.813-1.874-1.948-3.374l7.108-12.32c.866-1.5 3.032-1.5 3.898 0l7.1 12.32zM12 15.75h.007v.008H12v-.008z"/></svg>
                     </span>
                     <span className="min-w-0"><span className={label}>Incidents</span></span>
+                  </button>
+                  <button onClick={() => setCurrentView('flashcards')} className={tile('bg-indigo-700 hover:bg-indigo-800')}>
+                    <span className={circle('text-indigo-700')}>
+                      <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 5.5h11a1.5 1.5 0 011.5 1.5v9a1.5 1.5 0 01-1.5 1.5H8A1.5 1.5 0 016.5 16V7A1.5 1.5 0 018 5.5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3.5 8.5v10A1.5 1.5 0 005 20h11"/></svg>
+                    </span>
+                    <span className="min-w-0"><span className={label}>Flashcards</span></span>
                   </button>
                   <button onClick={() => setCurrentView('userNotifications')} className={tile('bg-rose-600 hover:bg-rose-700')}>
                     <span className={circle('text-rose-600')}>
