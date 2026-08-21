@@ -111,3 +111,30 @@ export function sanitize(value: string, field: keyof typeof MAX_LENGTHS = 'defau
     .trim()
     .slice(0, max);
 }
+
+// ---------------------------------------------------------------------------
+// Email addresses
+// ---------------------------------------------------------------------------
+
+/** RFC 5321's practical ceiling. */
+export const MAX_EMAIL_LEN = 254;
+
+/**
+ * Normalise an address for storage and comparison: trimmed and lowercased.
+ * Case is not significant for routing in practice, and storing one canonical
+ * form is what keeps the unique index honest.
+ */
+export function normalizeEmail(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase().slice(0, MAX_EMAIL_LEN);
+}
+
+/**
+ * A deliberately permissive check: one @, something either side, a dot in the
+ * domain, and no whitespace, quotes or angle brackets. Stricter patterns
+ * reject valid addresses, and the only real test of an address is whether
+ * mail to it arrives — which the send itself reports.
+ */
+export function isValidEmail(value: string): boolean {
+  if (!value || value.length > MAX_EMAIL_LEN) return false;
+  return /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;.]{2,}$/.test(value);
+}

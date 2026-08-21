@@ -36,6 +36,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (error) throw error;
 
     if (dbUser) {
+      // An invited member who has not redeemed their link yet has no hash.
+      // Say so plainly rather than "invalid credentials": they typed nothing
+      // wrong, and the fix is a new invitation, not another guess. This does
+      // confirm the account exists, which is an accepted trade — the invite
+      // token still lives only in their inbox.
+      if (!dbUser.password_hash) {
+        return res.status(403).json({ error: 'Your account is set up but has no password yet. Use the "Set your password" link in your invitation email, or ask an administrator to resend it.' });
+      }
       if (!verifyPassword(password, dbUser.password_hash)) {
         return res.status(401).json({ error: 'Invalid credentials.' });
       }

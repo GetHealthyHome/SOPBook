@@ -176,9 +176,40 @@ interface SOP {
 }
 
 interface User {
-  name: string;
-  role: string;      // Division (HVAC, Home Performance, Sales, Front Office)
+  name: string;      // First and last name — this is what they sign in with
+  role: string;      // Job title, e.g. "Install Tech", "Operations Manager"
   userType: 'admin' | 'user'; // Explicit permissions restriction
+  /** Where invitations and reminders go. Blank on accounts added before
+   *  email existed, which the Team tab flags until they are filled in. */
+  email?: string;
+  /** One of DIVISIONS. Matches SOP categories, so a reminder about an HVAC
+   *  procedure can be aimed at the HVAC crew. Blank means unassigned. */
+  division?: string;
+  /** Invited but has not set a password yet, so they cannot sign in. */
+  pending?: boolean;
+}
+
+/** Divisions a member can belong to — the same list SOPs are tagged with. */
+const DIVISIONS = ['HVAC', 'Home Performance', 'Sales', 'Testing', 'Safety'];
+
+interface PendingInvite {
+  name: string;
+  role: string;
+  email: string;
+  division: string;
+  addedAt: string;
+  invite: { sentAt: string; expiresAt: string; expired: boolean } | null;
+}
+
+interface OutstandingItem {
+  kind: 'sop' | 'handbook';
+  id: string;
+  title: string;
+  divisions: string[];
+  version: string;
+  outstanding: { name: string; email: string; division: string }[];
+  unreachable: string[];
+  lastRemindedAt: string | null;
 }
 
 interface CareerTask {
@@ -770,8 +801,33 @@ export default function App() {
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState('');
   const [newUserType, setNewUserType] = useState<'admin' | 'user'>('user');
-  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserDivision, setNewUserDivision] = useState('');
   const [newUserError, setNewUserError] = useState('');
+  const [newUserBusy, setNewUserBusy] = useState(false);
+
+  // Invitations: the link the last add/resend produced, kept on screen so an
+  // admin can pass it on by hand when email is unconfigured or a send failed.
+  const [inviteResult, setInviteResult] = useState<{ name: string; status: string; detail: string; link: string } | null>(null);
+  const [inviteBusyFor, setInviteBusyFor] = useState<string | null>(null);
+  const [emailConfigured, setEmailConfigured] = useState<boolean | null>(null);
+
+  // Editing an existing member's email / division / access
+  const [editUserFor, setEditUserFor] = useState<string | null>(null);
+  const [editUserDraft, setEditUserDraft] = useState<{ role: string; email: string; division: string; userType: 'admin' | 'user' } | null>(null);
+  const [editUserMsg, setEditUserMsg] = useState('');
+  const [editUserBusy, setEditUserBusy] = useState(false);
+
+  // Acknowledgement chasing
+  const [outstanding, setOutstanding] = useState<OutstandingItem[]>([]);
+  const [outstandingLoaded, setOutstandingLoaded] = useState(false);
+  const [outstandingLoading, setOutstandingLoading] = useState(false);
+  const [outstandingError, setOutstandingError] = useState('');
+  const [remindOpenFor, setRemindOpenFor] = useState<string | null>(null);
+  const [remindScope, setRemindScope] = useState<'all' | 'division'>('all');
+  const [remindNote, setRemindNote] = useState('');
+  const [remindBusy, setRemindBusy] = useState(false);
+  const [remindMsg, setRemindMsg] = useState('');
 
   // Admin password reset (per team member)
   const [resetPwFor, setResetPwFor] = useState<string | null>(null);
@@ -969,6 +1025,59 @@ export default function App() {
       .then(data => { setTeamUsers(data.users ?? []); setTeamUsersLoaded(true); })
       .catch(() => setTeamUsersLoaded(true));
   }, [currentUser, teamUsersLoaded]);
+
+  // Who still owes an acknowledgement. Loaded when the Team tab is opened
+  // rather than at sign-in: it reads every SOP and every acknowledgement, and
+  // only an admin looking at that tab has any use for it.
+  const loadOutstanding = useCallback(async () => {
+    setOutstandingLoading(true);
+    setOutstandingError('');
+    try {
+      const res = await fetch('/api/admin/reminders');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOutstandingError(data.error || 'Could not work out who still owes a sign-off.');
+      } else {
+        setOutstanding(data.items ?? []);
+        setEmailConfigured(Boolean(data.emailConfigured));
+      }
+    } catch {
+      setOutstandingError('Could not reach the server.');
+    } finally {
+      setOutstandingLoading(false);
+      setOutstandingLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentUser?.userType !== 'admin') return;
+    if (currentView !== 'adminConsole' || adminTab !== 'team') return;
+    if (outstandingLoaded || outstandingLoading) return;
+    loadOutstanding();
+  }, [currentUser, currentView, adminTab, outstandingLoaded, outstandingLoading, loadOutstanding]);
+
+  /** Send (or resend) an invitation and surface the link for hand-delivery. */
+  const resendInvite = useCallback(async (name: string) => {
+    setInviteBusyFor(name);
+    setInviteResult(null);
+    try {
+      const res = await fetch('/api/admin/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInviteResult({ name, status: 'failed', detail: data.error || 'Could not resend the invitation.', link: '' });
+      } else {
+        setInviteResult({ name, ...data.invite });
+      }
+    } catch {
+      setInviteResult({ name, status: 'failed', detail: 'Could not reach the server.', link: '' });
+    } finally {
+      setInviteBusyFor(null);
+    }
+  }, []);
 
   // Load notifications after login (admin only)
   useEffect(() => {
@@ -2591,6 +2700,14 @@ export default function App() {
   const effectiveUsers: User[] = useMemo(() => teamUsers.length > 0
     ? teamUsers
     : PRESET_ACCOUNTS.map(a => ({ ...a, userType: a.userType as 'admin' | 'user' })), [teamUsers]);
+
+  // Accounts that predate the email field. They cannot be invited or reminded
+  // until someone fills one in, so the Team tab says so rather than silently
+  // leaving them out of every send.
+  const membersMissingEmail = useMemo(
+    () => teamUsers.filter(u => !u.email).map(u => u.name),
+    [teamUsers],
+  );
 
   const filteredDocs = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -5708,73 +5825,191 @@ export default function App() {
                   </button>
                 </div>
 
+                {emailConfigured === false && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5">
+                    <p className="text-sm text-amber-900 font-bold leading-snug">
+                      Email is not set up yet, so invitations and reminders cannot be sent automatically.
+                      Adding a member still works — you will get a link to pass on yourself.
+                      To turn on sending, add <span className="font-mono">SMTP_HOST</span>, <span className="font-mono">SMTP_USER</span>,
+                      {' '}<span className="font-mono">SMTP_PASS</span>, <span className="font-mono">SMTP_FROM</span> and
+                      {' '}<span className="font-mono">APP_URL</span> in your hosting environment.
+                    </p>
+                  </div>
+                )}
+
+                {membersMissingEmail.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5">
+                    <p className="text-sm text-amber-900 font-bold leading-snug">
+                      {membersMissingEmail.length === 1
+                        ? `${membersMissingEmail[0]} has no email address on file and cannot be sent invitations or reminders.`
+                        : `${membersMissingEmail.length} team members have no email address on file and cannot be sent invitations or reminders: ${membersMissingEmail.join(', ')}.`}
+                      {' '}Use Edit on each to add one.
+                    </p>
+                  </div>
+                )}
+
                 {showAddUser && (
                   <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3">
                     <p className="text-sm font-black text-gray-500 uppercase tracking-wider">New Team Member</p>
+                    <p className="text-sm text-gray-600 leading-snug">
+                      They will get an email with a link to set their own password. You never see or choose it.
+                    </p>
                     {newUserError && <p className="text-sm text-red-600 font-bold">{newUserError}</p>}
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Full Name</label>
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">First and last name</label>
                         <input value={newUserName} onChange={e => setNewUserName(e.target.value)} placeholder="e.g., Jordan Blake" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none" />
+                        <p className="text-xs text-gray-400 font-bold mt-1">This is what they sign in with.</p>
                       </div>
                       <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Division</label>
-                        <select value={newUserRole} onChange={e => setNewUserRole(e.target.value)} className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900">
-                          <option value="">Select division…</option>
-                          <option value="HVAC">HVAC</option>
-                          <option value="Home Performance">Home Performance</option>
-                          <option value="Sales">Sales</option>
-                          <option value="Front Office">Front Office</option>
-                        </select>
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Email</label>
+                        <input type="email" autoComplete="off" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} placeholder="jordan@example.com" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none" />
+                        <p className="text-xs text-gray-400 font-bold mt-1">Where the invitation goes.</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Password</label>
-                        <input type="password" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} placeholder="Min 8 characters" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none" />
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Role or title</label>
+                        <input value={newUserRole} onChange={e => setNewUserRole(e.target.value)} placeholder="e.g., Install Tech" className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none" />
                       </div>
                       <div>
-                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Access Level</label>
-                        <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
-                          <button onClick={() => setNewUserType('user')} className={`flex-1 text-sm font-black transition-colors ${newUserType === 'user' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>User</button>
-                          <button onClick={() => setNewUserType('admin')} className={`flex-1 text-sm font-black transition-colors ${newUserType === 'admin' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>Admin</button>
-                        </div>
+                        <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Division</label>
+                        <select value={newUserDivision} onChange={e => setNewUserDivision(e.target.value)} className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900">
+                          <option value="">No division</option>
+                          {DIVISIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                        <p className="text-xs text-gray-400 font-bold mt-1">Lets you chase sign-offs by division.</p>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Access Level</label>
+                      <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden max-w-[240px]">
+                        <button onClick={() => setNewUserType('user')} className={`flex-1 text-sm font-black transition-colors ${newUserType === 'user' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>User</button>
+                        <button onClick={() => setNewUserType('admin')} className={`flex-1 text-sm font-black transition-colors ${newUserType === 'admin' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>Admin</button>
                       </div>
                     </div>
                     <button
+                      disabled={newUserBusy}
                       onClick={async () => {
                         setNewUserError('');
-                        if (!newUserName.trim() || !newUserRole.trim() || !newUserPassword) { setNewUserError('All fields are required.'); return; }
-                        const res = await fetch('/api/admin/users', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ name: newUserName.trim(), role: newUserRole.trim(), userType: newUserType, password: newUserPassword }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok) { setNewUserError(data.error ?? 'Failed to add user.'); return; }
-                        setTeamUsers(prev => [...prev, data.user]);
-                        setNewUserName(''); setNewUserRole(''); setNewUserPassword(''); setNewUserType('user');
-                        setShowAddUser(false);
+                        setInviteResult(null);
+                        if (!newUserName.trim() || !newUserRole.trim() || !newUserEmail.trim()) {
+                          setNewUserError('Name, email and role are all required.');
+                          return;
+                        }
+                        setNewUserBusy(true);
+                        try {
+                          const res = await fetch('/api/admin/users', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              name: newUserName.trim(), role: newUserRole.trim(),
+                              userType: newUserType, email: newUserEmail.trim(),
+                              division: newUserDivision,
+                            }),
+                          });
+                          const data = await res.json().catch(() => ({}));
+                          if (!res.ok) { setNewUserError(data.error ?? 'Failed to add the team member.'); return; }
+                          setTeamUsers(prev => [...prev, data.user]);
+                          if (data.invite) setInviteResult({ name: data.user.name, ...data.invite });
+                          setNewUserName(''); setNewUserRole(''); setNewUserEmail('');
+                          setNewUserDivision(''); setNewUserType('user');
+                          setShowAddUser(false);
+                          setOutstandingLoaded(false); // the new member is behind on everything
+                        } catch {
+                          setNewUserError('Could not reach the server.');
+                        } finally {
+                          setNewUserBusy(false);
+                        }
                       }}
-                      className="w-full h-10 bg-emerald-800 text-white rounded-xl text-base font-black hover:bg-emerald-900 transition-colors"
+                      className="w-full h-10 bg-emerald-800 text-white rounded-xl text-base font-black hover:bg-emerald-900 transition-colors disabled:opacity-40"
                     >
-                      Add Team Member
+                      {newUserBusy ? 'Adding and sending invitation…' : 'Add and send invitation'}
                     </button>
+                  </div>
+                )}
+
+                {inviteResult && (
+                  <div className={`border rounded-2xl p-4 space-y-2 ${
+                    inviteResult.status === 'sent' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
+                  }`}>
+                    <p className={`text-sm font-black ${inviteResult.status === 'sent' ? 'text-emerald-900' : 'text-amber-900'}`}>
+                      {inviteResult.status === 'sent'
+                        ? `Invitation emailed to ${inviteResult.name}.`
+                        : `Invitation created for ${inviteResult.name}, but not emailed.`}
+                    </p>
+                    {inviteResult.detail && <p className="text-sm text-amber-900 leading-snug">{inviteResult.detail}</p>}
+                    {inviteResult.link && (
+                      <>
+                        <p className="text-xs font-black text-gray-500 uppercase tracking-wider">
+                          {inviteResult.status === 'sent' ? 'Same link, in case they cannot find the email' : 'Send them this link'}
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            readOnly
+                            value={inviteResult.link}
+                            onFocus={e => e.currentTarget.select()}
+                            className="flex-1 h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs font-mono text-gray-700 focus:outline-none"
+                          />
+                          <button
+                            onClick={() => navigator.clipboard?.writeText(inviteResult.link)}
+                            className="h-9 px-3 bg-white border border-gray-200 hover:border-emerald-300 rounded-xl text-sm font-black text-gray-700"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-500 font-bold">Works once, expires in 7 days.</p>
+                      </>
+                    )}
+                    <button onClick={() => setInviteResult(null)} className="text-sm font-black text-gray-500 hover:text-gray-700">Dismiss</button>
                   </div>
                 )}
 
                 <div className="space-y-2">
                   {effectiveUsers.map(u => (
                     <div key={u.name} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-xs">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-gray-900 flex items-center gap-1.5 flex-wrap">
                             {u.name}
                             <span className={`text-sm px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${u.userType === 'admin' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>{u.userType}</span>
+                            {u.pending && (
+                              <span className="text-sm px-1.5 py-0.5 rounded font-black uppercase tracking-wider bg-amber-100 text-amber-800">Invited</span>
+                            )}
                           </p>
-                          <p className="text-sm text-gray-500 font-medium mt-0.5">{u.role}</p>
+                          <p className="text-sm text-gray-500 font-medium mt-0.5">
+                            {u.role}
+                            {u.division ? <span className="text-gray-400"> · {u.division}</span> : null}
+                          </p>
+                          <p className={`text-sm font-medium mt-0.5 break-all ${u.email ? 'text-gray-500' : 'text-amber-700 font-bold'}`}>
+                            {u.email || 'No email on file'}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 shrink-0">
+                          {u.pending && (
+                            <button
+                              disabled={inviteBusyFor === u.name || !u.email}
+                              onClick={() => resendInvite(u.name)}
+                              className="h-8 px-2.5 text-sm font-black text-amber-800 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-40 transition-colors"
+                              title={u.email ? `Resend the invitation to ${u.name}` : 'Add an email address first'}
+                            >
+                              {inviteBusyFor === u.name ? 'Sending…' : 'Resend'}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              const opening = editUserFor !== u.name;
+                              setEditUserFor(opening ? u.name : null);
+                              setEditUserMsg('');
+                              setEditUserDraft(opening
+                                ? { role: u.role, email: u.email ?? '', division: u.division ?? '', userType: u.userType }
+                                : null);
+                            }}
+                            className="h-8 px-2.5 text-sm font-black text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors"
+                            title={`Edit ${u.name}`}
+                          >
+                            Edit
+                          </button>
                           <button
                             onClick={() => { setResetPwFor(resetPwFor === u.name ? null : u.name); setResetPwValue(''); setResetPwMsg(''); }}
                             className="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all"
@@ -5803,6 +6038,83 @@ export default function App() {
                           )}
                         </div>
                       </div>
+
+                      {editUserFor === u.name && editUserDraft && (
+                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                          <p className="text-sm font-black text-gray-500 uppercase tracking-wider">Edit {u.name}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Email</label>
+                              <input
+                                type="email"
+                                value={editUserDraft.email}
+                                onChange={e => setEditUserDraft({ ...editUserDraft, email: e.target.value })}
+                                placeholder="name@example.com"
+                                className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Division</label>
+                              <select
+                                value={editUserDraft.division}
+                                onChange={e => setEditUserDraft({ ...editUserDraft, division: e.target.value })}
+                                className="w-full h-9 px-2 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none text-gray-900"
+                              >
+                                <option value="">No division</option>
+                                {DIVISIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Role or title</label>
+                              <input
+                                value={editUserDraft.role}
+                                onChange={e => setEditUserDraft({ ...editUserDraft, role: e.target.value })}
+                                className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-sm focus:border-emerald-600 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-black text-gray-500 uppercase tracking-wider mb-1">Access Level</label>
+                              <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
+                                <button onClick={() => setEditUserDraft({ ...editUserDraft, userType: 'user' })} className={`flex-1 text-sm font-black transition-colors ${editUserDraft.userType === 'user' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>User</button>
+                                <button onClick={() => setEditUserDraft({ ...editUserDraft, userType: 'admin' })} className={`flex-1 text-sm font-black transition-colors ${editUserDraft.userType === 'admin' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}>Admin</button>
+                              </div>
+                            </div>
+                          </div>
+                          {editUserMsg && <p className={`text-sm font-bold ${editUserMsg.startsWith('✓') ? 'text-emerald-700' : 'text-red-600'}`}>{editUserMsg}</p>}
+                          <div className="flex gap-2">
+                            <button
+                              disabled={editUserBusy}
+                              onClick={async () => {
+                                setEditUserBusy(true);
+                                setEditUserMsg('');
+                                try {
+                                  const res = await fetch('/api/admin/users', {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ name: u.name, ...editUserDraft }),
+                                  });
+                                  const data = await res.json().catch(() => ({}));
+                                  if (!res.ok) { setEditUserMsg(data.error || 'Could not save those changes.'); return; }
+                                  setTeamUsers(prev => prev.map(m => m.name === u.name ? data.user : m));
+                                  setEditUserFor(null);
+                                  setEditUserDraft(null);
+                                  setOutstandingLoaded(false); // division may have changed
+                                } catch {
+                                  setEditUserMsg('Could not reach the server.');
+                                } finally {
+                                  setEditUserBusy(false);
+                                }
+                              }}
+                              className="flex-1 h-9 bg-emerald-800 hover:bg-emerald-900 text-white text-sm font-bold rounded-xl disabled:opacity-40"
+                            >
+                              {editUserBusy ? 'Saving…' : 'Save changes'}
+                            </button>
+                            <button onClick={() => { setEditUserFor(null); setEditUserDraft(null); }} className="flex-1 h-9 bg-gray-100 text-gray-600 text-sm font-bold rounded-xl">Cancel</button>
+                          </div>
+                        </div>
+                      )}
 
                       {resetPwFor === u.name && (
                         <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
@@ -5845,6 +6157,165 @@ export default function App() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Outstanding acknowledgements.
+                  An SOP or handbook section counts as outstanding when someone
+                  has not signed off on the CURRENT version — so editing a
+                  procedure puts everyone back on this list, which is the point. */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">Awaiting Sign-off</h3>
+                  <button
+                    onClick={() => { setOutstandingLoaded(false); setOutstanding([]); }}
+                    disabled={outstandingLoading}
+                    className="text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-1.5 disabled:opacity-40"
+                  >
+                    {outstandingLoading ? 'Checking…' : 'Refresh'}
+                  </button>
+                </div>
+
+                {outstandingLoading && <ListSkeleton rows={2} />}
+
+                {outstandingError && !outstandingLoading && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <p className="text-sm text-amber-900 font-semibold">{outstandingError}</p>
+                  </div>
+                )}
+
+                {!outstandingLoading && !outstandingError && outstanding.length === 0 && outstandingLoaded && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
+                    <p className="text-base font-black text-emerald-900">Everyone is caught up</p>
+                    <p className="text-sm text-emerald-800 mt-1 leading-relaxed">
+                      Every procedure and handbook section has been acknowledged at its current version.
+                    </p>
+                  </div>
+                )}
+
+                {!outstandingLoading && outstanding.map(item => {
+                  const key = `${item.kind}:${item.id}`;
+                  const open = remindOpenFor === key;
+                  const inDivision = item.divisions.length
+                    ? item.outstanding.filter(m => m.division && item.divisions.includes(m.division))
+                    : item.outstanding;
+                  const behindCount = item.outstanding.length + item.unreachable.length;
+                  return (
+                    <div key={key} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-xs space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-gray-900 flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-sm px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${
+                              item.kind === 'sop' ? 'bg-blue-100 text-blue-800' : 'bg-violet-100 text-violet-800'
+                            }`}>{item.kind === 'sop' ? 'SOP' : 'Handbook'}</span>
+                            {item.title}
+                          </p>
+                          <p className="text-sm text-gray-500 font-medium mt-0.5">
+                            {behindCount} {behindCount === 1 ? 'person has' : 'people have'} not acknowledged
+                            {item.kind === 'sop' ? ` ${item.version}` : ' the current version'}
+                            {item.divisions.length ? <span className="text-gray-400"> · {item.divisions.join(', ')}</span> : null}
+                          </p>
+                          {item.lastRemindedAt && (
+                            <p className="text-xs text-gray-400 font-bold mt-0.5">
+                              Last reminded {new Date(item.lastRemindedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setRemindOpenFor(open ? null : key);
+                            setRemindScope(item.divisions.length ? 'division' : 'all');
+                            setRemindNote('');
+                            setRemindMsg('');
+                          }}
+                          className="h-8 px-2.5 shrink-0 text-sm font-black text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
+                        >
+                          {open ? 'Close' : 'Remind'}
+                        </button>
+                      </div>
+
+                      <p className="text-sm text-gray-500 leading-snug">
+                        {item.outstanding.map(m => m.name).join(', ') || 'Nobody with an email address on file'}
+                        {item.unreachable.length ? (
+                          <span className="text-amber-700 font-bold">
+                            {item.outstanding.length ? ' · ' : ''}
+                            No email: {item.unreachable.join(', ')}
+                          </span>
+                        ) : null}
+                      </p>
+
+                      {open && (
+                        <div className="pt-2 border-t border-gray-100 space-y-2">
+                          {item.divisions.length > 0 ? (
+                            <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
+                              <button
+                                onClick={() => setRemindScope('division')}
+                                className={`flex-1 text-sm font-black transition-colors ${remindScope === 'division' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}
+                              >
+                                {item.divisions.join('/')} only ({inDivision.length})
+                              </button>
+                              <button
+                                onClick={() => setRemindScope('all')}
+                                className={`flex-1 text-sm font-black transition-colors ${remindScope === 'all' ? 'bg-emerald-800 text-white' : 'text-gray-500'}`}
+                              >
+                                Everyone behind ({item.outstanding.length})
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500 leading-snug">
+                              {item.kind === 'handbook'
+                                ? 'The handbook applies to the whole team, so this goes to everyone who is behind.'
+                                : 'This procedure is not tagged with a division, so this goes to everyone who is behind.'}
+                            </p>
+                          )}
+
+                          <textarea
+                            rows={2}
+                            value={remindNote}
+                            onChange={e => setRemindNote(e.target.value)}
+                            placeholder="Optional note to include — e.g. why it changed, or a deadline."
+                            className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 leading-relaxed focus:border-emerald-600 focus:outline-none"
+                          />
+
+                          {remindMsg && (
+                            <p className={`text-sm font-bold leading-snug ${remindMsg.startsWith('✓') ? 'text-emerald-700' : 'text-red-600'}`}>{remindMsg}</p>
+                          )}
+
+                          <button
+                            disabled={remindBusy || emailConfigured === false}
+                            onClick={async () => {
+                              setRemindBusy(true);
+                              setRemindMsg('');
+                              try {
+                                const res = await fetch('/api/admin/reminders', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ kind: item.kind, id: item.id, scope: remindScope, note: remindNote }),
+                                });
+                                const data = await res.json().catch(() => ({}));
+                                if (!res.ok) { setRemindMsg(data.error || 'Could not send the reminders.'); return; }
+                                const failedNote = data.failed?.length
+                                  ? ` ${data.failed.length} did not go through: ${data.failed.map((f: { name: string }) => f.name).join(', ')}.`
+                                  : '';
+                                setRemindMsg(`✓ Sent to ${data.sent} of ${data.total}.${failedNote}`);
+                              } catch {
+                                setRemindMsg('Could not reach the server.');
+                              } finally {
+                                setRemindBusy(false);
+                              }
+                            }}
+                            className="w-full h-10 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-base font-black disabled:opacity-40 transition-colors"
+                          >
+                            {remindBusy
+                              ? 'Sending…'
+                              : emailConfigured === false
+                                ? 'Email is not set up yet'
+                                : `Send reminder to ${remindScope === 'division' && item.divisions.length ? inDivision.length : item.outstanding.length}`}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               </>)}
