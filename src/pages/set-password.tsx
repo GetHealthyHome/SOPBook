@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { LegalLinks } from '@/lib/legal';
 
 /**
  * Where an invitation link lands.
@@ -191,6 +192,7 @@ export default function SetPassword() {
           <p className="text-xs text-gray-400 font-bold text-center mt-5 leading-relaxed">
             If you did not expect this invitation, you can ignore it — the link expires on its own.
           </p>
+          <LegalLinks className="mt-4" />
         </div>
       </div>
     </>
