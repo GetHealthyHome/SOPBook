@@ -1,9 +1,12 @@
 import Link from 'next/link';
-import { LegalPage, Section, Bullets, Note, COMPANY } from '@/lib/legal';
+import { LegalPage, Section, Bullets, Note, loadCompanyProps } from '@/lib/legal';
+import type { CompanyDetails } from '@/lib/companyDetails';
 
-export default function Terms() {
+export default function Terms({ company }: { company: CompanyDetails }) {
+  const COMPANY = company;
   return (
     <LegalPage
+      company={company}
       title="Terms of Use"
       intro={`The Healthy Home Field Guide is a work tool provided by ${COMPANY.legalName} to its employees and authorised contractors. These terms cover how it may be used. Using it means accepting them.`}
     >
@@ -108,3 +111,5 @@ export default function Terms() {
     </LegalPage>
   );
 }
+
+export const getServerSideProps = loadCompanyProps;

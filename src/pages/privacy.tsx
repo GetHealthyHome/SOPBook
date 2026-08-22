@@ -1,8 +1,11 @@
-import { LegalPage, Section, Bullets, Note, COMPANY } from '@/lib/legal';
+import { LegalPage, Section, Bullets, Note, loadCompanyProps } from '@/lib/legal';
+import type { CompanyDetails } from '@/lib/companyDetails';
 
-export default function Privacy() {
+export default function Privacy({ company }: { company: CompanyDetails }) {
+  const COMPANY = company;
   return (
     <LegalPage
+      company={company}
       title="Privacy Notice"
       intro={`This explains what the Healthy Home Field Guide records about you, why, who can see it, and how long it is kept. It covers employees and contractors of ${COMPANY.legalName} who use the app. It describes this app only — not every record the company holds about you.`}
     >
@@ -122,3 +125,5 @@ export default function Privacy() {
     </LegalPage>
   );
 }
+
+export const getServerSideProps = loadCompanyProps;

@@ -1,40 +1,33 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import type { CompanyDetails } from './companyDetails';
 
 /**
- * Shared shell and content for the legal and compliance pages.
+ * Shared shell for the legal and compliance pages.
  *
  * These live outside the app proper because two of them must be readable
  * without signing in: somebody redeeming an invitation should be able to read
  * what they are agreeing to before they choose a password.
  *
+ * The company details they quote are settings, resolved server-side on each
+ * request and passed in — see src/lib/companyDetails.ts. They were constants
+ * here originally, which meant an admin could not change them without a code
+ * edit, and unfilled ones sat on a live page indefinitely.
+ *
  * ---------------------------------------------------------------------------
  * BEFORE RELYING ON THESE DOCUMENTS
  *
- * The content below was written against what this application actually does —
- * every field it stores, every service it sends data to, every record it keeps
- * — so it is accurate rather than boilerplate. It has NOT been reviewed by a
+ * The content was written against what this application actually does — every
+ * field it stores, every service it sends data to, every record it keeps — so
+ * it is accurate rather than boilerplate. It has NOT been reviewed by a
  * lawyer, and it is not legal advice.
  *
- * Fill in COMPANY below, then have counsel review both documents. Employee
- * privacy notices carry real obligations in several states, and this app holds
- * injury records containing dates of birth, home addresses and medical detail.
+ * Employee privacy notices carry real obligations in several states, and this
+ * app holds injury records containing dates of birth, home addresses and
+ * medical detail.
  * ---------------------------------------------------------------------------
  */
-
-export const COMPANY = {
-  /** Full registered name, e.g. "Get Healthy Home LLC". */
-  legalName: 'Get Healthy Home',
-  /** Trading name as employees know it. */
-  shortName: 'Get Healthy Home',
-  /** Where written requests can be sent. */
-  address: '[COMPANY MAILING ADDRESS]',
-  /** Who to contact about these documents or a data request. */
-  contactEmail: '[CONTACT EMAIL]',
-  /** Who to contact about a safety concern. */
-  safetyContact: '[SAFETY CONTACT — NAME AND PHONE]',
-};
 
 /** Bumped by hand when the wording changes materially. */
 export const LAST_UPDATED = 'August 2026';
@@ -59,7 +52,13 @@ export function LegalLinks({ className = '' }: { className?: string }) {
   );
 }
 
-export function LegalPage({ title, intro, children }: { title: string; intro: string; children: ReactNode }) {
+export function LegalPage({ title, intro, company, children }: {
+  title: string;
+  intro: string;
+  company: CompanyDetails;
+  children: ReactNode;
+}) {
+  const incomplete = Object.values(company).some(v => v.startsWith('['));
   return (
     <>
       <Head>
@@ -76,6 +75,15 @@ export function LegalPage({ title, intro, children }: { title: string; intro: st
               <p className="text-xs text-gray-500 font-bold mt-0.5">Field Guide</p>
             </div>
           </div>
+
+          {incomplete && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-4">
+              <p className="text-sm text-amber-900 font-bold leading-snug">
+                Some company details on this page have not been filled in yet. An administrator can
+                set them under Admin Console → Compliance → Company Details.
+              </p>
+            </div>
+          )}
 
           <div className="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8">
             <h1 className="text-2xl font-black text-gray-900">{title}</h1>
@@ -97,6 +105,32 @@ export function LegalPage({ title, intro, children }: { title: string; intro: st
       </div>
     </>
   );
+}
+
+/**
+ * Load the company details for a legal page.
+ *
+ * Server-side on every request rather than at build time, so a change in the
+ * admin console shows up immediately instead of at the next deploy. These
+ * pages are public, so there is no session to check.
+ */
+export async function loadCompanyProps() {
+  const { getSupabase } = await import('./supabaseServer');
+  const { resolveCompany } = await import('./companyDetails');
+  const { logError } = await import('./log');
+  try {
+    const { data, error } = await getSupabase().from('app_settings').select('key, value');
+    if (error) throw error;
+    const bag: Record<string, string> = {};
+    for (const row of data ?? []) bag[row.key] = row.value;
+    return { props: { company: resolveCompany(bag) } };
+  } catch (err) {
+    logError('legal/loadCompany', err);
+    // A database hiccup must not take a legal page offline. Fall back to the
+    // placeholders, which is exactly what an unconfigured install shows.
+    const { resolveCompany } = await import('./companyDetails');
+    return { props: { company: resolveCompany({}) } };
+  }
 }
 
 export function Section({ heading, children }: { heading: string; children: ReactNode }) {
