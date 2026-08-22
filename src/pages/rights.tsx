@@ -1,9 +1,12 @@
 import Link from 'next/link';
-import { LegalPage, Section, Bullets, Note, COMPANY } from '@/lib/legal';
+import { LegalPage, Section, Bullets, Note, loadCompanyProps } from '@/lib/legal';
+import type { CompanyDetails } from '@/lib/companyDetails';
 
-export default function Rights() {
+export default function Rights({ company }: { company: CompanyDetails }) {
+  const COMPANY = company;
   return (
     <LegalPage
+      company={company}
       title="Your Safety Rights"
       intro="A plain summary of what OSHA guarantees you at work, and how those rights connect to what this app does. Nothing here is a company policy — these are rights under federal law, and they apply whether or not anyone reminds you of them."
     >
@@ -90,3 +93,5 @@ export default function Rights() {
     </LegalPage>
   );
 }
+
+export const getServerSideProps = loadCompanyProps;

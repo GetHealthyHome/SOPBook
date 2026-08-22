@@ -929,6 +929,9 @@ export default function App() {
   const [runNowMsg, setRunNowMsg] = useState('');
   const [showEmailHelp, setShowEmailHelp] = useState(false);
 
+  const [companySettings, setCompanySettings] = useState<Record<string, string>>({});
+  const [companyBusy, setCompanyBusy] = useState(false);
+  const [companySaved, setCompanySaved] = useState(false);
   const [postingBusy, setPostingBusy] = useState(false);
 
   const [oshaSettings, setOshaSettings] = useState<Record<string, string>>({});
@@ -1275,12 +1278,15 @@ export default function App() {
         setNotificationsEnabled(data.settings?.notifications_enabled !== 'false');
         const osha: Record<string, string> = {};
         const remind: Record<string, string> = {};
+        const company: Record<string, string> = {};
         for (const [k, v] of Object.entries(data.settings ?? {})) {
           if (k.startsWith('osha_')) osha[k] = String(v ?? '');
           if (k.startsWith('reminder_')) remind[k] = String(v ?? '');
+          if (k.startsWith('company_')) company[k] = String(v ?? '');
         }
         setOshaSettings(osha);
         setRemindSettings(remind);
+        setCompanySettings(company);
       })
       .catch(() => {});
   }, [currentUser]);
@@ -6903,6 +6909,74 @@ export default function App() {
                   </div>
                 );
               })()}
+
+              {/* Company details quoted on the public legal pages. These used
+                  to be constants in the source, so an unfilled one sat on a
+                  live page until somebody edited code and redeployed. */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">
+                  Company Details
+                </h3>
+                <div className="bg-white border border-gray-200 rounded-2xl p-3.5 space-y-3">
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    Shown on the Terms of Use, Privacy Notice and Your Safety Rights pages, which
+                    every employee can read. Anything left blank appears there as a bracketed
+                    placeholder, so it is worth filling in.
+                  </p>
+
+                  {companySaved && (
+                    <p className="text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                      Saved. The legal pages update immediately.
+                    </p>
+                  )}
+
+                  {([
+                    ['company_legal_name',      'Legal name',       'Get Healthy Home LLC',
+                     'Falls back to the OSHA establishment name above if left blank.'],
+                    ['company_short_name',      'Everyday name',    'Get Healthy Home',
+                     'What the crew calls the company. Falls back to the legal name.'],
+                    ['company_mailing_address', 'Mailing address',  '1420 Industrial Parkway, Columbus, OH 43215',
+                     'Where written requests go. Falls back to the OSHA establishment address if left blank — set it here only if the two differ.'],
+                    ['company_contact_email',   'Contact email',    'admin@yourcompany.com',
+                     'Who handles questions about these documents and data requests.'],
+                    ['company_safety_contact',  'Safety contact',   'Kevin Brenner, (614) 555-0142',
+                     'Who an employee calls to stop a job or ask for their injury records. Name and phone.'],
+                  ] as const).map(([key, label, placeholder, hint]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">{label}</label>
+                      <input
+                        value={companySettings[key] ?? ''}
+                        onChange={e => setCompanySettings(prev => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={placeholder}
+                        className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-emerald-600 focus:outline-none"
+                      />
+                      <p className="text-xs text-gray-500 leading-snug mt-1">{hint}</p>
+                    </div>
+                  ))}
+
+                  <button
+                    disabled={companyBusy}
+                    onClick={async () => {
+                      setCompanyBusy(true);
+                      setCompanySaved(false);
+                      // One PUT per key, like the other settings panels.
+                      for (const [key, value] of Object.entries(companySettings)) {
+                        await fetch('/api/admin/settings', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ key, value }),
+                        });
+                      }
+                      setCompanyBusy(false);
+                      setCompanySaved(true);
+                      setTimeout(() => setCompanySaved(false), 4000);
+                    }}
+                    className="w-full h-10 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-black disabled:opacity-40 transition-colors"
+                  >
+                    {companyBusy ? 'Saving…' : 'Save company details'}
+                  </button>
+                </div>
+              </div>
 
               {/* OSHA establishment details — these fill the headers on the
                   300 log, the 300A summary and every 301, plus the 300A
