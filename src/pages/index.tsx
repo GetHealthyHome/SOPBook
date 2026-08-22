@@ -6880,12 +6880,6 @@ export default function App() {
                           </a>
                         ))}
                       </div>
-                      <p className="text-sm text-gray-500 leading-snug border-t border-gray-100 pt-3">
-                        The wording lives in the code, in <span className="font-mono text-xs">src/pages/terms.tsx</span>,{' '}
-                        <span className="font-mono text-xs">privacy.tsx</span> and{' '}
-                        <span className="font-mono text-xs">rights.tsx</span>. Company name, address and
-                        contacts are set in one place, <span className="font-mono text-xs">src/lib/legal.tsx</span>.
-                      </p>
                     </div>
 
                     <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-2.5">
@@ -6932,11 +6926,11 @@ export default function App() {
 
                   {([
                     ['company_legal_name',      'Legal name',       'Get Healthy Home LLC',
-                     'Falls back to the OSHA establishment name above if left blank.'],
+                     'Falls back to the OSHA establishment name below if left blank.'],
                     ['company_short_name',      'Everyday name',    'Get Healthy Home',
                      'What the crew calls the company. Falls back to the legal name.'],
                     ['company_mailing_address', 'Mailing address',  '1420 Industrial Parkway, Columbus, OH 43215',
-                     'Where written requests go. Falls back to the OSHA establishment address if left blank — set it here only if the two differ.'],
+                     'Where written requests go. Falls back to the OSHA establishment address below if left blank — set it here only if the two differ.'],
                     ['company_contact_email',   'Contact email',    'admin@yourcompany.com',
                      'Who handles questions about these documents and data requests.'],
                     ['company_safety_contact',  'Safety contact',   'Kevin Brenner, (614) 555-0142',
@@ -7013,19 +7007,19 @@ export default function App() {
                     ['osha_executive_phone',      'Executive phone',           '(614) 555-0142'],
                   ] as const).map(([key, label, placeholder]) => (
                     <div key={key}>
-                      <div className="flex items-baseline justify-between gap-2 mb-1">
-                        <label className="block text-xs font-bold text-gray-500">{label}</label>
+                      <label className="flex items-baseline flex-wrap gap-x-2 text-xs font-bold text-gray-500 mb-1">
+                        <span>{label}</span>
                         {key === 'osha_naics' && (
                           <a
                             href="https://www.census.gov/naics/"
                             target="_blank"
                             rel="noreferrer noopener"
-                            className="text-xs font-black text-emerald-700 hover:text-emerald-900 underline"
+                            className="font-black text-emerald-700 hover:text-emerald-900 underline"
                           >
                             Look up your code ↗
                           </a>
                         )}
-                      </div>
+                      </label>
                       <input
                         value={oshaSettings[key] ?? ''}
                         onChange={e => setOshaSettings(prev => ({ ...prev, [key]: e.target.value }))}
