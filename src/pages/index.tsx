@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { RichText, RichTextarea } from '@/lib/richText';
 import { LegalLinks, LEGAL_PAGES } from '@/lib/legal';
+import { postingYear, daysLeftToPost, shouldRemindToPost } from '@/lib/osha300a';
 import { compressImage } from '@/lib/compressImage';
 import { normalizeImageUrl } from '@/lib/imageUrl';
 import {
@@ -927,6 +928,8 @@ export default function App() {
   const [runNowBusy, setRunNowBusy] = useState(false);
   const [runNowMsg, setRunNowMsg] = useState('');
   const [showEmailHelp, setShowEmailHelp] = useState(false);
+
+  const [postingBusy, setPostingBusy] = useState(false);
 
   const [oshaSettings, setOshaSettings] = useState<Record<string, string>>({});
   const [oshaSettingsBusy, setOshaSettingsBusy] = useState(false);
@@ -3084,6 +3087,65 @@ export default function App() {
 
         {/* View Router Body Viewport */}
         <div ref={bodyScrollRef} className="flex-1 overflow-y-auto pb-24 lg:pb-8 px-5 lg:px-8 pt-4 lg:pt-8 lg:max-w-4xl lg:mx-auto lg:w-full">
+
+          {/* The 300A posting window, 1 Feb – 30 Apr (29 CFR 1904.32(b)(6)).
+              Shown to admins on every view until somebody says it is posted,
+              because this is a dated obligation that is easy to let slide and
+              impossible to fix retroactively. Marking it done is recorded
+              against the year, so it comes back next February by itself. */}
+          {currentUser?.userType === 'admin' && currentView !== 'login' &&
+            shouldRemindToPost(oshaSettings.osha_300a_posted_year, new Date()) && (() => {
+            const year = postingYear(new Date());
+            const left = daysLeftToPost(new Date());
+            const urgent = left <= 14;
+            return (
+              <div className={`mb-5 rounded-2xl border p-4 ${urgent ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-200'}`}>
+                <div className="flex items-start gap-2.5">
+                  <span className={`flex-shrink-0 mt-0.5 ${urgent ? 'text-red-700' : 'text-amber-700'}`}>
+                    <AlertIcon />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-base font-black ${urgent ? 'text-red-900' : 'text-amber-900'}`}>
+                      Post the {year} OSHA 300A summary
+                      {urgent ? ` — ${left} day${left === 1 ? '' : 's'} left` : ''}
+                    </p>
+                    <p className={`text-sm leading-relaxed mt-1 ${urgent ? 'text-red-900' : 'text-amber-900'}`}>
+                      It must be signed by a company executive and posted where employees can see it,
+                      through 30 April — including in a year with no recordable injuries.
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <button
+                        onClick={() => { setAdminTab('compliance'); setCurrentView('adminConsole'); }}
+                        className={`h-9 px-3.5 rounded-xl text-sm font-black text-white transition-colors ${urgent ? 'bg-red-700 hover:bg-red-800' : 'bg-amber-700 hover:bg-amber-800'}`}
+                      >
+                        Generate the 300A
+                      </button>
+                      <button
+                        disabled={postingBusy}
+                        onClick={async () => {
+                          setPostingBusy(true);
+                          try {
+                            const value = String(year);
+                            const res = await fetch('/api/admin/settings', {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ key: 'osha_300a_posted_year', value }),
+                            });
+                            if (res.ok) setOshaSettings(prev => ({ ...prev, osha_300a_posted_year: value }));
+                          } finally {
+                            setPostingBusy(false);
+                          }
+                        }}
+                        className="h-9 px-3.5 bg-white border border-gray-200 hover:border-gray-300 rounded-xl text-sm font-black text-gray-700 disabled:opacity-40 transition-colors"
+                      >
+                        {postingBusy ? 'Saving…' : 'I have posted it'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* VIEW: COMPREHENSIVE LOGIN PORTAL */}
           {currentView === 'login' && (
@@ -6763,24 +6825,33 @@ export default function App() {
                   running this app. The 300A posting window is the one with a
                   hard date on it, so it is called out when it is live. */}
               {(() => {
+                // Same helper the sign-in banner uses, so the two cannot
+                // disagree about whether the window is open.
                 const now = new Date();
-                const month = now.getMonth();       // 0-based
-                const day = now.getDate();
-                // 1 Feb – 30 Apr inclusive.
-                const postingOpen = (month === 1) || (month === 2) || (month === 3 && day <= 30);
-                const postingYear = now.getFullYear() - 1;
+                const year = postingYear(now);
+                const stillDue = shouldRemindToPost(oshaSettings.osha_300a_posted_year, now);
+                const markedDone = oshaSettings.osha_300a_posted_year === String(year);
                 return (
                   <div className="space-y-3">
                     <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">
                       Legal &amp; Compliance
                     </h3>
 
-                    {postingOpen && (
+                    {stillDue && (
                       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5">
                         <p className="text-sm text-amber-900 font-bold leading-snug">
-                          The OSHA 300A summary for {postingYear} must be posted where employees can
-                          see it, signed by a company executive, until 30 April — including in a year
-                          with no recordable injuries. Generate it from the OSHA panel below.
+                          The OSHA 300A summary for {year} must be posted where employees can see it,
+                          signed by a company executive, through 30 April — including in a year with
+                          no recordable injuries. {daysLeftToPost(now)} day
+                          {daysLeftToPost(now) === 1 ? '' : 's'} left. Generate it from the OSHA panel below.
+                        </p>
+                      </div>
+                    )}
+
+                    {markedDone && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5">
+                        <p className="text-sm text-emerald-900 font-bold leading-snug">
+                          The {year} OSHA 300A summary is marked as posted. The reminder returns next February.
                         </p>
                       </div>
                     )}
@@ -6868,13 +6939,52 @@ export default function App() {
                     ['osha_executive_phone',      'Executive phone',           '(614) 555-0142'],
                   ] as const).map(([key, label, placeholder]) => (
                     <div key={key}>
-                      <label className="block text-xs font-bold text-gray-500 mb-1">{label}</label>
+                      <div className="flex items-baseline justify-between gap-2 mb-1">
+                        <label className="block text-xs font-bold text-gray-500">{label}</label>
+                        {key === 'osha_naics' && (
+                          <a
+                            href="https://www.census.gov/naics/"
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="text-xs font-black text-emerald-700 hover:text-emerald-900 underline"
+                          >
+                            Look up your code ↗
+                          </a>
+                        )}
+                      </div>
                       <input
                         value={oshaSettings[key] ?? ''}
                         onChange={e => setOshaSettings(prev => ({ ...prev, [key]: e.target.value }))}
                         placeholder={placeholder}
                         className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-emerald-600 focus:outline-none"
                       />
+                      {key === 'osha_naics' && (
+                        <p className="text-xs text-gray-500 leading-snug mt-1">
+                          Six digits, chosen by whichever line of work brings in the most revenue.
+                          For this business that is usually <span className="font-mono font-bold">238220</span>{' '}
+                          (plumbing, heating and air-conditioning contractors) or{' '}
+                          <span className="font-mono font-bold">238310</span> (drywall and insulation
+                          contractors). Search the Census list above to confirm.
+                        </p>
+                      )}
+                      {key === 'osha_total_hours_worked' && (
+                        <p className="text-xs text-gray-500 leading-snug mt-1">
+                          Actual hours from payroll. Leave out vacation, sick leave and holidays.
+                        </p>
+                      )}
+                      {key === 'osha_annual_avg_employees' && (
+                        <p className="text-xs text-gray-500 leading-snug mt-1">
+                          Add the headcount for each pay period last year, divide by the number of pay
+                          periods, round to a whole number. Count everyone — full time, part time,
+                          seasonal and temporary.
+                        </p>
+                      )}
+                      {key === 'osha_executive_name' && (
+                        <p className="text-xs text-gray-500 leading-snug mt-1">
+                          Must be an owner, a corporate officer, the highest-ranking company official
+                          working at this establishment, or that person&apos;s immediate supervisor.
+                        </p>
+                      )}
                     </div>
                   ))}
 

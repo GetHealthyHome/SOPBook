@@ -17,6 +17,9 @@ const ALLOWED_KEYS = [
   'osha_establishment_state', 'osha_establishment_zip', 'osha_industry_description',
   'osha_naics', 'osha_annual_avg_employees', 'osha_total_hours_worked',
   'osha_executive_name', 'osha_executive_title', 'osha_executive_phone',
+  // The calendar year whose 300A has been posted. Stored as a year rather
+  // than a flag so the reminder returns each February on its own.
+  'osha_300a_posted_year',
 ];
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
