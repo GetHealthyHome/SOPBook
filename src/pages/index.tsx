@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { RichText, RichTextarea } from '@/lib/richText';
+import { LegalLinks, LEGAL_PAGES } from '@/lib/legal';
 import { compressImage } from '@/lib/compressImage';
 import { normalizeImageUrl } from '@/lib/imageUrl';
 import {
@@ -451,13 +452,6 @@ interface Notification {
   notes: string;
   timestamp: string;
 }
-
-const PRESET_ACCOUNTS = [
-  { name: "Marcus Thorne", role: "HVAC Supervisor", userType: "admin" },
-  { name: "Sarah Lin", role: "Master Electrician", userType: "admin" },
-  { name: "Alex Rivers", role: "Field Apprentice", userType: "user" },
-  { name: "Derrick Vance", role: "Plumbing Specialist", userType: "user" },
-];
 
 // Credential validation is server-side only (/api/auth/login).
 // No passwords or Supabase keys exist in this client bundle.
@@ -2707,10 +2701,12 @@ export default function App() {
   const sopCats = (doc: SOP): string[] =>
     (doc.categories && doc.categories.length ? doc.categories : (doc.category ? [doc.category] : []));
 
-  // Falls back to PRESET_ACCOUNTS while DB users haven't loaded yet
-  const effectiveUsers: User[] = useMemo(() => teamUsers.length > 0
-    ? teamUsers
-    : PRESET_ACCOUNTS.map(a => ({ ...a, userType: a.userType as 'admin' | 'user' })), [teamUsers]);
+  // The team is whatever the database says. There used to be a hardcoded
+  // fallback roster here for when the users call had not returned yet, but
+  // those accounts no longer exist, and showing four people who cannot sign
+  // in — and counting them in the compliance percentages — is worse than
+  // showing an empty list for a moment.
+  const effectiveUsers: User[] = teamUsers;
 
   // Accounts that predate the email field. They cannot be invited or reminded
   // until someone fills one in, so the Team tab says so rather than silently
@@ -3018,6 +3014,10 @@ export default function App() {
                   {lockoutSeconds > 0 ? `Locked (${lockoutSeconds}s)` : 'Sign In'}
                 </button>
               </form>
+
+              {/* Readable without signing in, on purpose: somebody being asked
+                  to accept these should be able to read them first. */}
+              <LegalLinks className="mt-6" />
 
             </div>
           )}
@@ -6607,6 +6607,80 @@ export default function App() {
               </>)}
 
               {adminTab === 'compliance' && (<>
+              {/* Legal documents and the recurring obligations that go with
+                  running this app. The 300A posting window is the one with a
+                  hard date on it, so it is called out when it is live. */}
+              {(() => {
+                const now = new Date();
+                const month = now.getMonth();       // 0-based
+                const day = now.getDate();
+                // 1 Feb – 30 Apr inclusive.
+                const postingOpen = (month === 1) || (month === 2) || (month === 3 && day <= 30);
+                const postingYear = now.getFullYear() - 1;
+                return (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">
+                      Legal &amp; Compliance
+                    </h3>
+
+                    {postingOpen && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5">
+                        <p className="text-sm text-amber-900 font-bold leading-snug">
+                          The OSHA 300A summary for {postingYear} must be posted where employees can
+                          see it, signed by a company executive, until 30 April — including in a year
+                          with no recordable injuries. Generate it from the OSHA panel below.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+                      <p className="text-sm text-gray-600 leading-snug">
+                        These three pages are readable without signing in, so someone accepting an
+                        invitation can read them before choosing a password.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {LEGAL_PAGES.map(page => (
+                          <a
+                            key={page.href}
+                            href={page.href}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="h-9 px-3.5 leading-[2.25rem] bg-white border border-gray-200 hover:border-emerald-300 rounded-xl text-sm font-black text-gray-700 transition-colors"
+                          >
+                            {page.label} ↗
+                          </a>
+                        ))}
+                      </div>
+                      <p className="text-sm text-gray-500 leading-snug border-t border-gray-100 pt-3">
+                        The wording lives in the code, in <span className="font-mono text-xs">src/pages/terms.tsx</span>,{' '}
+                        <span className="font-mono text-xs">privacy.tsx</span> and{' '}
+                        <span className="font-mono text-xs">rights.tsx</span>. Company name, address and
+                        contacts are set in one place, <span className="font-mono text-xs">src/lib/legal.tsx</span>.
+                      </p>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-2.5">
+                      <p className="text-sm font-black text-gray-700">Recurring obligations</p>
+                      {[
+                        ['1 Feb – 30 Apr', 'Post the signed OSHA 300A summary for the previous year where employees can see it.'],
+                        ['Within 8 hours', 'Report a work-related fatality to OSHA (1-800-321-6742).'],
+                        ['Within 24 hours', 'Report an inpatient hospitalisation, amputation, or loss of an eye.'],
+                        ['Within 7 days', 'Record a recordable injury or illness on the 300 log and complete a 301.'],
+                        ['Next business day', 'Provide an employee a copy of the 300 log, or their own 301, on request.'],
+                        ['Keep 5 years', 'Retain the 300, 300A and 301 records following the year they cover.'],
+                      ].map(([when, what]) => (
+                        <div key={what} className="flex gap-2.5 items-start">
+                          <span className="shrink-0 text-xs font-black text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-md px-1.5 py-0.5 mt-0.5 min-w-[104px] text-center">
+                            {when}
+                          </span>
+                          <span className="text-sm text-gray-700 leading-snug">{what}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* OSHA establishment details — these fill the headers on the
                   300 log, the 300A summary and every 301, plus the 300A
                   certification block. Without them the forms print blanks. */}
