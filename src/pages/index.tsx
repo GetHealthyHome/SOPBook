@@ -80,6 +80,157 @@ function ListSkeleton({ rows = 3, withMedia = false }: { rows?: number; withMedi
  * Broken photos used to hide themselves, which looked identical to "no
  * photo was ever added" — so a bad link was invisible to the author.
  */
+const IMPORT_KINDS = [
+  { kind: 'training',   label: 'Training modules', note: 'One row per step. Rows sharing a module title become one module.' },
+  { kind: 'safety',     label: 'Safety modules',   note: 'One row per module.' },
+  { kind: 'flashcards', label: 'Flashcards',       note: 'One row per card.' },
+] as const;
+
+/**
+ * Download a template, fill it in, bring it back.
+ *
+ * The preview step is the point of this: an admin can see exactly what a file
+ * would create, and what is wrong with it, before anything is written. Without
+ * that, a hundred-row spreadsheet with one bad category is a guessing game.
+ */
+function BulkImport() {
+  const [kind, setKind] = useState<'training' | 'safety' | 'flashcards'>('training');
+  const [fileName, setFileName] = useState('');
+  const [csv, setCsv] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string; problems: string[] } | null>(null);
+  const [previewed, setPreviewed] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setCsv(''); setFileName(''); setResult(null); setPreviewed(false);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const send = async (mode: 'preview' | 'commit') => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, csv, mode }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResult({ ok: false, message: d.error || 'The import failed.', problems: d.problems ?? [] });
+        setPreviewed(false);
+        return;
+      }
+      if (mode === 'preview') {
+        setPreviewed(true);
+        setResult({
+          ok: true,
+          message: `Ready to import ${d.count} ${d.count === 1 ? 'record' : 'records'}.`,
+          problems: d.problems ?? [],
+        });
+      } else {
+        const extra = d.steps ? ` with ${d.steps} steps` : '';
+        setResult({ ok: true, message: `Imported ${d.imported}${extra}.`, problems: d.problems ?? [] });
+        setPreviewed(false);
+        setCsv(''); setFileName('');
+        if (fileRef.current) fileRef.current.value = '';
+      }
+    } catch {
+      setResult({ ok: false, message: 'Could not reach the server.', problems: [] });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const active = IMPORT_KINDS.find(k => k.kind === kind)!;
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest">Bulk Import</h3>
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+        <p className="text-sm text-gray-600 leading-snug">
+          Download the template, fill it in with a spreadsheet, and bring it back. Check it with
+          Preview first — nothing is written until you say so.
+        </p>
+
+        <div className="flex h-9 bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {IMPORT_KINDS.map(k => (
+            <button
+              key={k.kind}
+              onClick={() => { setKind(k.kind); reset(); }}
+              className={`flex-1 text-sm font-black transition-colors ${kind === k.kind ? 'bg-emerald-800 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+            >
+              {k.label.split(' ')[0]}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 font-bold">{active.note}</p>
+
+        <a
+          href={`/api/import/template?kind=${kind}`}
+          className="block w-full h-10 leading-10 text-center bg-white border border-gray-200 hover:border-emerald-300 rounded-xl text-sm font-black text-gray-700 transition-colors"
+        >
+          ↓ Download the {active.label.toLowerCase()} template
+        </a>
+
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={async e => {
+              const file = e.target.files?.[0];
+              setResult(null); setPreviewed(false);
+              if (!file) { setCsv(''); setFileName(''); return; }
+              setFileName(file.name);
+              setCsv(await file.text());
+            }}
+            className="w-full text-sm text-gray-600 font-semibold file:mr-3 file:h-9 file:px-3 file:rounded-xl file:border file:border-gray-200 file:bg-white file:text-sm file:font-black file:text-gray-700 hover:file:border-emerald-300"
+          />
+          {fileName && <p className="text-xs text-gray-400 font-bold mt-1">{fileName}</p>}
+        </div>
+
+        {result && (
+          <div className={`rounded-xl p-3 border ${result.ok ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+            <p className={`text-sm font-black ${result.ok ? 'text-emerald-900' : 'text-red-800'}`}>{result.message}</p>
+            {result.problems.length > 0 && (
+              <>
+                <p className="text-xs font-black text-amber-800 uppercase tracking-wider mt-2">
+                  {result.problems.length} row{result.problems.length === 1 ? '' : 's'} need attention
+                </p>
+                <ul className="mt-1 space-y-1 list-disc list-outside ml-4 max-h-40 overflow-y-auto">
+                  {result.problems.map((prob, i) => (
+                    <li key={i} className="text-sm text-amber-900 leading-snug">{prob}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            disabled={!csv || busy}
+            onClick={() => send('preview')}
+            className="flex-1 h-10 bg-white border border-gray-200 hover:border-emerald-300 rounded-xl text-sm font-black text-gray-700 disabled:opacity-40 transition-colors"
+          >
+            {busy && !previewed ? 'Checking…' : 'Preview'}
+          </button>
+          <button
+            disabled={!csv || busy || !previewed}
+            onClick={() => send('commit')}
+            className="flex-1 h-10 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-sm font-black disabled:opacity-40 transition-colors"
+            title={previewed ? '' : 'Preview the file first'}
+          >
+            {busy && previewed ? 'Importing…' : 'Import'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SafeImage({ src, alt, className, wrapperClassName }: {
   src: string;
   alt: string;
@@ -2783,10 +2934,9 @@ export default function App() {
               { view: 'dashboard', label: 'SOPs', icon: <FolderIcon />, match: ['dashboard','document','addRevision'] },
               { view: 'handbook', label: 'Handbook', icon: <HandbookIcon />, match: ['handbook'] },
               { view: 'careerLadder', label: 'Career', icon: <CareerIcon />, match: ['careerLadder','careerAdmin'] },
-              { view: 'training', label: 'Training', icon: <TrainingIcon />, match: ['training','trainingAdmin'] },
+              { view: 'training', label: 'Training', icon: <TrainingIcon />, match: ['training','trainingAdmin','flashcards'] },
               { view: 'safety', label: 'Safety', icon: <ShieldIcon />, match: ['safety'] },
               { view: 'incidents', label: 'Incidents', icon: <AlertIcon />, match: ['incidents'] },
-              { view: 'flashcards', label: 'Flashcards', icon: <CardsIcon />, match: ['flashcards'] },
               { view: 'userNotifications', label: 'Notifications', icon: <BellIcon />, match: ['userNotifications'] },
               ...(currentUser.userType === 'admin' ? [
                 { view: 'new', label: 'Draft SOP', icon: <PlusIcon />, match: ['new'] },
@@ -4131,7 +4281,13 @@ export default function App() {
                       <CardsIcon />
                     </span>
                     <div className="min-w-0">
-                      <h1 className="text-2xl font-black text-gray-950 tracking-tight leading-tight">Flashcards</h1>
+                      <button
+                        onClick={() => { setOpenTraining(null); setCurrentView('training'); }}
+                        className="text-xs font-black text-gray-400 hover:text-gray-600 uppercase tracking-wider transition-colors"
+                      >
+                        ← Training
+                      </button>
+                      <h1 className="text-2xl font-black text-gray-950 tracking-tight leading-tight mt-0.5">Flashcards</h1>
                       <p className="text-sm text-gray-600 mt-0.5 leading-relaxed">
                         A situation on the front. Work out your answer, then turn the card over.
                       </p>
@@ -4529,12 +4685,6 @@ export default function App() {
                       <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 9v3.75m9.303 3.376c.866 1.5-.217 3.374-1.948 3.374H4.645c-1.73 0-2.813-1.874-1.948-3.374l7.108-12.32c.866-1.5 3.032-1.5 3.898 0l7.1 12.32zM12 15.75h.007v.008H12v-.008z"/></svg>
                     </span>
                     <span className="min-w-0"><span className={label}>Incidents</span></span>
-                  </button>
-                  <button onClick={() => setCurrentView('flashcards')} className={tile('bg-indigo-700 hover:bg-indigo-800')}>
-                    <span className={circle('text-indigo-700')}>
-                      <svg className={icon} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 5.5h11a1.5 1.5 0 011.5 1.5v9a1.5 1.5 0 01-1.5 1.5H8A1.5 1.5 0 016.5 16V7A1.5 1.5 0 018 5.5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3.5 8.5v10A1.5 1.5 0 005 20h11"/></svg>
-                    </span>
-                    <span className="min-w-0"><span className={label}>Flashcards</span></span>
                   </button>
                   <button onClick={() => setCurrentView('userNotifications')} className={tile('bg-rose-600 hover:bg-rose-700')}>
                     <span className={circle('text-rose-600')}>
@@ -5746,6 +5896,8 @@ export default function App() {
               })()}
 
               {adminTab === 'content' && (<>
+              <BulkImport />
+
               {/* Admin Pending Notifications viewport */}
               <div className="space-y-2">
                 <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
@@ -8198,6 +8350,24 @@ export default function App() {
                       </button>
                     )}
                   </div>
+
+                  {/* Flashcards live under Training: same purpose — learning a
+                      concept, a tool or an SOP — just a different way in. */}
+                  <button
+                    onClick={() => setCurrentView('flashcards')}
+                    className="w-full flex items-center gap-3 bg-indigo-50 border border-indigo-200 hover:border-indigo-400 rounded-2xl p-4 text-left transition-colors"
+                  >
+                    <span className="p-2.5 bg-white text-indigo-700 rounded-xl flex-shrink-0 shadow-xs">
+                      <CardsIcon />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-base font-black text-gray-900 leading-tight">Flashcards</span>
+                      <span className="block text-sm text-gray-600 leading-snug mt-0.5">
+                        A situation on the front, the answer on the back. Quick practice between jobs.
+                      </span>
+                    </span>
+                    <span className="text-indigo-700 font-black text-lg flex-shrink-0">→</span>
+                  </button>
 
                   {/* Category tabs */}
                   <div className="flex gap-2">
